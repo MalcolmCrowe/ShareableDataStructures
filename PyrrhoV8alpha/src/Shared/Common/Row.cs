@@ -891,6 +891,12 @@ namespace Pyrrho.Common
             list = ts;
         }
         internal TList(Domain dt, CList<TypedValue> a) : base(dt) { list = a; }
+        internal TList(Domain dt,CTree<int,long> a): base(Domain.Int)
+        {
+            list = CList<TypedValue>.Empty;
+            for (var b = a.First(); b != null; b = b.Next())
+                list += new TInt(b.value()); 
+        }
         internal override TypedValue Fix(Context cx)
         {
             return new TList((Domain)dataType.Fix(cx),
@@ -1187,7 +1193,7 @@ namespace Pyrrho.Common
             rvv = r;
         }
         /// <summary>
-        /// Remote data may contain extra columns for Rvv info:
+        /// Remote data may contain extra keymap for Rvv info:
         /// if not, use -1 default indicating no information (disallow updates)
         /// </summary>
         /// <param name="cx"></param>
@@ -1213,12 +1219,7 @@ namespace Pyrrho.Common
         internal readonly CTree<Qlx, TypedValue> md = m;
         internal static TMetadata Empty = new();
         TMetadata() : this(CTree<Qlx, TypedValue>.Empty){ }
-
         public static TMetadata operator+(TMetadata m, (Qlx,TypedValue) x)
-        {
-            return new(m.md + x);
-        }
-        public static TMetadata operator +(TMetadata m, CTree<Qlx, TypedValue> x)
         {
             return new(m.md + x);
         }
@@ -1265,11 +1266,11 @@ namespace Pyrrho.Common
         }
     }
      /// <summary>
-    /// All TypedValues have a domain; TRow also has a BList of uids to give the columns ordering
+    /// All TypedValues have a domain; TRow also has a BList of uids to give the keymap ordering
     /// and a tree of values indexed by uid.
-    /// Cursor and RowBookmark are TRows, and rows can be assigned to SqlValues if the columns
+    /// Cursor and RowBookmark are TRows, and rows can be assigned to SqlValues if the keymap
     /// match (not the uids).
-    /// If the columns don't match then a map is required.
+    /// If the keymap don't match then a map is required.
     ///     
     /// </summary>
     internal class TRow : TypedValue
@@ -1329,7 +1330,7 @@ namespace Pyrrho.Common
             values = v;
         }
         /// <summary>
-        /// Constructor: values by columns
+        /// Constructor: values by keymap
         /// </summary>
          /// <param name="v">The values</param>
         public TRow(Domain dt, params TypedValue[] v) : 
@@ -1575,7 +1576,7 @@ namespace Pyrrho.Common
         /// <summary>
         /// Constructor: a new Set
         /// </summary>
-        internal TSet(Domain dt) : base(new Domain(-1L, Qlx.SET, dt))
+        internal TSet(Domain dt) : base(dt)
         {
             tree = CTree<TypedValue, bool>.Empty;
         }
@@ -1614,11 +1615,11 @@ namespace Pyrrho.Common
         internal TSet Add(TypedValue a)
         {
             var nt = tree;
-            if (a is not TConnector c)
+            if (a.dataType.kind != dataType.kind)
                 throw new DBException("22G0L");
-            if (!nt.Contains(c))
-                nt += (c, true);
-            return new TSet(Domain.Connector, nt);
+            if (!nt.Contains(a))
+                nt += (a, true);
+            return new TSet(a.dataType, nt);
         }
         /// <summary>
         /// Whether an element is already in the set

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.InteropServices.Marshalling;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level1;
@@ -93,7 +94,7 @@ namespace Pyrrho.Level4
         // bindings, and cache of RowSetPredicate RowSet (not initialised from parent, not copied to parent on exit)
         public BTree<long, Domain> bindings = BTree<long,Domain>.Empty;
         internal CTree<long,long> uids =CTree<long,long>.Empty;
-        internal CTree<long, bool> toFix = CTree<long, bool>.Empty; // Fix these objects on next Commit
+        internal BTree<long, DBObject> toFix = BTree<long, DBObject>.Empty; // Fix these objects on next Commit
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -114,7 +115,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal BTree<string, string> nsps = BTree<string, string>.Empty;
         /// <summary>
-        /// Used for View processing: lexical positions of ends of columns
+        /// Used for View processing: lexical positions of ends of keymap
         /// </summary>
         internal BList<Ident> viewAliases = BList<Ident>.Empty;
         internal ExecuteStatus parse = ExecuteStatus.Obey;
@@ -235,7 +236,7 @@ namespace Pyrrho.Level4
                     if (n.sub?.ToString() is string nm
                     && g.domain is Domain gd && gd.names[nm].Item2 is long np
                     && gd.representation[np] is Domain dt)
-                        return (Add(new SqlField(n.uid, nm, -1, g.defpos, dt, g.defpos)), null);
+                        return (Add(new SqlField(n.uid, nm, -1, g.defpos, dt, np)), null);
                     if (n.sub?.ident == "REF")
                         return (Add(new SqlFunction(n.lp, n.uid, this, Qlx.REF, g, null, null, Qlx.NO)), null);
                 }
@@ -617,11 +618,19 @@ namespace Pyrrho.Level4
                     d = Math.Max(v.dataType.depth + 1, d);
             return d;
         }
-        internal int _DepthTDTVb(CTree<Domain, CTree<long, bool>> t, int d)
+        internal int _DepthTTilTlb(CTree<CTree<int,long>, CTree<long, bool>> t, int d)
         {
+            var db = 0;
             for (var b = t?.First(); b != null; b = b.Next())
-                d = _DepthTVX(b.value(), Math.Max(b.key().depth + 1, d));
-            return d;
+            {
+                for (var c = b.key().First(); c != null; c = c.Next())
+                    if (obs[c.value()]?.depth is int dc && dc > db)
+                        db = dc;
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (obs[c.key()]?.depth is int dc && dc > db)
+                        db = dc;;
+            }
+            return db+1;
         }
         internal int _DepthTVTVb(CTree<long, CTree<long, bool>>? t, int d)
         {
@@ -772,7 +781,7 @@ namespace Pyrrho.Level4
         internal Context ForConstraintParse()
         {
             // Set up the information for parsing the generation rule
-            // The table domain and cx.defs should contain the columns so far defined
+            // The table domain and cx.defs should contain the keymap so far defined
             var cx = new Context(this) { parse = ExecuteStatus.Compile };
             var rs = CTree<long, Domain>.Empty;
             Ident? ti = null;
@@ -865,7 +874,8 @@ namespace Pyrrho.Level4
                 var dp = depths[ob.depth] ?? ObTree.Empty;
                 depths += (ob.depth, dp + (ob.defpos, ob));
             }
-            return (DBObject)(db.objects[ob.defpos]??ob);
+            db += ob;
+            return ob;
         }
         /// <summary>
         /// In the _Replace algorithm we need to ensure that the depths information is kept consistent.
@@ -914,10 +924,10 @@ namespace Pyrrho.Level4
                     RowSet.Groupings => _DepthLl((CList<long>)o, d),
                     RowSet.GroupIds => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.Having => _DepthTVX((CTree<long, bool>)o, d),
-                    Table.Indexes => _DepthTDTVb((CTree<Domain, CTree<long, bool>>)o, d),
+                    Table.Indexes => _DepthTTilTlb((CTree<CTree<int,long>, CTree<long, bool>>)o, d),
                     RowSet.ISMap => _DepthTVV((CTree<long, long>)o, d),
                     JoinRowSet.JoinCond => _DepthTVX((CTree<long, bool>)o, d),
-                    JoinRowSet.JoinUsing => _DepthTVV((CTree<long, long>)o, d),
+              //      JoinRowSet.JoinUsing => _DepthTVV((CTree<long, long>)o, d),
                     GetDiagnostics.List => _DepthTVX((CTree<long, Qlx>)o, d),
                     MultipleAssignment.List => _DepthLl((CList<long>)o, d),
                     RowSet._Matches => _DepthTVX((CTree<long, TypedValue>)o, d),
@@ -1119,17 +1129,17 @@ namespace Pyrrho.Level4
             }
             return ms;
         }
-        internal CTree<Domain, CTree<long, bool>> ReplacedTDTlb(CTree<Domain, CTree<long, bool>> xs)
+        internal CTree<CTree<int, long>, CTree<long, bool>> ReplacedTTilTlb(CTree<CTree<int,long>, CTree<long, bool>> xs)
         {
             for (var b = xs.First(); b != null; b = b.Next())
-                if (b.value() is CTree<long, bool> c)
-                {
-                    var k = b.key();
-                    var nk = k.Replaced(this);
-                    var nc = ReplacedTlb(c);
-                    if (k.CompareTo(nk) != 0 || c.CompareTo(nc) != 0)
-                        xs = xs -k +(nk, nc);
-                }
+            {
+                var k = b.key();
+                var v = b.value();
+                var nk = ReplacedTil(k);
+                var nv = ReplacedTlb(v);
+                if (k.CompareTo(nk) != 0 || v.CompareTo(nv) != 0)
+                    xs = xs - k + (nk, nv);
+            }
             return xs;
         }
         internal CList<long> ReplacedLl(CList<long> ks)
@@ -1589,14 +1599,14 @@ namespace Pyrrho.Level4
                         case RowSet.GroupIds: v = ReplacedTlD((CTree<long, Domain>)v); break;
                         case RowSet.Having: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case QuantifiedPredicate.High: v = Replaced((long)v); break;
-                        case Table.Indexes: v = ReplacedTDTlb((CTree<Domain, CTree<long, bool>>)v); break;
+                        case Table.Indexes: v = ReplacedTTilTlb((CTree<CTree<int, long>, CTree<long, bool>>)v); break;
                         case LocalVariableDec.Init: v = Replaced((long)v); break;
                         case SqlInsert.InsCols: v = ReplacedLl((CList<long>)v); break;
                         case Procedure.Inverse: v = Replaced((long)v); break;
                         case RowSet.ISMap: v = ReplacedTll((CTree<long, long>)v); break;
                         case JoinRowSet.JFirst: v = Replaced((long)v); break;
                         case JoinRowSet.JoinCond: v = ReplacedTlb((CTree<long, bool>)v); break;
-                        case JoinRowSet.JoinUsing: v = ReplacedTll((CTree<long, long>)v); break;
+                //        case JoinRowSet.JoinUsing: v = ReplacedTll((CTree<long, long>)v); break;
                         case JoinRowSet.JSecond: v = Replaced((long)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Replaced(this); break;
                 //        case GqlNode._Label: v = ((DBObject)v).Replaced(this); break;
@@ -1627,6 +1637,7 @@ namespace Pyrrho.Level4
                         case SqlCall.ProcDefPos: v = Replaced((long)v); break;
                         case PreparedStatement.QMarks: v = ReplacedLl((CList<long>)v); break;
                         case SelectRowSet.RdCols: v = ReplacedTlb((CTree<long, bool>)v); break;
+                        case Table.RefCols: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RowSet.Referenced: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case Domain.Representation: v = ReplacedTlD((CTree<long, Domain>)v); break;
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
@@ -1636,7 +1647,7 @@ namespace Pyrrho.Level4
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
                         case CompositeRowSet._Right: v = Replaced((long)v); break;
                         case QlValue.Right: v = Replaced((long)v); break;
-                        case RowSet.RowOrder: v = ReplacedLl((CList<long>)v); break;
+                        case RowSet.RowOrder: v = ((Domain)v).Replaced(this); break;
                         case Domain.RowType: v = ReplacedTil((CTree<int,long>)v); break;
                         case RowSet.RSTargets: v = ReplacedTll((CTree<long, long>)v); break;
                         case SqlDefaultConstructor.Sce: v = Replaced((long)v); break;
@@ -1835,7 +1846,7 @@ namespace Pyrrho.Level4
                         case GqlNode.IdValue: v = Fix((long)v); break;
                         case DBObject._Ident: v = ((Ident)v).Fix(this); break;
                         case TableRowSet._Index: v = Fix((long)v); break;
-                        case Table.Indexes: v = FixTDTlb((CTree<Domain, CTree<long, bool>>)v); break;
+                        case Table.Indexes: v = FixTTilTlb((CTree<CTree<int,long>, CTree<long, bool>>)v); break;
                         case DBObject.Infos: v = Fix((BTree<long, ObInfo>)v); break;
                         case LocalVariableDec.Init: v = Fix((long)v); break;
                         case SqlInsert.InsCols: v = ((Domain)v).Fix(this); break;
@@ -1845,9 +1856,9 @@ namespace Pyrrho.Level4
                         case JoinRowSet.JFirst: v = Fix((long)v); break;
                         case JoinRowSet.JoinCond: v = FixTlb((CTree<long, bool>)v); break;
               //          case Database.JoinedTypes: v = FixTlTDb((CTree<long, CTree<Domain, bool>>)v); break;
-                        case JoinRowSet.JoinUsing: v = FixTll((CTree<long, long>)v); break;
+              //          case JoinRowSet.JoinUsing: v = FixTll((CTree<long, long>)v); break;
                         case JoinRowSet.JSecond: v = Fix((long)v); break;
-                        case TableColumn.KeyMap: v = Fix((long)v); break;
+                        case TableColumn.KeyMap: v = FixTil((CTree<int,long>)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Fix(this); break;
                         case QlValue.Left: v = Fix((long)v); break;
                         case CompositeRowSet._Left: v = Fix((long)v); break;
@@ -1867,6 +1878,7 @@ namespace Pyrrho.Level4
                         case MatchStatement.MatchList: v = FixLl((CList<long>)v); break;
                         case Grouping.Members: v = Fix((CTree<long, int>)v); break;
                         case ObInfo._Metadata: v = ((TMetadata)v).Fix(this); break;
+                        case ObInfo.Model: v = FixTsTql((CTree<string,CTree<Qlx,long>>)v); break;
                         case WindowRowSet.Multi: v = ((TMultiset)v).Fix(this); break;
                         case Table.MultiplicityIndexes: v = FixTll((CTree<long,long>)v); break;
                         case SqlValueMultiset.MultiSqlValues: v = FixLl((CList<long>)v); break;
@@ -1899,10 +1911,9 @@ namespace Pyrrho.Level4
                         case PreparedStatement.QMarks: v = FixLl((CList<long>)v); break;
                         case SelectRowSet.RdCols: v = FixTlb((CTree<long, bool>)v); break;
                         case Table.RefCols: v = FixTlb((CTree<long, bool>)v); break;
-                        case Domain.RefIndex: v = Fix((long)v); break;
                         case RowSet.Referenced: v = FixTlb((CTree<long, bool>)v); break;
                         case GqlReference.RefersTo: v = Fix((long)v); break;
-                        case Level3.Index.RefTable: v = Fix((long)v); break;
+                        case TableColumn.RefTable: v = Fix((long)v); break;
                         case Domain.Representation: v = FixTlD((CTree<long, Domain>)v); break;
                         case RowSet.RestRowSetSources: v = FixTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Fix((long)v); break;
@@ -2238,14 +2249,14 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
-        ///  NOTE: We no longer try ensure that columns all have different names
-        ///  in any UDType subType/superType hierarchy, merely that our columns
+        ///  NOTE: We no longer try ensure that keymap all have different names
+        ///  in any UDType subType/superType hierarchy, merely that our keymap
         ///  do not conflict with those of a direct or indirect supertype.
         ///  
         /// As a valueType of Alter Type we need to merge two TableColumns. We can't use the Replace machinery
         /// above since everyting will have depth 1. So we need a new set of transformers.
         /// These are called ShallowReplace because that is what they do on DBObjects.
-        /// We do rely on Domains with columns all having positive uids, and no forward column references
+        /// We do rely on Domains with keymap all having positive uids, and no forward column references
         /// However, DBObjects frequently have embedded Domains with later defpos so we do all Domains first.
         /// The algorithm traverses all database objects with defpos>=0 in sequence. 
         /// All transformed objects are guaranteed to have unchanged defpos.
@@ -2309,6 +2320,8 @@ namespace Pyrrho.Level4
         internal void Add(string name,long ap,DBObject ob)
         {
             if (name == null)
+                return;
+            if (ob is QlInstance qv && db.objects[qv.sPos] is TableColumn tc && tc.hide)
                 return;
             names += (name, (ap,ob.defpos));
             var ns = (ob.defpos >= Transaction.TransPos) ? ob.names : ob.infos[role.defpos]?.names;
@@ -2577,7 +2590,7 @@ namespace Pyrrho.Level4
             }
             return ut;
         }
-        // ignore reference columns for now
+        // ignore reference keymap for now
         internal Domain GroupCols(CList<long> gs, Domain dm)
         {
             var gc = CTree<long, Domain>.Empty;
@@ -2995,18 +3008,15 @@ namespace Pyrrho.Level4
                 }
             return xs;
         }
-        internal CTree<Domain, CTree<long, Qlx>> FixTDTlq(CTree<Domain, CTree<long, Qlx>> xs)
+        internal CTree<CTree<int,long>, CTree<long, bool>> FixTTilTlb(CTree<CTree<int,long>, CTree<long, bool>> xs)
         {
             for (var b = xs.First(); b != null; b = b.Next())
-                if (b.value() is CTree<long, Qlx> x)
+                if (b.key() is CTree<int,long> k && b.value() is CTree<long, bool> x)
                 {
-                    var k = b.key();
-                    if (k.defpos != -1L)
-                        k = (Domain)(db.objects[Fix(k.defpos)] ?? throw new PEException("PE80882"));
-                    var nk = (Domain)k.Fix(this);
-                    var v = FixTlq(x);
-                    if (nk.CompareTo(k) != 0 || v != b.value())
-                        xs = xs - k + (nk, v);
+                    var nk = FixTil(k);
+                    var nv = FixTlb(x);
+                    if (nk.CompareTo(k)!=0|| nv != x)
+                        xs = xs - k + (nk, nv);
                 }
             return xs;
         }
@@ -3134,6 +3144,17 @@ namespace Pyrrho.Level4
                     ds += (nk, nv);
             }
             return ds;
+        }
+        internal CTree<string, CTree<Qlx, long>> FixTsTql(CTree<string, CTree<Qlx, long>> mo)
+        {
+            for (var b = mo.First(); b != null; b = b.Next())
+            {
+                var t = b.value();
+                for (var c = t.First(); c != null; c = c.Next())
+                    t += (c.key(),Fix(c.value()));
+                mo += (b.key(), t);
+            }
+            return mo;
         }
         internal CTree<PTrigger.TrigType, CTree<long, bool>> FixTTElb(CTree<PTrigger.TrigType, CTree<long, bool>> t)
         {
@@ -3324,7 +3345,7 @@ namespace Pyrrho.Level4
                     if (k != nk)
                     {
                         nb = nb.Relocate(nk);
-                        if (k < Transaction.Executables || k >= Transaction.HeapStart) // don't remove virtual columns
+                        if (k < Transaction.Executables || k >= Transaction.HeapStart) // don't remove virtual keymap
                             os -= k;  // or RestView
                                       //         cx.Remove(ob); typically ob will not be in cx
                     }
@@ -3351,7 +3372,7 @@ namespace Pyrrho.Level4
                     if (k != nk)
                     {
                         nb = nb.Relocate(nk);
-                        if (k < Transaction.Executables || k >= Transaction.HeapStart) // don't remove virtual columns
+                        if (k < Transaction.Executables || k >= Transaction.HeapStart) // don't remove virtual keymap
                             os -= k;  // or RestView
                                       //         cx.Remove(ob); typically ob will not be in cx
                     }
@@ -3449,8 +3470,7 @@ namespace Pyrrho.Level4
                 var dm = (ws.order!=Domain.Row)?ws.order:ws.partition;
                 if (dm != null)
                 {
-                    wtree = new RTree(dp, cx, dm,
-                        TreeBehaviour.Allow, TreeBehaviour.Allow);
+                    wtree = new RTree(dp, cx, dm, TreeBehaviour.Allow, TreeBehaviour.Allow);
                     if (cx.obs[sf.from] is RowSet fm && cx.obs[fm.source] is RowSet sce)
                     {
                         for (var e = sce.First(cx); e != null; e = e.Next(cx))

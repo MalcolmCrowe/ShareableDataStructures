@@ -122,7 +122,7 @@ namespace Pyrrho.Level2
                 case Type.Update:
                     {
                         var u = (Update)that;
-                        // conflict on columns in matching rows
+                        // conflict on keymap in matching rows
                         if (defpos != u.defpos)
                             return null; // do not call the base
                         for (var b = fields.First(); b != null; b = b.Next())
@@ -174,28 +174,6 @@ namespace Pyrrho.Level2
             CheckFields(cx);
             return new TableRow(this, cx, prevrec);
         }
-        internal override void CheckFields(Context cx)
-        {
-            if (cx._Ob(tabledefpos) is Table tb)
-            {
-                for (var b = tb.First(); b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    if (tb.representation[p] is not Domain dv)
-                        throw new PEException("PE10701");
-                    if (fields[p] is TypedValue v)
-                        if (v == TNull.Value)
-                            fields += (p, v);
-                        else if (!v.dataType.EqualOrStrongSubtypeOf(dv))
-                        {
-                            var nv = dv.Coerce(cx, v);
-                            fields += (p, nv);
-                        }
-                        else
-                            fields += (p, v);
-                }
-            }
-        }
         internal override Context Add(Context cx, Table tt, TableRow now)
         {
             if (tt.defpos < 0)
@@ -213,8 +191,9 @@ namespace Pyrrho.Level2
             var re = CTree<long, TypedValue>.Empty; // new reference values
             var pr = prevrec?.vals ?? CTree<long, TypedValue>.Empty;
             for (var b = tt.rowType.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()) is TableColumn co)
-                    if (cx.db.objects[co.toType] is Table rt)
+                if (cx._Ob(b.value()) is TableColumn co
+                    && co.domain.kind==Qlx.REF && co.domain.elType is Domain rd)
+                    if (cx.db.objects[rd.defpos] is Table rt)
                     {
                         var nv = now.vals[co.defpos];
                         var sz = fields[co.defpos] == TNull.Value;

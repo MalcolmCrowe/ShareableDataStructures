@@ -356,8 +356,8 @@ namespace Pyrrho.Level2
                     {
                         var c = (PIndex)that;
                         if (table.defpos==c.tabledefpos)
-                            for (int j = 0; j < c.columns.Length; j++)
-                                if (c.columns[j] == defpos)
+                            for (var b=c.keymap.First();b!=null;b=b.Next())
+                                if (b.value() == defpos)
                                     return new DBException("40042", ppos, that, ct);
                         break;
                     }

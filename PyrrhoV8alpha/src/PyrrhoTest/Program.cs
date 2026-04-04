@@ -30,7 +30,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("25 Feb 2026 Repeatable tests");
+                Console.WriteLine("4 April 2026 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -422,7 +422,7 @@ namespace Test
                 return;
             testing = 10;
             Act(100,"create table RWC(A int primary key,B char,C int)");
-            Act(101,"create table RRC(D char primary key,E int foreign key references RWC)");
+            Act(101,"create table RRC(D char primary key,E int references RWC)");
             Act(102,"insert into RWC values(42,'Life, the Universe',1)");
             Act(103,"insert into RWC values(52,'Weeks in the year',2)");
             Act(104,"insert into RRC values('Douglas Adams',42)");
@@ -667,7 +667,7 @@ namespace Test
             CheckResults(13,3,"select * from ad", "[{A:20},{A:2,C:'XX'}]");
             Act(174,"alter table ad add primary key(a)");
             Act(175,"insert into ad values(21,'AB')");
-            Act(176,"create table de (d int foreign key references ad)");
+            Act(176,"create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
                 CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint");
@@ -682,7 +682,7 @@ namespace Test
                     Act(182,"alter table ad drop b");
                     Act(183,"alter table ad add primary key(a)");
                     Act(184,"insert into ad values(21,'AB')");
-                    Act(185,"create table de (d int foreign key references ad)");
+                    Act(185,"create table de (d int references ad)");
                 }
             }
             Act(186,"insert into de values(21)");
@@ -700,7 +700,7 @@ namespace Test
                     Act(192,"alter table ad drop b");
                     Act(193,"alter table ad add primary key(a)");
                     Act(194,"insert into ad values(21,'AB')");
-                    Act(195,"create table de (d int foreign key references ad)");
+                    Act(195,"create table de (d int references ad)");
                     Act(196,"insert into de values(21)");
                 }
             }
@@ -718,7 +718,7 @@ namespace Test
                     Act(202,"alter table ad drop b");
                     Act(203,"alter table ad add primary key(a)");
                     Act(204,"insert into ad values(21,'AB')");
-                    Act(205,"create table de (d int foreign key references ad)");
+                    Act(205,"create table de (d int references ad)");
                     Act(206,"insert into de values(21)");
                 }
             }
@@ -742,7 +742,7 @@ namespace Test
             testing = 14;
             Begin();
             Act(211,"create table fi(a int primary key, b char)");
-            Act(212,"create table se(c char primary key, d int foreign key references fi on delete cascade)");
+            Act(212,"create table se(c char primary key, d int references fi on delete cascade)");
             Act(213,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
             Act(214,"insert into se values('disaster', 2019),('elizabeth',1953),('johnson',2019)");
             Act(215,"insert into se values('normans',1066),('hastings', 1066)");
@@ -754,7 +754,7 @@ namespace Test
             {
                 Begin();
                 Act(218,"create table fi(a int primary key, b char)");
-                Act(219,"create table se(c char primary key, d int foreign key references fi on delete cascade)");
+                Act(219,"create table se(c char primary key, d int  references fi on delete cascade)");
                 Act(220,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
                 Act(221,"insert into se values('disaster', 2019),('elizabeth',1953),('johnson',2019)");
                 Act(222,"insert into se values('normans',1066),('hastings', 1066)");
@@ -833,7 +833,7 @@ namespace Test
             testing = 18;
             Begin();
             Act(242,"create table author(id int primary key,aname char)");
-            Act(243, "create table book(id int primary key,authid int foreign key references author,title char)");
+            Act(243, "create table book(id int primary key,authid int references author,title char)");
             Act(244,"insert into author values (1,'Dickens'),(2,'Conrad')");
             Act(245,"insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')");
             Act(246,"create function booksby(auth char) returns table(title char) "+
@@ -841,7 +841,7 @@ namespace Test
                 "on author.id=b.authid where aname=booksby.auth)");
             CheckResults(18, 1, "select title from author inner join book b on author.id=b.authid where aname='Dickens'",
                 "[{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]");
-            CheckResults(18, 2, "select * from table(booksby('Dickens'))", 
+            CheckResults(18, 2, "select * from table(booksby('Dickens'))",
                 "[{TITLE:'Dombey & Son'},{TITLE:'David Copperfield'}]");
             CheckResults(18, 3, "select count(*) from table(booksby('Dickens'))",
                 "[{COUNT:2}]");
@@ -926,8 +926,8 @@ namespace Test
             testing = 21;
             Begin();
             Act(265,"create table members (id int primary key,firstname char)");
-            Act(266,"create table played (id int primary key, winner int foreign key references members,"
-              + "loser int foreign key references members,agreed boolean)");
+            Act(266,"create table played (id int primary key, winner int references members,"
+              + "loser int references members,agreed boolean)");
             Act(267,"grant select on members to public");
             Act(268,"grant select on played to public");
             Act(269,"create procedure claim(won int,beat int)"
@@ -1251,7 +1251,7 @@ namespace Test
                 "(select ref from person where name='Mary'),"+
                 "(select ref from person where name='Joe'))");
             CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
-            CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(Mary)'}]");
+            CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
             Act(410, "CREATE type \"Product\" as (spec string) nodetype");
             Act(357, "CREATE\r\n(:WoodScrew=>\"Product\" {spec:'16/8x4'}),(:WallPlug=>\"Product\"{spec:'18cm'})," +
                 "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+

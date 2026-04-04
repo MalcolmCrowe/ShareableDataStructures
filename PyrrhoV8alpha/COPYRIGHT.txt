@@ -19,11 +19,11 @@ applicable law.
 
 This is version 8.0(alpha) of the DBMS. PyrrhoSvr is compiled for .NET 10.0.
 The clients PyrrhoCmd,PyrrhoTest, and PyrrhoLink are compiled for .Net 9.0.
-It passes tests 1 to 25 of the current PyrrhoTest program (25 Feb 2026), 
+It passes tests 1 to 25 of the current PyrrhoTest program (26 March 2026), 
 and should run on Windows, Linux, and MacOS with DotNet.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-16 March 2026
+04 April 2026
 
 

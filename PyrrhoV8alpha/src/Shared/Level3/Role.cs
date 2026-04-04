@@ -23,7 +23,7 @@ namespace Pyrrho.Level3
     /// Roles also manage granted permissions for these and for database, role, TableColumn:
     /// If ob is not User, role.obinfos[ob.defpos] contains the privilege that this role has on ob.
     /// If us is a User, then role.obinfo[us.defpos] tells whether the user has usage rights on the role.
-    /// Granted permissions on columns affects rowTypes of the container objects.
+    /// Granted permissions on keymap affects rowTypes of the container objects.
     /// All of the above can be looked up by name (dbobjects[], procedures[]) and by defpos (obinfos[]).
     /// Procedure lookup is complicated by having different name space for each arity.
     /// Objects not in the above lists can have name and rowType directly in the object structure,

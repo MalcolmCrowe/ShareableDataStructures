@@ -258,7 +258,7 @@ namespace Pyrrho.Level2
         }
         /// <summary>
         /// See the discussion of invariants of UDType:
-        /// For any UDType t, t.rowType should include all columns of any supertype
+        /// For any UDType t, t.rowType should include all keymap of any supertype
         /// and representation should include all the related domain information, subject to:
         /// (a) Column merging occurs when a column name is repeated in t.rowType
         /// (b) Column merging occurs when a column name occurs in two subtypes
@@ -275,7 +275,7 @@ namespace Pyrrho.Level2
             var sr = dataType.representation;
             var ss = dataType.infos[-502]?.names??dataType.names;
             var si = dataType.infos[cx.role.defpos];
-            // if our new columns (in allCols) match columns in a supertype they need to be merged
+            // if our new keymap (in allCols) match keymap in a supertype they need to be merged
             // (if they cannot be merged we raise an exception)
             for (var ub = under.First(); ub != null; ub = ub.Next())
                 if (ub.key() is Table uD)

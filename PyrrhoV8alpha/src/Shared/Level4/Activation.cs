@@ -334,12 +334,10 @@ namespace Pyrrho.Level4
             var na = false;
             for (var b = table.refCols.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is TableColumn rc && db.objects[rc.tabledefpos] is Table rt
-                    && rc.infos[rc.definer] is ObInfo ri
                     && !casc.Contains(rt.defpos))
                 {
-                    var a = (PIndex.ConstraintType)(ri.metadata[Qlx.ACTION].ToInt() ?? 0);
                     if (fl == PIndex.ConstraintType.NoType)
-                        fl = a;
+                        fl = rc.refAction;
                     if (fl == PIndex.ConstraintType.NoType) continue;
                     var rtt = (PTrigger.TrigType)0;
                     var ru = CTree<long, UpdateAssignment>.Empty;
@@ -647,16 +645,17 @@ namespace Pyrrho.Level4
         {
             // some reference column things
             for (var b = table.First(); b != null; b = b.Next())
-                if (_Ob(b.value()) is TableColumn tc && _Ob(tc.toType) is Table rt)
+                if (_Ob(b.value()) is TableColumn tc 
+                    && tc.domain.kind==Qlx.REF && db.objects[tc.domain.elType?.defpos??-1L] is Table rt)
                 {
                     var fd = false;
                     var rd = tgc.values[tc.defpos]?.CompareTo(vs[tc.defpos]) != 0;
-                    if (_Ob(tc.keyMap) is Level3.Index rx
+                    if (tc.keyMap !=CTree<int,long>.Empty
                         && rt.FindPrimaryIndex(this) is Level3.Index px)
                     {
                         // compute the reference from the keyMap
                         var k = CList<TypedValue>.Empty;
-                        for (var c = rx.keys.First(); c != null; c = c.Next())
+                        for (var c = tc.keyMap.First(); c != null; c = c.Next())
                         {
                             var p = c.value();
                             fd = fd || vs[p]?.CompareTo(tgc.values[p]) != 0;
@@ -668,7 +667,7 @@ namespace Pyrrho.Level4
                         else if (rd && !fd)
                         {
                             var rv = table.tableRows[vs[tc.defpos]?.ToLong() ?? -1L];
-                            for (var c = rx.keys.First(); c != null; c = c.Next())
+                            for (var c = tc.keyMap.First(); c != null; c = c.Next())
                             {
                                 var p = c.value();
                                 vs += (p, rv?.vals[p] ?? TNull.Value);
@@ -1071,7 +1070,7 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class TriggerActivation : Activation
     {
-        internal readonly TransitionRowSet? _trs;
+        internal readonly TransitionRowSet _trs;
         internal bool defer;
         /// <summary>
         /// The trigger definition

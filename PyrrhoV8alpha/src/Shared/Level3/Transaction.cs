@@ -361,13 +361,8 @@ namespace Pyrrho.Level3
                 wr.cx.binding = CTree<long, TypedValue>.Empty;
                 var at = CTree<long, Domain>.Empty;
                 for (var b = wr.cx.uids.First(); b != null; b = b.Next())
-                    if (wr.cx.db.objects[b.value()] is DBObject o)
-                    {
-                        if (o is Domain dm)
-                            at = Supers(wr.cx, dm, at);
-                        if (o is Index ix && wr.cx.db.objects[ix.reftabledefpos] is Domain dn)
-                            at = Supers(wr.cx, dn, at);
-                    }
+                    if (wr.cx.db.objects[b.value()] is Domain dm)
+                        at = Supers(wr.cx, dm, at);
                 for (var b = at.First(); b != null; b = b.Next())
                     if (b.value() is Domain ad)
                     {
@@ -617,7 +612,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                                 sk = WebUtility.UrlDecode(sk);
 #endif
-                                if (cx.obs[ix.keys[kn] ?? -1L] is not TableColumn tc)
+                                if (cx.obs[ix.keys[kn]??-1L] is not TableColumn tc)
                                     throw new DBException("42112", kn);
                                 if (tc.domain.TryParse(new Scanner(uid, sk.ToCharArray(), 0, cx), out TypedValue? kv) != null)
                                     break;

@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics.Contracts;
 using System.Globalization;
 using System.Reflection.Emit;
+using System.Security.AccessControl;
 using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -19,12 +20,12 @@ using System.Xml;
 namespace Pyrrho.Level3
 {
     /// <summary>
-    /// In this work a Domain includes details of columns of structured types. 
+    /// In this work a Domain includes details of keymap of structured types. 
     /// Parsing results in construction of many "ad-hoc" domains with heap uids or -1L. 
     /// When database objects are committed, the Domain.Create method checks for a similar data type
     /// already in the database. The Domain.CompareTo method supports this comparison.
     /// Column uids in SqlValues and RowSets are SqlValues that include
-    /// evaluation instructions: Domain.rowType comparsion checks for matching columns
+    /// evaluation instructions: Domain.rowType comparsion checks for matching keymap
     /// at this level (not just comparison of the column domains).
     /// Thus the "dataType" field of an QlValue in general determines how to evaluate
     /// the value, not just the underlying primitive types.
@@ -54,9 +55,8 @@ namespace Pyrrho.Level3
             OrderFunc = -84, // Procedure
             Precision = -85, // int
             Prefix = -390, // string (metadata)
-            RefIndex = 161, // long Index
             Representation = -87, // CTree<long,Domain> DBObject (gets extended by Matching)
-            RowType = -187,  // CTree<int,long> (gaps ok: for TRS in SQL move REF columns after others, so not in display)
+            RowType = -187,  // CTree<int,long> (gaps ok: for TRS in SQL move REF keymap after others, so not in display)
             Scale = -88, // int
             Start = -89, // Qlx
             Subtypes = -155, // CTree<long,bool> Domain direct subtypes
@@ -189,12 +189,11 @@ namespace Pyrrho.Level3
         public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         internal CTree<long, CTree<long,bool>> colRefs => 
             (CTree<long, CTree<long,bool>>)(mem[ColRefs] ?? CTree<long, CTree<long, bool>>.Empty);
-        internal CTree<Qlx, long> model =>
-             (CTree<Qlx, long>)(mem[ObInfo.Model] ?? CTree<Qlx, long>.Empty);
+        internal CTree<string,CTree<Qlx, long>> model =>
+             (CTree<string,CTree<Qlx, long>>)(mem[ObInfo.Model] ?? CTree<string,CTree<Qlx, long>>.Empty);
         public string? prefix => (string?)mem[Prefix];
         public string? suffix => (string?)mem[Suffix];
         public long target => (long)(mem[RowSet.Target] ?? -1L);
-        public long refIndex => (long)(mem[RefIndex] ?? -1L);
         internal Domain(Context cx, CTree<long, Domain> rs, CTree<int,long> rt, int ds, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, ds) + (Infos, ii)
                   + (ObInfo._Names, ii[cx.role.defpos]?.names ?? Names.Empty)
@@ -202,6 +201,12 @@ namespace Pyrrho.Level3
         { }
         internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, CTree<int,long> rt, int ds = 0)
             : this(dp, _Mem(cx, t, rs, rt, ds))
+        {
+            cx.Add(this);
+        }
+        internal Domain(long dp,Domain rd,Context cx)
+            : this (dp,BTree<long,object>.Empty+(Kind,Qlx.REF)+(Element,rd)+(Definer,cx.role.defpos)
+                  + (Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo("",Grant.AllPrivileges))))
         {
             cx.Add(this);
         }
@@ -493,6 +498,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         }
         internal Table? ForExtra(Context cx, BTree<long, object>? m = null, CTree<TypedValue, bool>? cs = null)
         {
+            if (cx.parsingGQL == Context.ParsingGQL.Match)
+                return this as Table;
             m ??= BTree<long, object>.Empty;
             var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue];
             var op = (Qlx?)m[SqlValueExpr.Op];
@@ -746,10 +753,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     sb.Append(Uid(b.key()));
                 }
                 if (cm == ",") sb.Append(')');
-            }
-            if (mem.Contains(RefIndex))
-            {
-                sb.Append(" refIndex "); sb.Append(Uid(refIndex));
             }
             if (optional)
                 sb.Append(" OPTIONAL");
@@ -1106,6 +1109,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     return true;
                 if (dt == NodeType && (kind == Qlx.EDGETYPE || kind == Qlx.NODETYPE))
                     return true;*/
+            if (dt.kind == Qlx.REF && kind == Qlx.INT)
+                return true;
             if (defpos > 0 && dt.defpos < 0 && ki == dt.kind)
                 return true;
             if (CompareTo(dt) == 0) // the Equal case
@@ -2315,7 +2320,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                             throw new PEException("PE3043");
                         if (lx.mime == "text/csv")
                         {
-                            // we expect all columns, separated by commas, without string quotes
+                            // we expect all keymap, separated by commas, without string quotes
                             var vs = CTree<long, TypedValue>.Empty;
                             for (var b = rowType.First(); b != null; b = b.Next())
                                 if (b.value() is long p)
@@ -2401,8 +2406,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                                 throw new PEException("PE3042");
                             //if (nms.Length > 0)
                             //    throw new DBException("2200N");
-                            //tolerate named columns in SQL version
-                            //mixture of named and unnamed columns is not supported
+                            //tolerate named keymap in SQL version
+                            //mixture of named and unnamed keymap is not supported
                             var comma = '(';
                             var end = ')';
                             if (lx.ch == '{')
@@ -2935,8 +2940,12 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         internal virtual TypedValue Coerce(Context cx, TypedValue v)
         {
             if (kind == Qlx.REF)
+            {
                 if (v is TRef r0)// && elType?.defpos == r0.elType?.defpos)
                     return v;
+                if (v is TNode tn && elType is not null && tn.dataType.EqualOrStrongSubtypeOf(elType))
+                    return new TRef(tn.defpos,tn.dataType);
+            }
      /*           else if (v is TInt ri && ri.ToLong() is long rp)
                 {
                     for (var b = super.First(); b != null; b = b.Next())
@@ -3869,6 +3878,35 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     return;
             }
         }
+        internal StringBuilder FieldJson(Context cx, StringBuilder sb)
+        {
+            sb.Append("{Domain:"); sb.Append(kind);
+            switch (Equivalent(kind))
+            {
+                case Qlx.INTEGER:
+                    if (prec != 0)
+                    { sb.Append(",Precision:"); sb.Append(prec); }
+                    break;
+                case Qlx.NUMERIC:
+                case Qlx.REAL:
+                    if (prec != 0)
+                    { sb.Append(",Precision:"); sb.Append(prec); }
+                    if (scale != 0)
+                    { sb.Append(",Scale:"); sb.Append(scale); }
+                    break;
+                case Qlx.NCHAR:
+                case Qlx.CHAR:
+                    if (prec != 0)
+                    { sb.Append(",Length:"); sb.Append(prec); }
+                    break;
+                case Qlx.REF:
+                case Qlx.ROW:
+                    if (elType is Table e && cx.db.objects[e.defpos] is Table ee)
+                    { sb.Append(",ToType:'"); sb.Append(ee.NameFor(cx)); sb.Append('\''); }
+                    break;
+            }
+            return sb;
+        }
         /// <summary>
         /// Validator
         /// </summary>
@@ -4461,8 +4499,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         internal override Basis Fix(Context cx)
         {
             var r = New(cx.Fix(defpos), _Fix(cx, mem));
-            if (defpos != -1L)
-                cx.Add(r);
+     //       if (defpos != -1L)  Frequently happens that Domain copies inside DBObjects are out of date
+     //           cx.Add(r);
             return r;
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
@@ -4671,7 +4709,15 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         public static string NameFor(Context cx, long p, int i)
         {
             var sv = cx._Ob(p);
-            return sv?.alias ?? sv?.name ?? (string?)sv?.mem[ObInfo.Name] ?? ("Col" + i);
+            if (sv?.NameFor(cx) is string a && a.Length > 0)
+                return a;
+            if (sv?.alias is string b && b.Length > 0)
+                return b;
+            if (sv?.name is string c && c.Length > 0)
+                return c;
+            if (sv?.mem[ObInfo.Name] is string d && d.Length > 0)
+                return d;
+            return "Col" + i;
         }
         internal virtual CTree<Domain, bool> OnInsert(Context cx, long _ap, BTree<long, object>? m = null,
             CTree<TypedValue, bool>? cs = null)
@@ -4825,11 +4871,12 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 }
             else if (this is Table tb)
                 for (var b = First(); b != null; b = b.Next())
-                    if (db.objects[b.value()] is TableColumn tc)
+                    if (db.objects[b.value()] is TableColumn tc
+                        && tc.domain.kind==Qlx.REF && tc.domain.elType is Domain rd)
 {
-                                var u = r[tc.toType] ?? CTree<long, bool>.Empty;
-                                r += (tc.toType, u + (tc.defpos, true));
-                                if (db.objects[tc.toType] is Table rt && !rt.refCols.Contains(tc.defpos))
+                                var u = r[rd.defpos] ?? CTree<long, bool>.Empty;
+                                r += (rd.defpos, u + (tc.defpos, true));
+                                if (db.objects[rd.defpos] is Table rt && !rt.refCols.Contains(tc.defpos))
                                     db += rt + (Table.RefCols, rt.refCols + (tc.defpos, true));
                             } 
             return r;
@@ -4849,12 +4896,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         internal StandardDataType(Qlx t, OrderCategory oc = OrderCategory.None,
             Domain? o = null, BTree<long, object>? u = null)
             : base(-(long)t, t, _Mem(oc, o, u))
-        {
-            types += (t, this);
-            Context._system.db = Database._system;
-        }
-        internal StandardDataType(Qlx t, Domain o)
-            : base(-(long)t, t, _Mem(OrderCategory.Primitive, o, BTree<long, object>.Empty))
         {
             types += (t, this);
             Context._system.db = Database._system;
@@ -5411,11 +5452,11 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
     }
     /// <summary>
     /// UDType invariants:
-    /// For any UDType t, t.rowType includes all columns of all supertypes of t
-    /// but need not include all columns of subtypes. 
+    /// For any UDType t, t.rowType includes all keymap of all supertypes of t
+    /// but need not include all keymap of subtypes. 
     /// If a subtype s of t contains a tableRow r, r is also a tablerow of t.
-    /// This means that if similarly named columns exist in two direct or indirect subtypes
-    /// one of these columns must be equal to or a subtype of the other.
+    /// This means that if similarly named keymap exist in two direct or indirect subtypes
+    /// one of these keymap must be equal to or a subtype of the other.
     /// </summary>
     internal class UDType : Table
     {
@@ -5439,7 +5480,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             var ns = Names.Empty;
             var nn = Names.Empty;
             var ds = (int)(m[Display] ?? dt.display);
-            // At this stage we don't know anything about non-identity columns
+            // At this stage we don't know anything about non-identity keymap
             // add everything we find in direct supertypes to create the Domain
             if (m[Under] is CTree<Domain, bool> un)
             {
@@ -5529,6 +5570,13 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 r += (Suffix, sf.value);
                 cx.db += (Database.Suffixes, cx.db.suffixes + (sf.value, defpos));
             }
+            if (md[Qlx.REFERENCES] is TSet ts && r is Table tb)
+            {
+                for (var b = ts.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector tc)
+                        tb = tb.Add(cx, tc);
+                r = tb;
+            }
            if (r != this)
            {
                 cx.Add(r);
@@ -5557,7 +5605,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 throw new DBException("42105").Add(Qlx.ROLE);
             var nm = NameFor(cx);
             var ne = (colRefs.Count>1L) ? "EdgeType" : "NodeType";
-            var key = BuildKey(cx, out Domain keys);
+            var key = BuildKey(cx, out  CTree<int,long> keys);
             var fields = CTree<string, bool>.Empty;
             var sb = new StringBuilder("\r\nusing Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
@@ -5589,7 +5637,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     var dt = b.value();
                     var tn = ((dt is Table) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
                     tc.Note(cx, sb);
-                    if ((keys.rowType.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
+                    if ((keys.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
                         sb.Append("  [AutoKey]\r\n");
                     sb.Append("  public " + tn + " " + tc.NameFor(cx) + ";\r\n");
                 }
@@ -5613,7 +5661,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             var nm = NameFor(cx);
             sb.Append("# "); sb.Append(nm);
             sb.Append(" from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
-            var key = BuildKey(cx, out Domain keys);
+            var key = BuildKey(cx, out CTree<int,long> keys);
             var fields = CTree<string, bool>.Empty;
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
@@ -5644,20 +5692,20 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     fields += (fi.name, true);
                     var dt = b.value();
                     tc.Note(cx, sb, "# " + ((dt is Table) ? dt.name : dt.SystemType.Name));
-                    if ((keys.rowType.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
+                    if ((keys.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
                         sb.Append("  AutoKey\r\n");
                     sb.Append("  self." + cx.NameFor(b.key()) + " = " + b.value().defaultValue);
                     sb.Append("\r\n");
                 }
             sb.Append("  self._schemakey = "); sb.Append(from.lastChange); sb.Append("\r\n");
-            if (keys != Null)
+            if (keys != CTree<int,long>.Empty)
             {
                 var comma = "";
                 sb.Append("  self._key = [");
-                for (var i = 0; i < keys.Length; i++)
+                for (var b=keys.First(); b!=null;b=b.Next())
                 {
                     sb.Append(comma); comma = ",";
-                    sb.Append('\''); sb.Append(keys[i]); sb.Append('\'');
+                    sb.Append('\''); sb.Append(Uid(b.value())); sb.Append('\'');
                 }
                 sb.Append("]\r\n");
             }

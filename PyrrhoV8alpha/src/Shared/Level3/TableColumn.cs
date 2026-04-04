@@ -16,9 +16,9 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// A Database object representing a table column.
-    /// FOREIGN KEY columns constrain a reference column with its own uid, which is an anonymous connector;
+    /// FOREIGN KEY keymap constrain a reference column with its own uid, which is an anonymous connector;
     /// its domain includes a keymap with foreign key uids.
-    /// Other REFERENCE columns have their own uid in the ordinary way, and are added to the set of connectors.
+    /// Other REFERENCE keymap have their own uid in the ordinary way, and are added to the set of connectors.
     /// Table metadata keeps track of connectors.
     /// HasRefColumns computes the set of connectors.
     /// </summary>
@@ -29,7 +29,8 @@ namespace Pyrrho.Level3
             ColumnDefault = -158, // long QlValue
             _Generation = -269, // GenerationRule (C)
             Hide = -272, // bool (omit from display e.g. a foreign key reference column)
-            KeyMap = -70, // long Domain foreign key if declared
+            KeyMap = -70, // CTree<int,long> TableColumn (may be empty)
+            RefTable = -162, // long Domain (Table or RowSet) (may be -1L)
             Seq = -344, // int column position in this table
             _Table = -270; // long
         public CTree<long, bool> checks => (CTree<long, bool>)(mem[Checks] ?? CTree<long, bool>.Empty);
@@ -41,8 +42,11 @@ namespace Pyrrho.Level3
         public bool optional => (bool)(mem[Domain.Optional] ?? false);
         public readonly static TableColumn Doc = new (-1L,BTree<long, object>.Empty);
         public bool hide => (bool)(mem[Hide] ?? false);
-        public long keyMap => (long)(mem[KeyMap] ?? -1L); // the RefIndex for a declared foreign key
-        public long toType => (long)(mem[Index.RefTable] ?? -1L); // The target of a reference value
+        public CTree<int,long> keyMap => (CTree<int,long>)(mem[KeyMap] ?? CTree<int,long>.Empty);
+        public PIndex.ConstraintType refAction => 
+            mem[QuerySearch.Action] is PIndex.ConstraintType ct?ct:
+            mem[QuerySearch.Action] is long q ? (PIndex.ConstraintType)(int)q :
+            mem[QuerySearch.Action] is int p?(PIndex.ConstraintType)p:PIndex.ConstraintType.NoType;
         /// <summary>
         /// Constructor: a new TableColumn 
         /// </summary>
@@ -51,7 +55,8 @@ namespace Pyrrho.Level3
         /// <param name="dt">the object type</param>
         public TableColumn(Table tb, PColumn c, Domain dt,Context cx)
             : base(c.defpos, _TableColumn(c,dt,cx)+(_Table, tb.defpos) + (LastChange, c.ppos)
-                     + (Owner, cx.user?.defpos ?? -501L) + (Index.RefTable,c.reftype))
+                     + (Owner, cx.user?.defpos ?? -501L)  
+                     + (KeyMap,(tb.mem[c.refindex] as CTree<int,long>)??c.keymap))
         {
             var lp = cx.names[c.name].Item1;
             cx.names += (c.name, (lp, c.defpos));
@@ -163,10 +168,10 @@ namespace Pyrrho.Level3
                     case Qlx.ACTION:
                         {
                             if (domain.kind != Qlx.REF)
-                                continue; // it's a table constraint
-                                          //    table = (Table)cx.Add(table + (cx, tc, b));
-                                          //    tc = (TableColumn)(cx.db.objects[tc.defpos] ??tc);
-                            om += (b.key(), b.value()); // replace the value
+                                continue; 
+                            om += (b.key(), b.value());
+                            var a = (PIndex.ConstraintType)(b.value().ToInt() ?? 0);
+                            tc += (QuerySearch.Action, PIndex.ReferentialAction(refAction, a));
                             break;
                         }
                     case Qlx.REFERENCES: throw new PEException("PE61712");
@@ -375,14 +380,27 @@ namespace Pyrrho.Level3
             { sb.Append(" Generated="); sb.Append(generation); }
             if (mem.Contains(ColumnDefault) && colDefault>0)
             { sb.Append(" default "); sb.Append(Uid(colDefault)); }
-/*            for (var b=cs.First();b!=null;b=b.Next())
-                if (b.value() is TConnector cc && cc.q != Qlx.Null)
-                    { sb.Append(' '); sb.Append(cc); }*/
-            if (mem.Contains(Index.RefTable) && toType>0)
-            { sb.Append(" toType "); sb.Append(Uid(toType)); }
-            if (mem.Contains(KeyMap))
-            { sb.Append(" keyMap "); sb.Append(Uid(keyMap)); }
+            if (keyMap != CTree<int,long>.Empty)
+            { sb.Append(" keyMap ");
+                var cm = '(';
+                for (var b=keyMap.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm);cm = ',';
+                    sb.Append(b.value());
+                }
+                sb.Append(')'); }
+            if (refAction!=PIndex.ConstraintType.NoType)
+            {
+                sb.Append(' ');sb.Append(refAction);
+            }
             return sb.ToString();
+        }
+
+        internal void JsonSchema(Context cx, StringBuilder sb)
+        {
+            sb.Append(NameFor(cx)); sb.Append(':');// sb.Append("{Name:'"); sb.Append(NameFor(cx)); sb.Append('\'');
+            domain.FieldJson(cx, sb);
+            sb.Append('}');
         }
     }
     /// <summary>
@@ -591,11 +609,12 @@ namespace Pyrrho.Level3
                 {
                     var q = b.key();
                     var ku = BTree<long, UpdateAssignment>.Empty;
-                    if (cx._tty==PTrigger.TrigType.Update && cx._Ob(tc.keyMap) is Index rx
-                        && cx._Ob(tc.toType) is Table rt && rt.FindPrimaryIndex(cx) is Index px)
+                    if (cx._tty==PTrigger.TrigType.Update && tc.keyMap!=CTree<int,long>.Empty
+                        && tc.domain.kind==Qlx.REF && tc.domain.elType is Domain rd
+                        && cx._Ob(rd.defpos) is Table rt && rt.FindPrimaryIndex(cx) is Index px)
                     {
                         var pc = px.keys.First();
-                        for (var c = rx.keys.First(); c != null && pc!=null; c = c.Next(), pc=pc.Next())
+                        for (var c = tc.keyMap.First(); c != null && pc!=null; c = c.Next(), pc=pc.Next())
                         {
                             TypedValue v = u?[pc.value()]??TNull.Value;
                             switch (cx.flags & PIndex.Updates)

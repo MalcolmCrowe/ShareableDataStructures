@@ -42,8 +42,8 @@ namespace Pyrrho.Level4
             return new SystemTable(s.defpos, s.mem + x);
         }
         /// <summary>
-        /// Unlike ordinary tables, system table columns are defined before the table is 
-        /// added to the database. Moreover, system tables and columns cannot be altered.
+        /// Unlike ordinary tables, system table keymap are defined before the table is 
+        /// added to the database. Moreover, system tables and keymap cannot be altered.
         /// </summary>
         /// <param name="s"></param>
         /// <param name="c"></param>
@@ -108,8 +108,8 @@ namespace Pyrrho.Level4
             var x = new SystemIndex(defpos, ks);
             var sys = Database._system ?? throw new PEException("PE1014");
             Database._system = sys+ (x.defpos, x);
-            var t = indexes[ks] ?? CTree<long, bool>.Empty;
-            return this + (Indexes, indexes + (ks, t+(x.defpos,true)));
+            var t = indexes[rt] ?? CTree<long, bool>.Empty;
+            return this + (Indexes, indexes + (rt, t+(x.defpos,true)));
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -408,6 +408,7 @@ namespace Pyrrho.Level4
             RoleIndexResults();
             RoleIndexKeyResults();
             RoleJavaResults();
+            RoleJsonResults();
             RoleMethodResults();
             RoleNodeTypeResults();
             RoleObjectResults();
@@ -416,6 +417,7 @@ namespace Pyrrho.Level4
             RolePrivilegeResults();
             RoleProcedureResults();
             RolePythonResults();
+            RoleRdfResults();
             RoleSQLResults();
             RoleSubobjectResults();
             RoleTableResults();
@@ -514,6 +516,7 @@ namespace Pyrrho.Level4
                 case "Role$Index": return RoleIndexBookmark.New(_cx, res);
                 case "Role$IndexKey": return RoleIndexKeyBookmark.New(_cx, res);
                 case "Role$Java": return RoleJavaBookmark.New(_cx, res);
+                case "Role$Json": return RoleJsonBookmark.New(_cx, res);
                 case "Role$Method": return RoleMethodBookmark.New(_cx, res);
                 case "Role$NodeType": return RoleNodeTypeBookmark.New(_cx, res);
                 case "Role$Object": return RoleObjectBookmark.New(_cx, res);
@@ -2421,7 +2424,7 @@ namespace Pyrrho.Level4
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np, 
-                            ((PIndex)nph).columns.Length-1);
+                            ((int)((PIndex)nph).keymap.Count)-1);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2431,7 +2434,7 @@ namespace Pyrrho.Level4
             }
             protected override Cursor? _Next(Context _cx)
             {
-                for (var ix = _ix + 1; ph is PIndex x && ix < x.columns.Length; ix++)
+                for (var ix = _ix + 1; ph is PIndex x && ix < x.keymap.Count; ix++)
                 {
                     var rb = new LogIndexKeyBookmark(_cx,res, _pos, ph, nextpos, ix);
                     if (Eval(res.where, _cx))
@@ -2464,7 +2467,7 @@ namespace Pyrrho.Level4
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np,
-                                              ((PIndex)nph).columns.Length - 1);
+                                              ((int)((PIndex)nph).keymap.Count) - 1);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2481,7 +2484,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(x.ppos),
                     new TInt(_ix),
-                    Pos(x.columns[_ix]));
+                    Pos(x.keymap[_ix]));
             }
         }
         /// <summary>
@@ -5681,14 +5684,14 @@ namespace Pyrrho.Level4
             /// enumerate the indexes
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<Domain, CTree<long,bool>> _middle;
+            readonly ABookmark<CTree<int,long>, CTree<long,bool>> _middle;
             readonly ABookmark<long, bool> _inner;
             /// <summary>
             /// craete the Sys$Index enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<Domain,CTree<long,bool>>middle, ABookmark<long,bool>inner, long lc)
+                ABookmark<CTree<int,long>,CTree<long,bool>>middle, ABookmark<long,bool>inner, long lc)
                 : base(_cx,res,pos,inner.key(),lc,
                       _Value(_cx,res,inner.key()))
             {
@@ -5719,10 +5722,10 @@ namespace Pyrrho.Level4
                     _cx._Ob(x.tabledefpos) is not Table t || _cx.role is not Role ro ||
                     t.infos[ro.defpos] is not ObInfo oi || oi.name==null || x.rows is not MTree mt)
                     throw new PEException("PE48190");
-                var rt = _cx._Ob(x.reftabledefpos);
-                var ri = rt?.infos[_cx.role.defpos];
-                var ad = _cx._Ob(x.adapter);
-                var ai = ad?.infos[_cx.role.defpos];
+           //     var rt = _cx._Ob(x.reftabledefpos);
+          //      var ri = rt?.infos[_cx.role.defpos];
+           //     var ad = _cx._Ob(x.adapter);
+           //     var ai = ad?.infos[_cx.role.defpos];
                 return new TRow(rs,
                    Pos(x.defpos),
                    new TChar(oi.name)//,
@@ -5792,7 +5795,7 @@ namespace Pyrrho.Level4
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<Domain, CTree<long,bool>> _second;
+            readonly ABookmark<CTree<int,long>, CTree<long,bool>> _second;
             readonly ABookmark<long,bool> _third;
             readonly ABookmark<int, long> _inner;
             /// <summary>
@@ -5800,7 +5803,7 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<Domain, CTree<long, bool>> second, ABookmark<long, bool> third,
+                ABookmark<CTree<int,long>, CTree<long, bool>> second, ABookmark<long, bool> third,
                 ABookmark<int, long> inner)
                 : base(_cx, res, pos, inner.value(), 0, _Value(_cx, res, inner.key(),
                       (TableColumn)(_cx._Ob(inner.value()) ?? throw new PEException("PE49212"))))
@@ -5939,6 +5942,63 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
+        /// set up the Role$Json table
+        /// </summary>
+        static void RoleJsonResults()
+        {
+            var t = new SystemTable("Role$Json");
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "Definition", Char, 0);
+            t.Add();
+        }
+
+        internal class RoleJsonBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _enu;
+            RoleJsonBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> e)
+                : base(_cx, res, pos, e.key(), ((DBObject)e.value()).lastChange, _Value(_cx, res, e))
+            {
+                _enu = e;
+            }
+            internal static RoleJsonBookmark? New(Context _cx, SystemRowSet res)
+            {
+                for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
+                    if (outer.value() is Table tb)
+                    {
+                        var rb = new RoleJsonBookmark(_cx, res, 0, outer);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Next(Context _cx)
+            {
+                var enu = _enu;
+                for (enu = enu.Next(); enu != null; enu = enu.Next())
+                    if (enu.value() is Table tb)
+                    {
+                        var rb = new RoleJsonBookmark(_cx, res, _pos + 1, enu);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+            static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long, object> e)
+            {
+                if (e.value() is Table t && _cx.db.objects[t.defpos] is Table tb)
+                {
+                    var sb = new StringBuilder();
+                    sb = tb.JsonTable(_cx, sb);
+                    return new TRow(rs, new TChar(tb.NameFor(_cx)), new TChar(sb.ToString()));
+                }
+                throw new PEException("PE98762");
+            }
+        }
+        /// <summary>
         /// set up the Role$Python table
         /// </summary>
         static void RolePythonResults()
@@ -5991,6 +6051,16 @@ namespace Pyrrho.Level4
             {
                 return ((DBObject)e.value()).RolePythonValue(_cx,rs, e);
             }
+        }
+        /// <summary>
+        /// set up the Role$JRdf table
+        /// </summary>
+        static void RoleRdfResults()
+        {
+            var t = new SystemTable("Role$Json");
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "Definition", Char, 0);
+            t.Add();
         }
         /// <summary>
         /// set up the Role$Procedure table

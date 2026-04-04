@@ -25,7 +25,6 @@ namespace Pyrrho.Level3
         internal const long
             Adapter = -157, // long Procedure 
             Keys = -159, // Domain
-            RefTable = -162, // long Domain (Table or RowSet)
             TableDefPos = -163, // long Table
             Tree = -164; // MTree
         /// <summary>
@@ -34,11 +33,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public long tabledefpos => (long)(mem[TableDefPos] ?? -1L);
         public MTree? rows => (MTree?)mem[Tree];
-        public Domain keys => (Domain?)mem[Keys] ?? Domain.Null;
-        /// <summary>
-        /// for Foreign key, the referenced table
-        /// </summary>
-        public long reftabledefpos => (long)(mem[RefTable] ?? -1L);
+        public Domain keys => (Domain)(mem[Keys] ?? Domain.Row);
         /// <summary>
         /// The adapter function
         /// </summary>
@@ -58,7 +53,7 @@ namespace Pyrrho.Level3
             var r = new BTree<long, object>(Definer,ro.defpos);
             var rt = CTree<int,long>.Empty;
             var rs = CTree<long, Domain>.Empty;
-            for (var b = c.columns.First(); b != null; b = b.Next())
+            for (var b = c.keymap.First(); b != null; b = b.Next())
                 if (b.value() is long pos)
                 {
                     if (pos == 0 && cx._Ob(c.tabledefpos) is Table tb &&
@@ -105,7 +100,7 @@ namespace Pyrrho.Level3
         internal CList<TypedValue>? MakeKey(CTree<long,TypedValue> vs)
         {
             var r = CList<TypedValue>.Empty;
-            for (var b = keys.rowType.First(); b != null; b = b.Next())
+            for (var b = keys.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     if (vs[p] is not TypedValue v)
@@ -117,7 +112,7 @@ namespace Pyrrho.Level3
         internal CList<TypedValue>? MakeKey(CTree<long,TypedValue> vs,CTree<long, long> sIMap)
         {
             var r = CList<TypedValue>.Empty;
-            for (var b = keys.rowType.First(); b != null; b = b.Next())
+            for (var b = keys.First(); b != null; b = b.Next())
             {
                 if (b.value() is long p && sIMap[p] is long q && vs[q] is TypedValue v)
                     r += v;
@@ -180,33 +175,20 @@ namespace Pyrrho.Level3
                     {
                         if (b.value().Count == 1L)
                             xs -= b.key();
-                        else if (b.key().Length!=0)
+                        else if (b.key().Count!=0)
                             xs += (b.key(), b.value() - defpos);
                     }
                 tb += (Table.Indexes, xs);
                 nd += tb;
             }
-     /*       if (nd.objects[reftabledefpos] is Table rt)
-            {
-                var xs = rt.rindexes;
-                if (xs.Count == 1)
-                    xs = CTree<long,bool>.Empty;
-                else
-                    xs -= tabledefpos;
-                rt += (Table.RefIndexes, xs);
-                nd += rt;
-            }    */
             return base.Drop(db, nd);
         }
         internal Index AddRows(Table tb,Context cx)
         {
             var x = this;
-            for (var b = tb.indexes[x.keys]?.First(); b != null; b = b.Next())
+            for (var b = tb.indexes[x.keys.rowType]?.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is Index sx && sx.rows is not null)
                     x += (Tree, sx.rows);
-       //     for (var b = tb.super.First(); b != null; b = b.Next())
-       //         if (b.key() is Table t)
-       //             x = x.AddRows(t, cx);
             return x;
         }
         internal override Basis New(BTree<long, object> m)
@@ -226,9 +208,6 @@ namespace Pyrrho.Level3
             var nk = keys.Fix(cx);
             if (nk != keys)
                 r += (Keys, nk);
-            var rt = cx.Fix(reftabledefpos);
-            if (reftabledefpos != rt)
-                r += (RefTable, rt);
             r -= Tree;  // Commit will enter the committed rows
             return r;
         }
@@ -236,7 +215,7 @@ namespace Pyrrho.Level3
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
             var r = (Index)base.ShallowReplace(cx, was, now);
-            var ks = (Domain)keys.ShallowReplace(cx,was,now);
+            var ks = (Domain)keys.ShallowReplace(cx, was, now);
             if (ks != keys)
             {
                 r += (Keys, ks);
@@ -246,11 +225,10 @@ namespace Pyrrho.Level3
                     for (var b = rows.First(); b != null; b = b.Next())
                     {
                         var nk = CList<TypedValue>.Empty;
-                        var cb = ks.rowType.First();
+                        var cb = ks.First();
                         for (var c = b.key().First(); c != null && cb != null; c = c.Next(), cb = cb.Next())
-                            if (cb.value() is long cp && ks.representation[cp] is Domain cd
-                                && c.value() is TypedValue cv)
-                                nk += cd.Coerce(cx, cv);
+                            if (cb.value() is long cp && c.value() is TypedValue cv)
+                                nk += cv;
                         if (b.Value() is long p)
                             rs += (nk, 0, p);
                         r += (Tree, rs);

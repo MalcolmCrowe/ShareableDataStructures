@@ -52,7 +52,7 @@ namespace Pyrrho.Level2
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, Context._system);
             domdefpos = pp;
             name = nm;
-            domain = new Domain(-1L, dt, BTree<long, object>.Empty
+            domain = new Domain(pp, dt, BTree<long, object>.Empty
                 + (DBObject._Depth, QlValue._Depths(element))
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
                 + (Domain.Charset, ch) + (DBObject.LastChange, pp)
@@ -61,11 +61,11 @@ namespace Pyrrho.Level2
                 + (ObInfo.Name, nm));
             if (sd is not null)
             {
-                if (dt == Qlx.ARRAY || dt == Qlx.MULTISET || dt == Qlx.SET)
+                if (dt == Qlx.ARRAY || dt == Qlx.MULTISET || dt == Qlx.SET || dt == Qlx.REF)
                 {
                     element = sd;
                     domain += (Domain.Element, sd);
-                }
+                } else
                 throw new PEException("PE090601");
             }
             if (v != null)
@@ -81,7 +81,7 @@ namespace Pyrrho.Level2
             domain = dt + (ObInfo.Name, nm);
         }
         /// <summary>
-        /// This routine is called from Domain.Create().
+        /// This routine is called from Domain.Create() and ParseConnector
         /// If dt has representation, the context will have a suitable structure
         /// </summary>
         /// <param name="dt">To be committed: may have representation</param>
@@ -143,7 +143,7 @@ namespace Pyrrho.Level2
             {
                 var et = (Domain)domain.elType.Fix(wr.cx);
                 wr.PutLong(et.defpos);
-                wr.cx.db += domain += (Domain.Element,et);
+                wr.cx.db += domain;
             }
             else
                 wr.PutLong(-1L);

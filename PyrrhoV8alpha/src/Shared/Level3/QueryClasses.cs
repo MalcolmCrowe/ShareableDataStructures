@@ -102,7 +102,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Domain order => (Domain)(mem[Order]??Domain.Row);
         /// <summary>
-        /// The partitionType is the partition columns for the window if any
+        /// The partitionType is the partition keymap for the window if any
         /// </summary>
         internal Domain partition => (Domain)(mem[PartitionType]??Domain.Row);
         /// <summary>
@@ -293,7 +293,7 @@ namespace Pyrrho.Level3
         internal CTree<long,int> members => 
             (CTree<long,int>)(mem[Members]??CTree<long,int>.Empty);
         internal Domain keys =>
-            (Domain)(mem[Index.Keys]??Null);
+            (Domain)(mem[Index.Keys]??Row);
         internal Grouping(Context cx,BTree<long,object>?m= null)
             :base(cx.GetUid(),_Mem(cx,m))
         { }

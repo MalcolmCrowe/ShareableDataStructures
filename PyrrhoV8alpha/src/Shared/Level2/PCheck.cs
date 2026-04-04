@@ -19,7 +19,7 @@ namespace Pyrrho.Level2
 	internal class PCheck : Compiled
 	{
 		public long ckobjdefpos; // of object (e.g. Domain,Table) to which this check applies
-        public long subobjdefpos = -1; // of Column if a columns check
+        public long subobjdefpos = -1; // of Column if a keymap check
         public long defpos;
 		public string? check;
         public long test;

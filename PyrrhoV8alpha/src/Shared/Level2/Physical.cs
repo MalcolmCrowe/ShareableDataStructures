@@ -717,7 +717,7 @@ namespace Pyrrho.Level2
         }
         /// <summary>
         /// By the time this base method is called, dataType should have no 
-        /// columns with uids !0..
+        /// keymap with uids !0..
         /// In some cases the overriding methods simply remove such old uids, 
         /// because the final install will add the new uids.
         /// </summary>

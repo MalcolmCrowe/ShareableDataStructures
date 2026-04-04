@@ -24,7 +24,7 @@ namespace Pyrrho.Level5
 
        // The Table or UDType is managed by the database engine by default
        // but the usual ALTER operations are available for both Table and UDT.
-       // Other columns are provided for any properties that are defined.
+       // Other keymap are provided for any properties that are defined.
        // The UDT for a Node type also a set of possible LeavingTypes and ArrivingTypes
        // for edges, and the UDT for an Edge type specifies the LeavingType(s) and ArrivingType(s) for nodes.
        //
@@ -1279,7 +1279,7 @@ namespace Pyrrho.Level5
             return r;
         }
         /*        /// <summary> This seems to be unreferenced
-                /// Two cases: adding new Table metadata (REFERENCES) define a set of connector columns 
+                /// Two cases: adding new Table metadata (REFERENCES) define a set of connector keymap 
                 ///            adding a single new Column metadata (CONNECTING) for defining its index
                 /// The column case is usually called from the table case (s is likely "" i.e. unchanged)
                 /// but we will probably allow the edgetype to be extended by an extra connector.
@@ -1859,7 +1859,7 @@ namespace Pyrrho.Level5
         public readonly Qlx q; // FROMn,TOn,WITHn are used in EdgeType, arrows in expressions
         public readonly string cn;  // string connector name (used during edgetype definition)
         public readonly long cp;   // a copy of the referencing Column uid (used during parsing of graph patterns)
-        public readonly Domain rd; // The column is a REF: a copy of the declared type of the referenced node
+        public readonly Domain rd; // The column has a reference domain REF rd
         public readonly bool fk; // if true, it's a foreign key reference using rd's primary key
         public string cs;   // string version of metadata
         public readonly TMetadata? cm;
@@ -1869,7 +1869,7 @@ namespace Pyrrho.Level5
             if (tm is null || !tm.Contains(Qlx.OPTIONAL))
             {
                 tm ??= TMetadata.Empty;
-                tm += (Qlx.OPTIONAL, TBool.False);
+                tm += (Qlx.OPTIONAL, TBool.For(d is not UDType));
             }
             if ((a == Qlx.TO || a == Qlx.FROM || a == Qlx.WITH) && s == "")
                 s = a + "1";
@@ -1928,6 +1928,7 @@ namespace Pyrrho.Level5
             var sb = new StringBuilder(DBObject.Uid(cp));
             sb.Append(' '); sb.Append(q); sb.Append(' '); sb.Append(cn);
             sb.Append(' '); sb.Append(DBObject.Uid(rd.defpos));
+            if (fk) sb.Append(" fk ");
             if (cm!=TMetadata.Empty)
             { sb.Append(' '); sb.Append(cm); }
             return sb.ToString();

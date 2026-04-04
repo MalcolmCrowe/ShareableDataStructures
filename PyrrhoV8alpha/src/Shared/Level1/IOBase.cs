@@ -253,15 +253,12 @@ namespace Pyrrho.Level2
                 Physical.Type.RestView1 => new PRestView1(this),
                 Physical.Type.Record => new Record(this),
                 Physical.Type.Record2 => new Record2(this),
-                //          case Physical.Type.Reference: p = new Reference(this); break;
                 Physical.Type.Revoke => new Revoke(this),
                 Physical.Type.Update => new Update(this),
                 Physical.Type.Versioning => new Versioning(this),
-                //          case Physical.Type.Reference1: p = new Reference1(this); break;
                 Physical.Type.ColumnPath => new PColumnPath(this),
                 Physical.Type.Metadata2 => new PMetadata2(this),
                 Physical.Type.PIndex2 => new PIndex2(this),
-                //          case Physical.Type.DeleteReference1: p = new DeleteReference1(this); break;
                 Physical.Type.Authenticate => new Authenticate(this),
                 Physical.Type.TriggeredAction => new TriggeredAction(this),
                 Physical.Type.Metadata3 => new PMetadata3(this),
@@ -280,7 +277,7 @@ namespace Pyrrho.Level2
                 Physical.Type.EditType => new EditType(this),
                 Physical.Type.AlterIndex => new AlterIndex(this),
                 Physical.Type.AlterEdgeType => new AlterEdgeType(this),
-           //     Physical.Type.Record4 => new Record4(this),
+                //     Physical.Type.Record4 => new Record4(this),
                 Physical.Type.Update2 => new Update1(this),
                 Physical.Type.Delete2 => new Delete1(this),
                 Physical.Type.PSchema => new PSchema(this),
@@ -292,7 +289,6 @@ namespace Pyrrho.Level2
             p.Deserialise(this);
             return p;
         }
-
         public override int GetBuf(long s)
         {
             int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);

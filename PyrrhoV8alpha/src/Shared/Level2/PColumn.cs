@@ -49,9 +49,10 @@ namespace Pyrrho.Level2
 		public bool optional = true;    // see PColumn2
         public long coldefault = -1L;
 		public Generation generation = Generation.No; // ditto
-        public long flags = 0L; // see PColumn3
-        public long reftype = -1L;// ..
-        public long keymap = -1L; // ..
+        public PIndex.ConstraintType flags = PIndex.ConstraintType.NoType; // see PColumn3
+        public int arrow = 0;
+        public long refindex = -1L; // PIndex reference for keymap (used on Database.Load)
+        public CTree<int, long> keymap = CTree<int, long>.Empty; // keymap (from Parser)
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -100,6 +101,10 @@ namespace Pyrrho.Level2
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 domdefpos = x.domdefpos;
+                refindex = wr.cx.Fix(x.refindex);
+                keymap = wr.cx.FixTil(x.keymap);
+                flags = x.flags;
+                arrow = x.arrow;
             }
         }
         protected override Physical Relocate(Writer wr)
@@ -125,7 +130,8 @@ namespace Pyrrho.Level2
                 var ot = tb;
                 var xs = tb.indexes;
                 for (var b = xs.First(); b != null; b = b.Next())
-                    if (b.key() is Domain d && d.Fix(wr.cx) is Domain nd && nd != d && nd.Length!=0)
+                    if (b.key() is CTree<int,long> d && wr.cx.FixTil(d) is CTree<int,long> nd 
+                        && nd != d && nd!=CTree<int,long>.Empty)
                     {
                         xs -= d;
                         xs += (nd, b.value());
@@ -139,7 +145,9 @@ namespace Pyrrho.Level2
                 }
                 if (ot != tb)
                     wr.cx.db += (tb.defpos, tb);
-            } 
+            }
+            if (wr.cx.db.objects[dataType.elType?.defpos ?? -1L] is Table rt)
+                wr.cx.db += (Table)rt.Fix(wr.cx);
             return (nt,ph);
         }
         /// <summary>
@@ -183,13 +191,13 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         public TConnector? TCon(Domain dt)
         {
-            if (flags != 0L)
+            if (arrow != 0)
             {
-                var q = (flags & 0xfL) switch
+                var q = (arrow & 0xf) switch
                 {
-                    2L => Qlx.FROM,
-                    4L => Qlx.TO,
-                    8L => Qlx.WITH,
+                    2 => Qlx.FROM,
+                    4 => Qlx.TO,
+                    8 => Qlx.WITH,
                     _ => Qlx.NO
                 };
                 var s = cn;
@@ -198,22 +206,28 @@ namespace Pyrrho.Level2
                 TMetadata? tm = optional?(TMetadata.Empty+(Qlx.OPTIONAL,TBool.True)):null;
                 return new TConnector(q, s, dt, ppos, false, "",tm);
             }
+            // The reference Pindex on Install leaves hints in the refTable!
+            if ((dt.mem[refindex] as CTree<int, long> ?? keymap) != CTree<int, long>.Empty)
+            {
+                TMetadata? tm = optional ? (TMetadata.Empty + (Qlx.OPTIONAL, TBool.True)) : null;
+                return new TConnector(Qlx.TO, name, dt, ppos, true, "", tm);
+            }
             return null;
         }
         public void FromTCon(TConnector tc)
         {
-            flags = tc.q switch
+            arrow = tc.q switch
             {
-                Qlx.TO => 4L,
-                Qlx.FROM => 2L,
-                Qlx.WITH => 8L,
-                _ => 0L
+                Qlx.TO => 4,
+                Qlx.FROM => 2,
+                Qlx.WITH => 8,
+                _ => 0
             };
         }
         public string TCon()
         {
-            var s = ((flags & 0x10L) == 0L) ? "" : " SET";
-            switch (flags&0xfL)
+            var s = ((arrow & 0x10) == 0) ? "" : " SET";
+            switch (arrow&0xf)
             {
                 case 4: return " TO" + s;
                 case 2: return " FROM" + s;
@@ -223,7 +237,7 @@ namespace Pyrrho.Level2
         }
         Qlx Con(long f)
         {
-            switch (flags&0xfL)
+            switch (arrow&0xf)
             {
                 case 4: return Qlx.TO;
                 case 2: return Qlx.FROM;
@@ -306,6 +320,8 @@ namespace Pyrrho.Level2
             else
                 sb.Append(dataType); 
             sb.Append(']');
+            if (flags != 0L)
+            { sb.Append(' '); sb.Append((PIndex.ConstraintType)flags); }
             return sb.ToString();
         }
         /// <summary>
@@ -338,25 +354,34 @@ namespace Pyrrho.Level2
             tc += (TableColumn._Generation, generation);
             tc += (TableColumn.ColumnDefault, coldefault);
             tc += (DBObject._Framing, framing);
-            if (cx._Ob(reftype) is Table rt && rt.defpos>0 && TCon(rt) is TConnector nc)
-            {
-    /*            tc = tc + (TableColumn.Connectors, new CTree<Domain,TConnector>(nc.rd,nc))
-                    + (Level3.Index.RefTable, nc.rd.defpos); */
-                if (keymap>0 && rt.FindPrimaryIndex(cx) is Level3.Index rx)
-                    tc += (TableColumn.KeyMap, rx.defpos);
-                if (flags != 0)
-                    table += (ObInfo.Model, table.model + (Con(flags), defpos));
-                var u = table.colRefs[reftype] ?? CTree<long, bool>.Empty;
-                table += (Domain.ColRefs, table.colRefs + (reftype,u+ (tc.defpos,true)));
-                rt += (Table.RefCols, rt.refCols + (tc.defpos, true));
-                cx.toFix += (rt.defpos, true);
-                cx.Add(rt);
-                cx.db += rt;
-            }
+            if (keymap != CTree<int, long>.Empty)
+                tc += (TableColumn.KeyMap, keymap);
+            if (tc.domain.kind == Qlx.REF && tc.domain.elType is Table rt)
+                if (TCon(rt) is TConnector nc && rt.defpos > 0)
+                {
+                    table = table.Add(cx, nc);
+                    rt = cx.db.objects[rt.defpos] as Table ?? rt;
+                    var u = table.colRefs[rt.defpos] ?? CTree<long, bool>.Empty;
+                    table += (Domain.ColRefs, table.colRefs + (rt.defpos, u + (tc.defpos, true)));
+                    rt += (Table.RefCols, rt.refCols + (tc.defpos, true));
+                    keymap = rt.mem[refindex] as CTree<int, long> ?? CTree<int, long>.Empty;
+                    if (keymap != CTree<int, long>.Empty)
+                        tc += (TableColumn.KeyMap, keymap);
+                    if (rt.mem[refindex - 1] is TypedValue tv && tv.ToInt() is int ac)
+                        tc += (QuerySearch.Action, (PIndex.ConstraintType)ac);
+                    cx.toFix += (rt.defpos, rt);
+                    cx.Add(rt);
+                    cx.db += rt;
+                }
+            if (flags != 0)
+                tc += (QuerySearch.Action, PIndex.ReferentialAction(tc.refAction,flags));
+            if (tc.keyMap != CTree<int, long>.Empty)
+                tc += (TableColumn.Hide, true);
             table += (cx, tc);
             var rw = table.rowType;
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
-            ti += (ObInfo._Names, ti.names + (name, (0L,ppos)));
+            if (!tc.hide)
+                ti += (ObInfo._Names, ti.names + (name, (0L,ppos)));
             if (dataType.names is Names ss && ss!=Names.Empty)
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
@@ -531,6 +556,7 @@ namespace Pyrrho.Level2
     /// PColumn3: this is an extension of PColumn to add some column constraints.
     /// Changed for the Typed Graph Model
     /// For a general description see PColumn
+    /// NB: In Pyrrhov8 reference columns are serialised using PIndex not PColumn!
     /// </summary>
     internal class PColumn3 : PColumn2
     {
@@ -550,13 +576,14 @@ namespace Pyrrho.Level2
             : this(pr, nm, dm, _Meta(cx,pr is not UDType, ms,md), nst, pp, cx, ifN)
         {  }
         PColumn3(Table pr, string nm, Domain dm, 
-            (string,bool,Generation,long,long,long,long) xx, long nst, long pp, Context cx, bool ifN = false)
+            (string,bool,Generation,long,PIndex.ConstraintType,long,CTree<int,long>,int) xx, long nst, long pp, Context cx, bool ifN = false)
             : this(pr, nm, dm, xx.Item1, xx.Item2, xx.Item3, nst, pp, cx, ifN)
         {
             coldefault = xx.Item4;
             flags = xx.Item5;
-            reftype = xx.Item6;
+            refindex = xx.Item6;
             keymap = xx.Item7;
+            arrow = xx.Item8;
         }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -611,7 +638,7 @@ namespace Pyrrho.Level2
         {
             cn = x.cn;
             flags = x.flags;
-            reftype = wr.cx.Fix(x.reftype);
+            refindex = wr.cx.Fix(x.refindex);
             table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
         }
         /// <summary>
@@ -622,7 +649,7 @@ namespace Pyrrho.Level2
         /// <param name="md">The Metadata</param>
         /// <param name="pp">The generation rule expression/param>
         /// <returns>Default string,whether optional,Generation rule,The Metadata,Framing</returns>
-        static (string, bool, Generation, long, long, long, long) _Meta(Context cx,bool dop,
+        static (string, bool, Generation, long, PIndex.ConstraintType,long, CTree<int,long>,int) _Meta(Context cx,bool dop,
             string ms, TMetadata md)
         {
             Generation g = Generation.No;
@@ -640,12 +667,19 @@ namespace Pyrrho.Level2
                 g = Generation.RowEnd;
             bool opt = md[Qlx.OPTIONAL].ToBool() ?? dop;
             long dv = md[Qlx.VALUE].ToLong() ?? -1L;
-            long flags = md[Qlx.ACTION].ToLong() ?? 0L;
+            PIndex.ConstraintType flags = (PIndex.ConstraintType)(md[Qlx.ACTION].ToInt() ?? 0);
             long refType = md[Qlx.REFERENCING].ToLong() ?? -1L;
-            long keymap = md[Qlx.FOREIGN].ToLong() ?? -1L;
+            var keymap = CTree<int, long>.Empty;
+            var arrow = md[Qlx.ARROW].ToInt()??0;
+            if (md[Qlx.FOREIGN] is TList km)
+            {
+                var j = 0;
+                for (var b = km.First(); b != null; b = b.Next())
+                    keymap += (j++, b.Value().ToLong() ?? -1L);
+            }
             if (md[Qlx.CONNECTING] is TConnector tc)
                 refType = tc.rd.defpos;
-            return (ds, opt, g, dv, flags, refType, keymap);
+            return (ds, opt, g, dv, flags, refType, keymap, arrow);
         }
         internal override bool NeededFor(BTree<long, Physical> physicals)
         {
@@ -667,9 +701,9 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             wr.PutString(cn??"");
-            wr.PutLong(flags);
-            wr.PutLong(reftype); 
-            wr.PutLong(keymap);
+            wr.PutLong((int)flags);
+            wr.PutLong(refindex); 
+            wr.PutLong(arrow);
             base.Serialise(wr);
         }
         /// <summary>
@@ -679,25 +713,23 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             cn = rdr.GetString();
-            flags = rdr.GetLong();
-            reftype = rdr.GetLong();
-            keymap = rdr.GetLong();
+            flags = (PIndex.ConstraintType)(int)rdr.GetLong();
+            refindex = rdr.GetLong();
+            arrow = (int)rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(TCon());
-            if (reftype>0)
-            { sb.Append(" refType "); sb.Append(DBObject.Uid(reftype)); }
-            if (keymap>0)
-            { sb.Append(" keyMap "); sb.Append(DBObject.Uid(keymap)); }
+            if (refindex >0)
+            { sb.Append(" keymap "); sb.Append(DBObject.Uid(refindex)); }
             return sb.ToString();
         }
     }
     /// <summary>
     /// Pyrrho 5.1. To allow constraints (even Primary Key) to refer to deep structure.
-    /// This feature is introduced for Documents but will be used for row type columns, UDTs etc.
+    /// This feature is introduced for Documents but will be used for row type keymap, UDTs etc.
     /// </summary>
     internal class PColumnPath : Defined
     {

@@ -187,8 +187,8 @@ namespace Pyrrho.Level2
                         var c = (PIndex)that;
                         if (delpos == c.tabledefpos || delpos == c.defpos)// || delpos == c.reference)
                             return new DBException("40058", delpos, that, ct);
-                        for (var i = 0; i < c.columns.Length; i++)
-                            if (delpos == c.columns[i])
+                        for (var b=c.keymap.First(); b!=null;b=b.Next())
+                            if (delpos == b.value())
                                 return new DBException("40058", delpos, that, ct);
                         break;
                     }

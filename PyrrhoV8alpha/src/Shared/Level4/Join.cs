@@ -36,7 +36,7 @@ namespace Pyrrho.Level4
         /// The tree of common TableColumns for natural join
         /// </summary>
         internal CTree<long,long> joinUsing =>
-            (CTree<long,long>)(mem[JoinUsing] ??CTree<long,long>.Empty);
+            (CTree<long,long>)(mem[JoinUsing] ??CTree<long,long>.Empty); 
         /// <summary>
         /// the kind of Join
         /// </summary>
@@ -82,8 +82,8 @@ namespace Pyrrho.Level4
             // Step 1: examine the names and find names in common
             var cm = CTree<string, (long, long)>.Empty; // common names
             var ns = CTree<long,string>.Empty; // all names
-            var lc = CTree<long,bool>.Empty; // left columns to rename (true) or drop (false)
-            var rc = CTree<long,bool>.Empty; // right columns to rename (true) or drop (false)
+            var lc = CTree<long,bool>.Empty; // left keymap to rename (true) or drop (false)
+            var rc = CTree<long,bool>.Empty; // right keymap to rename (true) or drop (false)
             for (var b = lr.names.First(); b != null; b = b.Next())
                 if (b.value().Item2 is long lp)
                 {
@@ -128,8 +128,8 @@ namespace Pyrrho.Level4
                             cm -= ns[lk] ?? "";
                         }
                 }
-            }
-            // Step 3: rename the columns remaining in lc, rc and construct the join's domain
+            } 
+            // Step 3: rename the keymap remaining in lc, rc and construct the join's domain
             var ls = BList<string>.Empty;
             var rs = BList<string>.Empty;
             var lm = BTree<string, QlValue>.Empty;
@@ -203,7 +203,7 @@ namespace Pyrrho.Level4
                 }
 
             var ds = (int)cs.Count;
-            // add the dropped columns after the display in case they are referenced in where conditions
+            // add the dropped keymap after the display in case they are referenced in where conditions
             for (var b = fs.First(); b != null; b = b.Next())
                 cs += ((int)cs.Count, b.value());
             m += (ObInfo._Names, nn);
@@ -308,7 +308,7 @@ namespace Pyrrho.Level4
             switch(p)
             {
                 case JoinCond: m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, d)); break;
-                case JoinUsing:
+        //        case JoinUsing:
                 case OnCond:m += (_Depth, cx._DepthTVV((CTree<long, long>)o, d)); break;
                 default: m = rs._Depths(cx, m, d, p, o);break;
             }

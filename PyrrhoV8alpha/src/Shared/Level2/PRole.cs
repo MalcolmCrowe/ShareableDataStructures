@@ -176,6 +176,8 @@ namespace Pyrrho.Level2
             details = x.details;
             metadata = (TMetadata)x.metadata.Fix(wr.cx);
             iri = x.iri;
+            if (wr.cx.db.objects[defpos] is Domain et)
+                et.Add(wr.cx, metadata);
             refpos = wr.cx.Fix(x.refpos);
             flags = x.flags;
             framing = (Framing)x.framing.Fix(wr.cx);
@@ -221,11 +223,14 @@ namespace Pyrrho.Level2
                 BTree<long, object>.Empty + (DBObject.Defpos, defpos)).Item2;
             var fr = new Framing(psr.cx, nst);
             psr.cx.parse = op;
+            if (psr.cx.db.objects[ob.defpos] is DBObject nb)
+                ob = nb;
             if (ob is TableColumn tc && metadata[Qlx.VALUE]?.ToLong() is long dp)
                 ob = (TableColumn)rdr.context.Add(tc + (TableColumn.ColumnDefault, dp)
                     + (TableColumn._Generation,Generation.Default)
                     + (DBObject._Framing, tc.framing + fr));
             var rp = rdr.context.role.defpos;
+            rdr.context.db += ob;
             (rdr.context,_) = rdr.context.Add(ob, metadata);
             base.Deserialise(rdr);
 		}

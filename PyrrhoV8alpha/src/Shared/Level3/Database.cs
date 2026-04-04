@@ -85,7 +85,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="sg">SqlAgent</param>
         /// <param name="rf">role in remote query</param>
-        /// <param name="cs">remote columns</param>
+        /// <param name="cs">remote keymap</param>
         /// <param name="ns">remote names</param>
         /// <param name="cx">Context</param>
         /// <returns></returns>
@@ -134,7 +134,7 @@ namespace Pyrrho.Level3
         internal static object _lock = new();
         internal static Database Empty = new();
         /// <summary>
-        /// The _system database contains primitive domains and system tables and columns.
+        /// The _system database contains primitive domains and system tables and keymap.
         /// These objects are inherited by any new database, and the _system._role uid
         /// becomes the rowType role uid (obviously evolves to have all of the database objects).
         /// If there no users or roles defined in a database, the _system role uid is used
@@ -159,6 +159,7 @@ namespace Pyrrho.Level3
             Prefixes = -375, // CTree<string,long> UDT
             Procedures = -95, // CTree<long,string> Procedure
             Public = -311, // long: always -1L, a dummy user Id
+            RefTypes = -275, // CTree<Domain,long> referenced domain, reference
             Role = -285, // Role: the current role (e.g. an executable's definer)
             Roles = -60, // CTree<string,long>
             _Schema = -291, // long: the owner role for the database
@@ -191,6 +192,7 @@ namespace Pyrrho.Level3
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
         internal CTree<Domain, long> types => (CTree<Domain, long>)(mem[Types]??CTree<Domain, long>.Empty);
+        internal CTree<Domain, long> refTypes => (CTree<Domain, long>)(mem[RefTypes] ?? CTree<Domain, long>.Empty);
         public CTree<Level, long> levels => (CTree<Level, long>)(mem[Levels]??CTree<Level, long>.Empty);
         public BTree<long, Level> cache => (BTree<long, Level>?)mem[LevelUids]??BTree<long,Level>.Empty;
         public DateTime? lastModified => (DateTime?)mem[LastModified];

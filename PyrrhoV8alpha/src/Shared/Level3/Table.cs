@@ -16,8 +16,8 @@ using System.Xml;
 namespace Pyrrho.Level3
 {
     /// <summary>
-    /// The Domain base has columns and includes inherited columns, but not all Domains with Columns are Tables 
-    /// (e.g. Keys, Orderings and Groupings are domains with columns but are not tables).
+    /// The Domain base has keymap and includes inherited keymap, but not all Domains with Columns are Tables 
+    /// (e.g. Keys, Orderings and Groupings are domains with keymap but are not tables).
     /// Tables are not always associated with base tables either: the valueType of a View
     /// or SqlCall can be a Table.
     /// From v 7.04 we identify Table with Relation Type, hence Table is a kind of Domain
@@ -26,14 +26,14 @@ namespace Pyrrho.Level3
     /// (thus the Domain of any tableRow is a Table).
     /// Rows with IRI metadata always have a table supertype of their domain.
     /// When a Table is accessed any role with select access to the table will be able to retrieve rows subject 
-    /// to security clearance and classification. Which columns are accessible also depends
-    /// on privileges (but columns are not subject to classification).
+    /// to security clearance and classification. Which keymap are accessible also depends
+    /// on privileges (but keymap are not subject to classification).
     /// From v7.1 the rowType is a CTree(int,long), not a CList(long): for base tables 
-    /// this facilitates ensuring that reference columns come after non-reference columns (left-to-right
+    /// this facilitates ensuring that reference keymap come after non-reference keymap (left-to-right
     /// semantics in evaluation of queries).
     /// The following are used in integrity constraints:
-    ///   Domain.Colrefs: for a domain, associates referenced types to referencing columns
-    ///   Table.Indexes: Associates collections of key columns with indexes
+    ///   Domain.Colrefs: for a domain, associates referenced types to referencing keymap
+    ///   Table.Indexes: Associates collections of key keymap with indexes
     ///   Table.RefIndexes: tracks the use of rows by a referencing index (SQL) deprecated
     ///   Table.SysRefIndexes: tracks the use of rows by referencing rows
     /// When relationships between rows are defined structurally (as in the graph insert statement)
@@ -45,12 +45,12 @@ namespace Pyrrho.Level3
         internal const long
             ApplicationPS = -262, // long PeriodSpecification
             Enforcement = -263, // Grant.Privilege
-            Indexes = -264, // CTree<Domain,CTree<long,bool>> QlValue,Index
+            Indexes = -264, // CTree<CTree<int,long>,CTree<long,bool>> QlValue,Index
             LastData = -258, // long
             MultiplicityIndexes = -467, // CTree<long,long> Column,Index
             RefCols = -271, // CTree<long,bool> TableColumn referencing this table 
             SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,CTree<long,bool>>>>
-                            // referencedTable.sindexes[referencedrec][referencingcol][referencingrec]
+                                  // referencedTable.sindexes[referencedrec][referencingcol][referencingrec]
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> CheckFields
             TableRows = -181, // BTree<long,TableRow>
@@ -60,19 +60,19 @@ namespace Pyrrho.Level3
         /// The values of tableRows include supertype and subtype fields, 
         /// because the record fields are simply shared with subtypes.
         /// </summary>
-		public BTree<long, TableRow> tableRows => 
-            (BTree<long,TableRow>)(mem[TableRows]??BTree<long,TableRow>.Empty);
+		public BTree<long, TableRow> tableRows =>
+            (BTree<long, TableRow>)(mem[TableRows] ?? BTree<long, TableRow>.Empty);
         /// <summary>
         /// Indexes are not inherited: Records are entered in their table's indexes and those of its supertypes.
         /// </summary>
-        public CTree<Domain, CTree<long,bool>> indexes => 
-            (CTree<Domain,CTree<long,bool>>)(mem[Indexes]??CTree<Domain,CTree<long,bool>>.Empty);
+        public CTree<CTree<int, long>, CTree<long, bool>> indexes =>
+            (CTree<CTree<int, long>, CTree<long, bool>>)(mem[Indexes] ?? CTree<CTree<int, long>, CTree<long, bool>>.Empty);
         internal override bool Defined() => defpos > 0;
         internal virtual CTree<long, Domain> tableCols => representation;
         /// <summary>
         /// Enforcement of clearance rules
         /// </summary>
-        internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
+        internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement] ?? 0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
         internal CTree<long, bool> refCols => (CTree<long, bool>)(mem[RefCols] ?? CTree<long, bool>.Empty);
@@ -85,37 +85,37 @@ namespace Pyrrho.Level3
         // with a compound primary key of n-attributes.
         // The multiplicity of a column defines the minimum (participation)
         // and maximum  (cardinality) number of values (nodes)
-        // that can occur if you hold the other n-1 columns fixed. 
+        // that can occur if you hold the other n-1 keymap fixed. 
         // Multiplicity is a column metadata (MINVALUE,MAXVALUE) that leads to
         // provision of a MultiplicityIndex on the Table.
         // This type of constraint brings a run-time cost O(NM) on insert/delete
         // where N is the size of the table and M is the number of mindexes on it.
         internal CTree<long, long> mindexes =>
             (CTree<long, long>)(mem[MultiplicityIndexes] ?? CTree<long, long>.Empty);
-        internal CTree<long, bool> tableChecks => 
+        internal CTree<long, bool> tableChecks =>
             (CTree<long, bool>)(mem[TableChecks] ?? CTree<long, bool>.Empty);
-        internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>
-            (CTree<PTrigger.TrigType, CTree<long, bool>>)(mem[Triggers] 
+        internal CTree<PTrigger.TrigType, CTree<long, bool>> triggers =>
+            (CTree<PTrigger.TrigType, CTree<long, bool>>)(mem[Triggers]
             ?? CTree<PTrigger.TrigType, CTree<long, bool>>.Empty);
         internal virtual long lastData => (long)(mem[LastData] ?? 0L);
         /// <summary>
         /// Constructor: a new empty table
         /// </summary>
-        internal Table(PTable pt) :base(pt.ppos, pt.dataType.mem
-            +(Definer,pt.definer)+(Owner,pt.owner)+(Infos,pt.infos)
-            +(LastChange, pt.ppos)
-            +(Triggers, CTree<PTrigger.TrigType, CTree<long, bool>>.Empty)
-            +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
+        internal Table(PTable pt) : base(pt.ppos, pt.dataType.mem
+            + (Definer, pt.definer) + (Owner, pt.owner) + (Infos, pt.infos)
+            + (LastChange, pt.ppos)
+            + (Triggers, CTree<PTrigger.TrigType, CTree<long, bool>>.Empty)
+            + (Enforcement, (Grant.Privilege)15)) //read|insert|update|delete
         { }
-        internal Table(Qlx t) : base(--_uid,t, BTree<long,object>.Empty) { }
-        internal Table(Context cx,CTree<long,Domain>rs, CTree<int,long> rt, int ds, BTree<long,ObInfo> ii)
-            : base(cx,rs,rt,ds,ii) { }
-        internal Table(long dp, Context cx, CTree<long, Domain> rs, CTree<int,long> rt, int ds)
+        internal Table(Qlx t) : base(--_uid, t, BTree<long, object>.Empty) { }
+        internal Table(Context cx, CTree<long, Domain> rs, CTree<int, long> rt, int ds, BTree<long, ObInfo> ii)
+            : base(cx, rs, rt, ds, ii) { }
+        internal Table(long dp, Context cx, CTree<long, Domain> rs, CTree<int, long> rt, int ds)
             : base(dp, cx, Qlx.TABLE, rs, rt, ds) { }
         public Table(long dp, CTree<Domain, bool> u)
             : base(dp, u)
         { }
-        internal Table(long dp, BTree<long, object> m) : base(dp, m) 
+        internal Table(long dp, BTree<long, object> m) : base(dp, m)
         { }
         /// <summary>
         /// The Node Type and PathDomain things make this operation more complex,
@@ -152,10 +152,10 @@ namespace Pyrrho.Level3
                 tb += (Representation, tb.representation + (tc.defpos, tc.domain));
                 tb += (ObInfo._Names, tb.names);
             }
-            // fix rowType: hidden columns come last (tc might be hidden)
+            // fix rowType: hidden keymap come last (tc might be hidden)
             var nrt = CTree<int, long>.Empty;
             var hdn = CTree<int, long>.Empty;
-            int h=0,j = 0;
+            int h = 0, j = 0;
             for (var b = tb.rowType.First(); b != null; b = b.Next())
                 if (cx._Ob(b.value()) is TableColumn c)
                     if (c.hide) hdn += (h++, b.value());
@@ -182,9 +182,9 @@ namespace Pyrrho.Level3
             tb += (Dependents, tb.dependents + (tc.defpos, true));
             if (tc.sensitive)
                 tb += (Sensitive, true);
-     /*       for (var b = tc.cs.First(); b != null; b = b.Next())
-                if (b.value() is TConnector nc && nc.rd is Table rt)
-                    cx.Add(rt + (RefCols, rt.refCols + (tc.defpos, true))); */
+            /*       for (var b = tc.cs.First(); b != null; b = b.Next())
+                       if (b.value() is TConnector nc && nc.rd is Table rt)
+                           cx.Add(rt + (RefCols, rt.refCols + (tc.defpos, true))); */
             var nr = CTree<int, long>.Empty;
             var hd = CTree<int, long>.Empty;
             var ds = 0;
@@ -200,41 +200,41 @@ namespace Pyrrho.Level3
             cx.db += tb;
             return (Table)cx.Add(tb);
         }
-/*        /// <summary>
-        /// Metadata for a reference column has been changed: update the referencing Table
-        /// </summary>
-        /// <param name="dm"></param>
-        /// <param name="x"></param>
-        /// <returns></returns>
-        /// <exception cref="PEException"></exception>
-        public static Table operator +(Table dm, (Context, TableColumn, ABookmark<Qlx, TypedValue>) x)
-        {
-            var (cx, rc, b) = x;
-            var rs = rc.cs;
-            for (var c = rc.cs.First(); c != null; c = c.Next())
-                if (c.value() is TConnector cc
-                    && cx._Ob(rc.tabledefpos) is Table tb && tb.defpos > 0
-                    && cc.cm is TMetadata mc)
+        /*        /// <summary>
+                /// Metadata for a reference column has been changed: update the referencing Table
+                /// </summary>
+                /// <param name="dm"></param>
+                /// <param name="x"></param>
+                /// <returns></returns>
+                /// <exception cref="PEException"></exception>
+                public static Table operator +(Table dm, (Context, TableColumn, ABookmark<Qlx, TypedValue>) x)
                 {
-                    var md = mc + (b.key(), b.value());
-                    var ms = md.ToString();
-                    rs += (cc.rd,new TConnector(cc.q, cc.cn, cc.rd, cc.cp, cc.fk, ms, md));
-                    rc += (Infos, rc.infos + (cx.role.defpos,
-                            (rc.infos[cx.role.defpos] ?? throw new DBException("42105"))
-                            + (ObInfo._Metadata, md)));
-                    rc += (TableColumn.Connectors, rs);
-                }
-            cx.db += rc;
-            cx.Add(rc);
-            dm = (Table)(cx.db.objects[dm.defpos] ?? dm);
-            dm += (cx,rc);
-            cx.Add(dm);
-            cx.db += dm;
-            return dm;
-        } */
-        public static Table operator-(Table tb,long p)
+                    var (cx, rc, b) = x;
+                    var rs = rc.cs;
+                    for (var c = rc.cs.First(); c != null; c = c.Next())
+                        if (c.value() is TConnector cc
+                            && cx._Ob(rc.tabledefpos) is Table tb && tb.defpos > 0
+                            && cc.cm is TMetadata mc)
+                        {
+                            var md = mc + (b.key(), b.value());
+                            var ms = md.ToString();
+                            rs += (cc.rd,new TConnector(cc.q, cc.cn, cc.rd, cc.cp, cc.fk, ms, md));
+                            rc += (Infos, rc.infos + (cx.role.defpos,
+                                    (rc.infos[cx.role.defpos] ?? throw new DBException("42105"))
+                                    + (ObInfo._Metadata, md)));
+                            rc += (TableColumn.Connectors, rs);
+                        }
+                    cx.db += rc;
+                    cx.Add(rc);
+                    dm = (Table)(cx.db.objects[dm.defpos] ?? dm);
+                    dm += (cx,rc);
+                    cx.Add(dm);
+                    cx.db += dm;
+                    return dm;
+                } */
+        public static Table operator -(Table tb, long p)
         {
-            return (Table)tb.New(tb.mem + (TableRows,tb.tableRows-p));
+            return (Table)tb.New(tb.mem + (TableRows, tb.tableRows - p));
         }
         /// <summary>
         /// Add a new or updated row, indexes already fixed.
@@ -244,11 +244,11 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public static Table operator +(Table t, TableRow rw)
         {
-            var se = t.sensitive || rw.classification!=Level.D;
-            return (Table)t.New(t.mem + (TableRows,t.tableRows+(rw.defpos,rw)) 
-                + (Sensitive,se));
+            var se = t.sensitive || rw.classification != Level.D;
+            return (Table)t.New(t.mem + (TableRows, t.tableRows + (rw.defpos, rw))
+                + (Sensitive, se));
         }
-        public static Table operator+(Table tb,(long,object)v)
+        public static Table operator +(Table tb, (long, object) v)
         {
             var d = tb.depth;
             var m = tb.mem;
@@ -270,7 +270,7 @@ namespace Pyrrho.Level3
         {
             return this;
         }
-        internal override long ColFor(Context cx, string c, Qlx kt=Qlx.NO)
+        internal override long ColFor(Context cx, string c, Qlx kt = Qlx.NO)
         {
             for (var b = First(); b != null; b = b.Next())
                 if (b.value() is long p && cx._Ob(p) is DBObject ob &&
@@ -282,7 +282,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Add(Check ck, Database db)
         {
-            return New(defpos,mem+(TableChecks,tableChecks+(ck.defpos,true)));
+            return New(defpos, mem + (TableChecks, tableChecks + (ck.defpos, true)));
         }
         internal override void _Add(Context cx)
         {
@@ -291,15 +291,15 @@ namespace Pyrrho.Level3
                 if (cx.db.objects[b.key()] is DBObject ob && !cx.obs.Contains(b.key()))
                     cx.Add(ob);
         }
-        internal override (Context,DBObject) Add(Context cx, TMetadata md)
+        internal override (Context, DBObject) Add(Context cx, TMetadata md)
         {
-            (cx,var ob) = base.Add(cx, md);
+            (cx, var ob) = base.Add(cx, md);
             for (var b = md.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
                     case Qlx.SECURITY:
                         {
-                            ob = (Table)(cx.Add(new Classify(ob.defpos, 
+                            ob = (Table)(cx.Add(new Classify(ob.defpos,
                                 ((TLevel)b.value()).val, cx.db.nextPos, cx.db))
                                 ?? throw new DBException("42105"));
                             break;
@@ -307,9 +307,9 @@ namespace Pyrrho.Level3
                     case Qlx.SCOPE:
                         {
                             if (ob is Table t)
-                            ob = (Table)(cx.Add(new Enforcement(t, 
-                                (Grant.Privilege)(b.value().ToInt() ?? 0), cx.db.nextPos, cx.db))
-                                ?? throw new DBException("42105"));
+                                ob = (Table)(cx.Add(new Enforcement(t,
+                                    (Grant.Privilege)(b.value().ToInt() ?? 0), cx.db.nextPos, cx.db))
+                                    ?? throw new DBException("42105"));
                             break;
                         }
                     case Qlx.IRI:
@@ -320,7 +320,7 @@ namespace Pyrrho.Level3
                                 cx.db.nextPos, cx)) ?? throw new DBException("42105"));
                             nb += (ObInfo.Name, iri.ToString());
                             nb += (Under, new CTree<Domain, bool>(ut, true));
-              //              nb += (Subtypes, ut.subtypes + (nb.defpos, true));
+                            //              nb += (Subtypes, ut.subtypes + (nb.defpos, true));
                             ob = nb;
                         }
                         break;
@@ -348,20 +348,20 @@ namespace Pyrrho.Level3
                 }
             cx.db += ob;
             ob = (Table)cx.Add(ob);
-            return (cx,ob);
+            return (cx, ob);
         }
         internal Table AddMultiplicityIndex(Context cx, TableColumn co)
         {
-            // construct a foreignkey-type index for all columns with co as the last
-            var ks = CTree<int,long>.Empty;
+            // construct a foreignkey-type index for all keymap with co as the last
+            var ks = CTree<int, long>.Empty;
             for (var d = rowType.First(); d != null; d = d.Next())
                 if (d.value() != co.defpos)
-                    ks += (d.key(),d.value());
-            ks += ((int)ks.Count,co.defpos);
+                    ks += (d.key(), d.value());
+            ks += ((int)ks.Count, co.defpos);
             var ob = this;
-            var px = new PIndex("M" + co.name, this, new Domain(cx, representation, ks, display,
-                BTree<long, ObInfo>.Empty), PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeDelete
-                | PIndex.ConstraintType.CascadeUpdate, -1L, cx.db.nextPos, cx.db);
+            var px = new PIndex("M" + co.name, this, ks,
+                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeDelete
+                | PIndex.ConstraintType.CascadeUpdate, cx.db.nextPos, cx.db);
             cx.Add(px); // returns index
             ob = (Table)(cx.db.objects[ob.defpos] ?? throw new DBException("42105"));
             if (cx._Ob(px.defpos) is Index mx)
@@ -376,13 +376,13 @@ namespace Pyrrho.Level3
         {
             var tb = this;
             var ts = triggers[tg.tgType] ?? CTree<long, bool>.Empty;
-            return tb + (Triggers, triggers+(tg.tgType, ts + (tg.defpos, true)));
+            return tb + (Triggers, triggers + (tg.tgType, ts + (tg.defpos, true)));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new Table(defpos,m);
+            return new Table(defpos, m);
         }
-        internal override DBObject New(long dp, BTree<long, object>m)
+        internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new Table(dp, m);
         }
@@ -398,53 +398,54 @@ namespace Pyrrho.Level3
             var ts = ShallowReplace(cx, tableRows, was, now);
             if (ts != tableRows)
             {
-             //   for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
-             //       b.value()?.CheckFields(r,cx);
+                //   for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
+                //       b.value()?.CheckFields(r,cx);
                 r += (TableRows, ts);
             }
             return r;
         }
-        static CTree<Domain,CTree<long,bool>> ShallowReplace(Context cx,CTree<Domain,CTree<long,bool>> xs,long was,long now)
+        static CTree<CTree<int, long>, CTree<long, bool>> ShallowReplace(Context cx, CTree<CTree<int, long>, CTree<long, bool>> xs, long was, long now)
         {
-            for (var b=xs.First();b!=null;b=b.Next())
+            for (var b = xs.First(); b != null; b = b.Next())
             {
-                var k = (Domain)b.key().ShallowReplace(cx,was,now);
+                var k = ShallowReplace(cx, b.key(), was, now);
                 if (k != b.key())
                     xs -= b.key();
-                var v = Context.ShallowReplace(b.value(),was,now);
-                if (k!=b.key() || v != b.value())
+                var v = ShallowReplace(cx, b.value(), was, now);
+                if (k != b.key() || v != b.value())
                     xs += (k, v);
             }
             return xs;
         }
-        static CTree<long,bool> ShallowReplace(Context cx,CTree<long,bool> rs,long was,long now)
+        static CTree<long, bool> ShallowReplace(Context cx, CTree<long, bool> rs, long was, long now)
         {
             var r = CTree<long, bool>.Empty;
             var ch = false;
             for (var b = rs.First(); b != null; b = b.Next())
             {
                 var k = b.key();
-                var nk = k == was ? b.key() : k;
+                var nk = k == was ? now : k;
                 if (nk != k)
                     ch = true;
                 r += (nk, true);
             }
-            return ch?r:rs;
+            return ch ? r : rs;
         }
-        static CTree<Domain,bool> ShallowReplace(Context cx,CTree<Domain,bool> rs,long was, long now)
+        static CTree<int, long> ShallowReplace(Context cx, CTree<int, long> rs, long was, long now)
         {
-            var r = CTree<Domain,bool>.Empty;
+            var r = CTree<int, long>.Empty;
             var ch = false;
-            for (var b=rs.First();b!=null;b=b.Next())
+            for (var b = rs.First(); b != null; b = b.Next())
             {
-                var k = (Domain)b.key().ShallowReplace(cx, was, now);
-                r += (k, true);
-                if (k!=b.key())
-                        ch = true;
+                var v = b.value();
+                var nv = v == was ? now : v;
+                if (nv != v)
+                    ch = true;
+                r += (b.key(), nv);
             }
             return ch ? r : rs;
         }
-        static CTree<long, CTree<long, CTree<long,bool>>> ShallowReplace(Context cx, CTree<long, CTree<long, CTree<long,bool>>> rs, long was, long now)
+        static CTree<long, CTree<long, CTree<long, bool>>> ShallowReplace(Context cx, CTree<long, CTree<long, CTree<long, bool>>> rs, long was, long now)
         {
             for (var b = rs.First(); b != null; b = b.Next())
             {
@@ -465,9 +466,9 @@ namespace Pyrrho.Level3
             }
             return rs;
         }
-        static BTree<long,TableRow> ShallowReplace(Context cx,BTree<long,TableRow> ts,long was, long now)
+        static BTree<long, TableRow> ShallowReplace(Context cx, BTree<long, TableRow> ts, long was, long now)
         {
-            for (var b=ts.First();b!=null;b=b.Next())
+            for (var b = ts.First(); b != null; b = b.Next())
             {
                 var r = b.value().ShallowReplace(cx, was, now);
                 if (r != b.value())
@@ -475,11 +476,11 @@ namespace Pyrrho.Level3
             }
             return ts;
         }
-       internal override (CTree<int,long>, CTree<long, Domain>, CTree<int,long>, CTree<long, long>, Names, BTree<long,Names>)
-ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<int,long> sr, 
-           CTree<long, long> tr, Names ns, BTree<long,Names> ds, long ap)
+        internal override (CTree<int, long>, CTree<long, Domain>, CTree<int, long>, CTree<long, long>, Names, BTree<long, Names>)
+ ColsFrom(Context cx, long dp, CTree<int, long> rt, CTree<long, Domain> rs, CTree<int, long> sr,
+            CTree<long, long> tr, Names ns, BTree<long, Names> ds, long ap)
         {
-            for (var b=super.First();b!=null;b=b.Next())
+            for (var b = super.First(); b != null; b = b.Next())
                 if (b.key() is Table st)
                     (rt, rs, sr, tr, ns, ds) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns, ds, ap);
             var j = 0;
@@ -489,11 +490,11 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     var nm = ob.NameFor(cx);
                     var nn = nm ?? ob.alias;
                     var rv = cx._Ob(cx.names[nn ?? ""].Item2) as SqlReview;
-                    var m = rv?.mem??BTree<long, object>.Empty;
+                    var m = rv?.mem ?? BTree<long, object>.Empty;
                     if (ob is TableColumn tc)
                     {
                         m += (_Domain, tc.domain);
-                        var qv = new QlInstance(ap,rv?.defpos??cx.GetUid(), cx, nm??"", dp, tc,m);
+                        var qv = new QlInstance(ap, rv?.defpos ?? cx.GetUid(), cx, nm ?? "", dp, tc, m);
                         rt += ((int)rt.Count, qv.defpos);
                         sr += ((int)sr.Count, ob.defpos);
                         rs += (qv.defpos, qv.domain);
@@ -522,16 +523,16 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                         sr += ((int)rt.Count, ob.defpos);
                         rs += (ob.defpos, ob.domain);
                         tr += (ob.defpos, ob.defpos);
-                        ns += (nn ?? ("Col" + j), (ap,ob.defpos));
+                        ns += (nn ?? ("Col" + j), (ap, ob.defpos));
                     }
                     j++;
                     if (nm != null && ob is QlValue)
                     {
-                        ns += (nm, (ap,ob.defpos));
+                        ns += (nm, (ap, ob.defpos));
                         cx.Add(nm, ap, ob);
                     }
-         //           else
-         //               throw new DBException("42105");
+                    //           else
+                    //               throw new DBException("42105");
                 }
             return (rt, rs, sr, tr, ns, ds);
         }
@@ -541,27 +542,30 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             var na = cx.Fix(applicationPS);
             if (na != applicationPS)
                 r += (ApplicationPS, na);
-            var ni = cx.FixTDTlb(indexes);
+            var ni = cx.FixTTilTlb(indexes);
             if (ni != indexes)
                 r += (Indexes, ni);
-     //       var ss = cx.FixTlTlTlb(sindexes); much too expensive to fix this way
-     //       if (ss != sindexes)
-     //           r += (SysRefIndexes, ss);
+            //       var ss = cx.FixTlTlTlb(sindexes); much too expensive to fix this way
+            //       if (ss != sindexes)
+            //           r += (SysRefIndexes, ss);
             var ns = cx.Fix(systemPS);
             if (ns != systemPS)
                 r += (SystemPS, ns);
             var nk = cx.FixTlb(refCols);
             if (nk != refCols)
                 r += (RefCols, nk);
+            var nr = cx.FixTlTlb(colRefs);
+            if (nr != colRefs)
+                r += (ColRefs, nr);
             var nc = cx.FixTlb(tableChecks);
             if (nc != tableChecks)
                 r += (TableChecks, nc);
-      //      var nw = tableRows;       much too expensive to fix this way
-      //      for (var b = nw.First(); b != null; b = b.Next())
-      //          if (cx.uids.Contains(b.key()))
-      //              nw -= b.key();
-      //      if (nw != tableRows)
-      //          r += (TableRows, nw);
+            //      var nw = tableRows;       much too expensive to fix this way
+            //      for (var b = nw.First(); b != null; b = b.Next())
+            //          if (cx.uids.Contains(b.key()))
+            //              nw -= b.key();
+            //      if (nw != tableRows)
+            //          r += (TableRows, nw);
             var nt = cx.FixTTElb(triggers);
             if (nt != triggers)
                 r += (Triggers, nt);
@@ -572,9 +576,9 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             for (var b = tableChecks.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is Check ck)
                     ck.Cascade(cx, a, u);
-            for (var b = rowType.First();b!=null;b=b.Next())
+            for (var b = rowType.First(); b != null; b = b.Next())
                 if (cx._Ob(b.value()) is TableColumn tc)
-                        tc.Cascade(cx, a, u);
+                    tc.Cascade(cx, a, u);
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx._Ob(c.key()) is Index ix)
@@ -617,19 +621,19 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 }
             return t;
         }
-        internal virtual Table Specific(Context cx,TableRow tr)
-        { 
-            return this; 
+        internal virtual Table Specific(Context cx, TableRow tr)
+        {
+            return this;
         }
         internal virtual Index? FindPrimaryIndex(Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Index ix)
-                         return ix;
+                        return ix;
             return null;
         }
-        internal Index[]? FindIndex(Database db, Domain key)
+        internal Index[]? FindIndex(Database db, CTree<int, long> key)
         {
             var r = BList<Index>.Empty;
             for (var b = indexes?.First(); b != null; b = b.Next())
@@ -640,30 +644,30 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     if (((DBObject?)db.objects[ca.value()])?.domain.kind !=
                         ((DBObject?)db.objects[c.value()])?.domain.kind)
                         goto skip;
-                if (ca==null && c==null)
-                for (var d= b.value().First(); d != null; d = d.Next())
-                    if (db.objects[d.key()] is Index x)
-                        r += x;
-                    skip:;
+                if (ca == null && c == null)
+                    for (var d = b.value().First(); d != null; d = d.Next())
+                        if (db.objects[d.key()] is Index x)
+                            r += x;
+            skip:;
             }
             return (r == BList<Index>.Empty) ? null : r.ListToArray();
         }
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, long ap,
-            Grant.Privilege pr=Grant.Privilege.Select, string? a=null, TableRowSet? ur = null)
+            Grant.Privilege pr = Grant.Privilege.Select, string? a = null, TableRowSet? ur = null)
         {
             cx.Add(this);
             cx.Add(framing);
-            var m = mem + (_From, fm) + (_Ident,id);
+            var m = mem + (_From, fm) + (_Ident, id);
             if (a != null)
                 m += (_Alias, a);
             var rowSet = (RowSet)cx._Add(new TableRowSet(id.uid, cx, defpos, ap, m));
-//#if MANDATORYACCESSCONTROL
+            //#if MANDATORYACCESSCONTROL
             Audit(cx, rowSet);
-//#endif
+            //#endif
             return rowSet;
         }
         public override bool Denied(Context cx, Grant.Privilege priv)
-        { 
+        {
             if (cx.db.user != null && enforcement.HasFlag(priv) &&
                 !(cx.db.user.defpos == cx.db.owner
                     || cx.db.user.clearance.ClearanceAllows(classification)))
@@ -673,7 +677,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         internal virtual Table? Delete(Context cx, Delete del)
         {
             if (cx._Ob(defpos) is not Table a) return null;
-            for (var b=a.super.First();b!=null;b=b.Next())
+            for (var b = a.super.First(); b != null; b = b.Next())
                 (b.key() as Table)?.Delete(cx, del);
             if (a.tableRows[del.delpos] is TableRow delRow)
             {
@@ -731,7 +735,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         public virtual string Describe(Context cx)
         {
             var sb = new StringBuilder();
-            var ty = (colRefs.Count>1L) ? "EDGE " : "NODE ";
+            var ty = (colRefs.Count > 1L) ? "EDGE " : "NODE ";
             sb.Append(ty); sb.Append(name);
             var cm = " {";
             for (var b = First(); b != null; b = b.Next())
@@ -753,18 +757,18 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" rows ");sb.Append(tableRows.Count);
-            if (refCols!=CTree<long,bool>.Empty)
+            sb.Append(" rows "); sb.Append(tableRows.Count);
+            if (refCols != CTree<long, bool>.Empty)
             {
                 sb.Append(" refCols "); sb.Append(refCols.ToString());
             }
-            if (indexes.Count!=0) 
-            { 
+            if (indexes.Count != 0)
+            {
                 sb.Append(" Indexes:(");
                 var cm = "";
-                for (var b=indexes.First();b is not null;b=b.Next())
+                for (var b = indexes.First(); b is not null; b = b.Next())
                 {
-                    sb.Append(cm);cm = ";";
+                    sb.Append(cm); cm = ";";
                     var cn = "(";
                     for (var c = b.key().First(); c != null; c = c.Next())
                         if (c.value() is long p)
@@ -773,7 +777,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                             sb.Append(Uid(p));
                         }
                     sb.Append(')'); cn = "";
-                    for (var c=b.value().First();c is not null;c=c.Next())
+                    for (var c = b.value().First(); c is not null; c = c.Next())
                     {
                         sb.Append(cn); cn = ",";
                         sb.Append(Uid(c.key()));
@@ -781,8 +785,8 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 }
                 sb.Append(')');
             }
-            if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }
-            if (PyrrhoStart.VerboseMode && mem.Contains(Enforcement)) 
+            if (triggers.Count != 0) { sb.Append(" Triggers:"); sb.Append(triggers); }
+            if (PyrrhoStart.VerboseMode && mem.Contains(Enforcement))
             { sb.Append(" Enforcement="); sb.Append(enforcement); }
             return sb.ToString();
         }
@@ -807,7 +811,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 throw new DBException("42105").Add(Qlx.ROLE);
             var nm = NameFor(cx);
             var versioned = mi.metadata.Contains(Qlx.ENTITY);
-            var key = BuildKey(cx, out Domain keys);
+            var key = BuildKey(cx, out CTree<int, long> keys);
             var fields = CTree<string, bool>.Empty;
             var sb = new StringBuilder("\r\nusing Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
@@ -833,11 +837,11 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     var dt = b.value();
                     var tn = ((dt is Table) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
                     tc.Note(cx, sb);
-                    if ((keys.rowType.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
+                    if ((keys.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Qlx.INTEGER)
                         sb.Append("  [AutoKey]\r\n");
                     sb.Append("  public " + tn + " " + tc.NameFor(cx) + ";\r\n");
                 }
-             sb.Append("}\r\n");
+            sb.Append("}\r\n");
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
@@ -864,21 +868,21 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         /// <param name="from">The query</param>
         /// <param name="_enu">The object enumerator</param>
         /// <returns></returns>
-        internal override TRow RoleJavaValue(Context cx, RowSet from, 
+        internal override TRow RoleJavaValue(Context cx, RowSet from,
             ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
-                || kind==Qlx.Null || from.kind ==Qlx.Null
+                || kind == Qlx.Null || from.kind == Qlx.Null
                 || cx.db.user is not User ud)
                 throw new DBException("42105").Add(Qlx.ROLE);
             var versioned = true;
             var sb = new StringBuilder();
             sb.Append("/*\r\n * "); sb.Append(NameFor(cx)); sb.Append(".java\r\n *\r\n * Created on ");
             sb.Append(DateTime.Now);
-            sb.Append("\r\n * from Database " + cx.db.name + ", Role " 
+            sb.Append("\r\n * from Database " + cx.db.name + ", Role "
                 + ro.name + "\r\n */\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
-            var key = BuildKey(cx,out Domain keys);
+            var key = BuildKey(cx, out CTree<int, long> keys);
             sb.Append("\r\n@Schema("); sb.Append(lastChange); sb.Append(')');
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */\r\n");
             if (mi.description != "")
@@ -890,7 +894,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 {
                     su.Append(cm); cm = ","; su.Append(b.key().name);
                 }
-            if (this is UDType && super.Count!=0L)
+            if (this is UDType && super.Count != 0L)
                 sb.Append("public class " + mi.name + " extends " + su.ToString() + " {\r\n");
             else
                 sb.Append("public class " + mi.name + (versioned ? " extends Versioned" : "") + " {\r\n");
@@ -900,11 +904,11 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     var tn = (dt.kind == Qlx.TYPE) ? dt.name : Java(dt.kind);
                     if (keys != null)
                     {
-                        int j;
-                        for (j = 0; j < keys.Length; j++)
-                            if (keys[j] == bp)
+                        var j = 0;
+                        for (var c = keys.First(); c != null; c = c.Next(), j++)
+                            if (c.value() == bp)
                                 break;
-                        if (j < keys.Length)
+                        if (j < keys.Count)
                             sb.Append("  @Key(" + j + ")\r\n");
                     }
                     dt.FieldJava(cx, sb);
@@ -912,8 +916,49 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     sb.Append("\r\n");
                 }
             sb.Append("}\r\n");
-            return new TRow(from,new TChar(name),new TChar(key),
+            return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
+        }
+        internal StringBuilder JsonTable(Context cx, StringBuilder sb)
+        {
+            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
+                || kind == Qlx.Null || cx.db.user is not User ud)
+                throw new DBException("42105").Add(Qlx.ROLE);
+            sb.Append('{');// sb.Append("{Table:'");sb.Append(NameFor(cx)); sb.Append('\'');
+            var cm = "";
+            if (super.Count > 0)
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append("Under:");
+                var cn = '[';
+                for (var b = super.First(); b != null; b = b.Next())
+                    if (b.key().name != "")
+                    {
+                        sb.Append(cn); cn = ',';
+                        sb.Append('\''); sb.Append(b.key().name); sb.Append('\'');
+                    }
+                sb.Append(']');
+            }
+            if (rowType.Count > 0)
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append("Fields:");
+                var cn = '[';
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long bp && cx.db.objects[bp] is TableColumn tc)
+                    {
+                        sb.Append(cn); cn = ',';
+                        tc.JsonSchema(cx, sb);
+                    }
+                sb.Append("]");
+            }
+            if (display != 0)
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append("Display:"); sb.Append(display); 
+            }
+            sb.Append("}");
+            return sb;
         }
         /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
@@ -924,14 +969,14 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         internal override TRow RolePythonValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
-                || kind==Qlx.Null || from.kind == Qlx.Null)
+                || kind == Qlx.Null || from.kind == Qlx.Null)
                 throw new DBException("42105").Add(Qlx.ROLE);
             var versioned = true;
             var sb = new StringBuilder();
             var nm = NameFor(cx);
-            sb.Append("# "); sb.Append(nm); 
+            sb.Append("# "); sb.Append(nm);
             sb.Append(" from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
-            var key = BuildKey(cx, out Domain keys);
+            var key = BuildKey(cx, out CTree<int, long> keys);
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
             var su = new StringBuilder();
@@ -941,51 +986,52 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 {
                     su.Append(cm); cm = ","; su.Append(b.key().name);
                 }
-            if (this is UDType && super.Count!=0L)
+            if (this is UDType && super.Count != 0L)
                 sb.Append("public class " + nm + "(" + su.ToString() + "):\r\n");
             else
                 sb.Append("class " + nm + (versioned ? "(Versioned)" : "") + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");
-            for(var b = representation.First();b is not null;b=b.Next())
+            for (var b = representation.First(); b is not null; b = b.Next())
             {
                 sb.Append("  self." + cx.NameFor(b.key()) + " = " + b.value().defaultValue);
                 sb.Append("\r\n");
             }
             sb.Append("  self._schemakey = "); sb.Append(from.lastChange); sb.Append("\r\n");
-            if (keys!=Null)
+            if (keys != CTree<int, long>.Empty)
             {
                 var comma = "";
-                sb.Append("  self._key = ["); 
-                for (var i=0;i<keys.Length;i++)
+                sb.Append("  self._key = [");
+                for (var b = keys.First(); b != null; b = b.Next())
                 {
                     sb.Append(comma); comma = ",";
-                    sb.Append('\'');  sb.Append(keys[i]); sb.Append('\'');
+                    sb.Append('\''); sb.Append(b.key()); sb.Append('\'');
                 }
                 sb.Append("]\r\n");
             }
-            return new TRow(from, new TChar(name),new TChar(key),
+            return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
-        internal virtual string BuildKey(Context cx,out Domain keys)
+        internal virtual string BuildKey(Context cx, out CTree<int, long> keys)
         {
-            keys = Row;
+            keys = CTree<int, long>.Empty;
             for (var xk = indexes.First(); xk != null; xk = xk.Next())
-                for (var c = xk.value().First();c is not null;c=c.Next())
-            if (cx._Ob(c.key()) is Index x && x.tabledefpos == defpos)
-                    keys = x.keys;
+                for (var c = xk.value().First(); c is not null; c = c.Next())
+                    if (cx._Ob(c.key()) is Index x && x.tabledefpos == defpos)
+                        keys = xk.key();
             var comma = "";
             var sk = new StringBuilder();
-            if (keys != Row)
-                for (var i = 0; i < keys.Length; i++)
-                    if ( cx._Ob(keys[i] ?? -1L) is TableColumn cd)
+            if (keys != CTree<int, long>.Empty)
+                for (var b = keys.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.value()) is TableColumn cd)
                     {
                         sk.Append(comma); comma = ",";
                         sk.Append(cd.NameFor(cx));
                     }
             return sk.ToString();
         }
+
         internal override TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is null
@@ -995,8 +1041,8 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             sb.Append("--"); sb.Append(name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
             sb.Append("\r\n-- from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
-            var key = BuildKey(cx, out Domain _);
-            sb.Append("create view ");sb.Append(name); sb.Append(" of (");
+            var key = BuildKey(cx, out CTree<int, long> _);
+            sb.Append("create view "); sb.Append(name); sb.Append(" of (");
             var cm = "";
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.NameFor(p) is string cs && representation[p] is Domain cd) {
@@ -1004,7 +1050,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     sb.Append(cs); sb.Append(' '); sb.Append(cd.name);
                 }
             sb.Append(")\r\n as get 'https://yourhost:8180/");
-            sb.Append(cx.db.name);sb.Append('/');sb.Append(ro.name);sb.Append('/');sb.Append(name);sb.Append("'\r\n");
+            sb.Append(cx.db.name); sb.Append('/'); sb.Append(ro.name); sb.Append('/'); sb.Append(name); sb.Append("'\r\n");
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
@@ -1084,9 +1130,12 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             for (var b = colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx._Ob(c.key()) is TableColumn cc && cx._Ob(b.key()) is Domain dm)
-                        if ((ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dm))
-                            && (model[q] == cc.defpos||cc.NameFor(cx)==cn))
-                            return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                        if (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dm)) 
+                            if (cn != "" && (model[cn]?[q] == cc.defpos || cc.NameFor(cx) == cn))
+                                return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                            else for (var d = model.First(); d != null; d = d.Next())
+                                if (d.value()[q] == cc.defpos)
+                                    return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
             if (r == TNull.Value && cx.parsingGQL != Context.ParsingGQL.Match &&
                 BuildNodeTypeConnector(cx, new TConnector(q, cn, ct), this).Item2 is TConnector nc
                 && nc.rd.defpos > 0)
@@ -1111,10 +1160,13 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             TypedValue r = TNull.Value;
             for (var b = colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx._Ob(c.key()) is TableColumn cc && cx._Ob(b.key()) is Domain dm)
-                            if ((ct.defpos<0||ct.EqualOrStrongSubtypeOf(dm))
-                                && (model[q] ==cc.defpos || cc.NameFor(cx)==cn))
-                                return new TConnector(q,cc.NameFor(cx),dm,cc.defpos);
+                    if (cx._Ob(c.key()) is TableColumn cc && cx.db.objects[b.key()] is Domain dm)
+                        if (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dm)) 
+                            if (cn != "" && (model[cn]?[q] == cc.defpos || cc.NameFor(cx) == cn))
+                                return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                            else for (var d = model.First(); d != null; d = d.Next())
+                                if (d.value()[q] == cc.defpos)
+                                    return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
             if (r == TNull.Value && cx.parsingGQL != Context.ParsingGQL.Match &&
                 BuildNodeTypeConnector(cx, new TConnector(q, cn, ct), this).Item2 is TConnector nc
                 && nc.rd.defpos > 0)
@@ -1130,24 +1182,28 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             var ns = CTree<string, TConnector>.Empty;
             var nst = cx.db.nextStmt;
             var k = 1;
-            for (var b=ut.colRefs[model[tc.q]]?.First(); b != null; b = b.Next()) // ??
-                    if (cx.db.objects[b.key()] is Table ct)
-                    return (ct, tc); //??
+            if (cx.db.objects[model[tc.cn]?[tc.q]??-1L] is Table ct)
+                    return (ct, tc); 
             var dn = tc.rd ?? throw new PEException("PE90152"); // dn might be a Union of NodeTypes
             var tt = cs[(tc.q, dn)];
             var cn = (tc.cn == "") ? (tc.q.ToString() + k) : tc.cn;
             if (ns[cn] is TConnector x && x.cp > 0L)
                 return (ut, x);
             if (cx._Ob(ut.names[tc.cn.ToUpper()].Item2) is TableColumn ec)
-                return (ut,new TConnector(tc.q, tc.cn, tc.rd, ec.defpos, tc.fk, tc.cs, tc.cm));
-            var tn = new TConnector(tc.q, tc.cn, tc.rd, cx.db.nextPos, tc.fk, tc.cs, tc.cm);
-            var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn) + (Qlx.OPTIONAL, TBool.False);
+                return (ut, new TConnector(tc.q, tc.cn, tc.rd, ec.defpos, tc.fk, tc.cs, tc.cm));
             TableColumn nc;
+            TConnector tn;
             if (ut.infos[cx.role.defpos] is ObInfo ui && cx._Ob(ui.names[cn.ToUpper()].Item2) is TableColumn nc1)
+            {
                 nc = nc1;
-            else {
-                var pc = new PColumn3(ut, cn, Ref, "", md, nst, cx.db.nextPos, cx, false)
-                { reftype = tc.rd.defpos};
+                tn = new TConnector(tc.q, tc.cn, tc.rd, nc.defpos, tc.fk, tc.cs, tc.cm);
+            }
+            else
+            {
+                Domain? dm = nt.FindOrCreateRefDomain(cx, tc.rd);
+                tn = new TConnector(tc.q, tc.cn, tc.rd, cx.db.nextPos, tc.fk, tc.cs, tc.cm);
+                var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn) + (Qlx.OPTIONAL, TBool.False);
+                var pc = new PColumn3(ut, cn, dm, "", md, nst, cx.db.nextPos, cx, false);
                 pc.FromTCon(tn);
                 ut = (Table)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                 nc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105").Add(Qlx.COLUMN));
@@ -1159,11 +1215,29 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             ut = ut.AddNodeOrEdgeType(cx);
             return ((Table)cx.Add(ut), tn);
         }
-        internal (Table,TypedValue) Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
+
+        internal Domain FindOrCreateRefDomain(Context cx, Domain rd)
+        {
+            var np = cx.db.nextPos;
+            var dm = (cx.db.refTypes[rd] is long rp && rp != 0L) ? cx._Ob(rp) as Domain :
+                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", Qlx.REF, 0, 0, CharSet.UCS, culture.Name, "",
+                rd, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
+            if (dm is null) throw new PEException("PE33611");
+            if (dm.defpos == np)
+            {
+                cx.Install(dm);
+                cx.db += dm;
+                cx.db += (Database.RefTypes, cx.db.refTypes + (rd, dm.defpos));
+                cx.Add(dm);
+            }
+            return dm;
+        }
+
+        internal (Table, TypedValue) Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
      bool allowChange = false, long dp = -1L)
         {
             if (cc is not TConnector ec || ec.cp > 0L)
-                return (this,TNull.Value);
+                return (this, TNull.Value);
             var found = false;
             var os = infos[definer]?.metadata[Qlx.REFERENCES] as TSet;
             for (var c = os?.First(); c != null; c = c.Next())
@@ -1216,7 +1290,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                         case Qlx.RBRACKTILDE: q = Qlx.WITH; nn = at; break;
                     }
                 var cn = (ec.cn == "") ? q.ToString() : ec.cn;
-                var nc = new TConnector(q, cn, cx.db.objects[nn] as Domain??Null);
+                var nc = new TConnector(q, cn, cx.db.objects[nn] as Domain ?? Null);
                 var ns = os;
                 if (nn > 0 && defpos > 0)
                 {
@@ -1226,12 +1300,12 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 else
                 {
                     ns = (os ?? new TSet(Connector)) + nc;
-                    cx.MetaPend(dp + 1L, dp + 1L, nc.cs, nc.cm??TMetadata.Empty);
+                    cx.MetaPend(dp + 1L, dp + 1L, nc.cs, nc.cm ?? TMetadata.Empty);
                 }
-                if (ns!=os && ns.Cardinality() >= 1)
-                    r = (Table)cx.Add(r,TMetadata.Empty+ (Qlx.REFERENCES, ns)).Item2;
+                if (ns != os && ns.Cardinality() >= 1)
+                    r = (Table)cx.Add(r, TMetadata.Empty + (Qlx.REFERENCES, ns)).Item2;
             }
-            return (r,(TypedValue?)os??TNull.Value);
+            return (r, (TypedValue?)os ?? TNull.Value);
         }
         internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlEdge ed, TypedValue cc,
                 CTree<string, QlValue> ls, bool allowChange = false)
@@ -1300,10 +1374,10 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 if (nn != null)
                 {
                     (r, var rc) = BuildNodeTypeConnector(cx,
-                        new TConnector(q, nc.cn,nn.dataType));
+                        new TConnector(q, nc.cn, nn.dataType));
                     ls += (cx.NameFor(rc.cp) ?? rc.cn,
-                        (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(), 
-                            new TRef(nn.defpos, nc.rd ??Null))));
+                        (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(),
+                            new TRef(nn.defpos, nc.rd ?? Null))));
                 }
             }
             return (r, ls);
@@ -1313,12 +1387,12 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         {
             if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
                 return TNull.Value;
-       /*     if (nc.cd is SqlTypeExpr gl && gl.Eval(cx).dataType is Domain ld
-                && ld.kind == Qlx.AMPERSAND)
-                for (var b = gl._NodeTypes(cx).First(); b != null; b = b.Next())
-                    if (Connect(cx, n, (Table)b.key(), nc, ec, ed, rn) is TypedValue v && v != TNull.Value)
-                        return v;*/
-            var nt = n.dataType as Table?? throw new DBException("42105");
+            /*     if (nc.cd is SqlTypeExpr gl && gl.Eval(cx).dataType is Domain ld
+                     && ld.kind == Qlx.AMPERSAND)
+                     for (var b = gl._NodeTypes(cx).First(); b != null; b = b.Next())
+                         if (Connect(cx, n, (Table)b.key(), nc, ec, ed, rn) is TypedValue v && v != TNull.Value)
+                             return v;*/
+            var nt = n.dataType as Table ?? throw new DBException("42105");
             return Connect(cx, n, nt, nc, ec, ed, rn)
                         ?? ((cx.values[rn?[n.defpos] ?? -1L] is TNode m) ?
                         Connect(cx, m, m.dataType as Table, nc, ec, ed, rn) ?? TNull.Value
@@ -1336,7 +1410,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             }
             var m = (rn?[n.defpos] is long mp && mp > 0) ? mp : n.defpos;
             if (/*ec.cd.kind == Qlx.REF && */ cx._Ob(n.tableRow.tabledefpos) is Domain rd)
-                return new TRef(m,rd);
+                return new TRef(m, rd);
             if (ec.rd.kind == Qlx.SET && ec.rd is Domain de && cx._Ob(n.tableRow.tabledefpos) is Domain sd)
                 return /*(de.kind == Qlx.REF) ? */new TRef(m, sd) /*: n*/;
             if (ec.rd is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
@@ -1357,9 +1431,9 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             throw new PEException("PE40721");
         }
         /// <summary>
-        /// We have a new node type cs and have been given columns ls
-        /// New columns specified are added or inserted.
-        /// We will construct Physicals for new columns required
+        /// We have a new node type cs and have been given keymap ls
+        /// New keymap specified are added or inserted.
+        /// We will construct Physicals for new keymap required
         /// </summary>
         /// <param name="x">The GqlNode or GqlEdge if any to apply this to</param>
         /// <param name="ll">The properties from an inline document, or default values</param>
@@ -1370,7 +1444,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             Qlx q = Qlx.NO, Table? nt = null, CList<TypedValue>? cs = null)
         {
             var ut = this;
-            var md = infos[definer]?.metadata??TMetadata.Empty;
+            var md = infos[definer]?.metadata ?? TMetadata.Empty;
             var nst = cx.db.nextStmt;
             var e = x as GqlEdge;
             if (defpos < 0)
@@ -1406,15 +1480,15 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             var rs = ut.representation;
             var ui = ut?.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.TYPE);
             var uds = ut.names ?? Names.Empty;
-            var sn = CTree<string,long>.Empty; // properties we are adding
+            var sn = CTree<string, long>.Empty; // properties we are adding
             for (var b = ls.First(); b != null; b = b.Next())
             {
                 var n = b.key();
                 if (ut.AllCols(cx).Contains(n))
                     continue;
                 var d = cx._Dom(b.value().defpos) ?? Content;
-                var pc = new PColumn3(ut, n, d, d.defaultString, 
-                    d.infos[d.definer]?.metadata??TMetadata.Empty, nst, cx.db.nextPos, cx);
+                var pc = new PColumn3(ut, n, d, d.defaultString,
+                    d.infos[d.definer]?.metadata ?? TMetadata.Empty, nst, cx.db.nextPos, cx);
                 ut = (Table)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                 rt += ((int)rt.Count, pc.ppos);
                 rs += (pc.ppos, d);
@@ -1456,7 +1530,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                     uds += (b.key(), (_ap, qq));
             var oi = new ObInfo(ut.name, Grant.AllPrivileges)
                 + (ObInfo._Names, uds) + (Method.TypeDef, ut);
-            ut = (Table)cx.Add(ut,md).Item2;
+            ut = (Table)cx.Add(ut, md).Item2;
             var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (ut.name, ut.defpos));
             if (md.Contains(Qlx.NODETYPE))
                 ro += (Role.NodeTypes, ro.nodeTypes + (ut.NameFor(cx), ut.defpos));
@@ -1484,9 +1558,9 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             var r = this;
             if (cx._Ob(defpos) is not Table nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
-     //       for (var b = super.First(); b != null; b = b.Next())
-     //           if (b.key() is Table s && cx.names[s.NameFor(cx)].Item2 > (((SqlInsert?)cx.exec)?.forNode??e.defpos))
-     //               return s.Check(cx, e, ap, allowExtras);
+            //       for (var b = super.First(); b != null; b = b.Next())
+            //           if (b.key() is Table s && cx.names[s.NameFor(cx)].Item2 > (((SqlInsert?)cx.exec)?.forNode??e.defpos))
+            //               return s.Check(cx, e, ap, allowExtras);
             for (var b = e.docValue.First(); b != null; b = b.Next())
                 if (!(ni.names.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
                 {
@@ -1550,7 +1624,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         {
             var nt = this;
             var dn = cx.FindTable(name);
-            if (name!="" && dn is null)
+            if (name != "" && dn is null)
             {
                 var pn = new PType(name, nt, cx.db.nextPos, cx);
                 nt = (Table)(cx.Add(pn) ?? throw new DBException("42105"));
@@ -1576,7 +1650,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             {
                 for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
                     if (b.value() is long p1 && cx._Ob(p1) is Domain td)
-                        if (td is Table nt1 && nt1.kind == kind)
+                        if (td is Table nt1)// && nt1.kind == kind)
                             ds = nt1.For(cx, ms, xn, ds);
                         else if (td.kind == Qlx.UNION)
                             for (var c = td.alts.First(); c != null; c = c.Next())
@@ -1622,7 +1696,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             var vals = CTree<long, TypedValue>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (cx._Ob(b.value()) is TableColumn tc)
-                    vals += (tc.defpos, new TTypeSpec(tc.name,tc.domain));
+                    vals += (tc.defpos, new TTypeSpec(tc.name, tc.domain));
             return new TableRow(defpos, -1L, defpos, vals);
         }
 
@@ -1703,7 +1777,21 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
         }
 
         internal virtual void Update(Context cx, TableRow prev, CTree<long, TypedValue> fields)
-        {  }
+        { }
+
+        internal Table Add(Context cx, TConnector cc)
+        {
+            var cm = model ?? infos[cx.role.defpos]?.model ?? CTree<string, CTree<Qlx, long>>.Empty;
+            var sm = cm[cc.cn] ?? CTree<Qlx, long>.Empty;
+            sm += (cc.q, cc.cp);
+            cm += (cc.cn, sm);
+            var ci = infos[cx.role.defpos] ?? new ObInfo(NameFor(cx), Grant.AllPrivileges);
+            ci += (ObInfo.Model, cm);
+            var et = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ci)));
+            cx.Add(et);
+            cx.db += et;
+            return et;
+        }
 
         internal class NodeInfo
         {

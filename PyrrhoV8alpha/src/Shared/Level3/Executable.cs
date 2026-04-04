@@ -3807,9 +3807,9 @@ namespace Pyrrho.Level3
 
     }
     /// <summary>
-    /// The Insert columns tree if provided is an ordered tree of some or all of the from's columns.
+    /// The Insert keymap tree if provided is an ordered tree of some or all of the from's keymap.
     /// This will match the row type of the data rowset. 
-    /// If present the data rowset needs to have its columns reordered and expanded by nulls to
+    /// If present the data rowset needs to have its keymap reordered and expanded by nulls to
     /// match the from row set.
     /// shareable
     /// </summary>
@@ -4621,7 +4621,7 @@ namespace Pyrrho.Level3
     /// The Match syntax consists of a graph expression, an optional where condition and an optional action part.
     /// Parsing of the graph expression results in a collection of previously unbound identifiers(GDefs) 
     /// and a collection of constraints(boolean SqlValueExpr). By default, the resulting domain is an ExplicitRowSet
-    /// whose columns match the bindings CList<TGParam>(an ordering of GDefs). Whether or not it is the final valueType,
+    /// whose keymap match the bindings CList<TGParam>(an ordering of GDefs). Whether or not it is the final valueType,
     /// this bindingtable is used during the match process to eleminate duplicate rows in the valueType.
     /// If a return (or Yield) statement is present, a rowset built from its rows becomes the Match valueType: 
     /// a SelectRowSet, built directly by the MatchStatement. Such a RETURN statement is just one 
@@ -4862,6 +4862,8 @@ namespace Pyrrho.Level3
             }
             cx.obs = ac.obs;
             cx.result = cx.obs[bindings] as RowSet;
+            if (cx.result is BindingRowSet bs)
+                cx.Add(bs + (RowSet._Built, true));
             var ps = ((Transaction)ac.db).physicals;
             if (ac.paths!=CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty
                     && DoExclusions(cx.result as RowSet, ac, cx) is RowSet rs)

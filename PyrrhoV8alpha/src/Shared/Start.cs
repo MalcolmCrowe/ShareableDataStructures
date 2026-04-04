@@ -1115,7 +1115,7 @@ namespace Pyrrho
             {
                 for (var b = co.First(); b != null; b = b.Next(), i++)
                     if (b.value() is long p)
-                        domains += (i, rb._dom.representation[p] ?? Domain.Content);
+                        domains += (i, cx._Dom(p) ?? Domain.Content);
             }
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
@@ -1379,6 +1379,7 @@ namespace Pyrrho
                 try
                 {
                     tcp = new TcpListener(ad, port);
+                    
                     tcp.Start();
                 }
                 catch (Exception)
@@ -1528,7 +1529,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2026 Malcolm Crowe and University of the West of Scotland",
-            "8.0alpha","(16 March 2026)", "https://pyrrhodb.com"
+            "8.0alpha","(4 April 2026)", "https://pyrrhodb.com"
         ];
 	}
 }

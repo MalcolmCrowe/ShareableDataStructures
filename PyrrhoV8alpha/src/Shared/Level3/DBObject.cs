@@ -84,7 +84,7 @@ namespace Pyrrho.Level3
         public Grant.Privilege priv => (Grant.Privilege)(mem[ObInfo.Privilege]??Grant.Privilege.NoPrivilege);
         public long scope => (long)(mem[Scope] ?? 0L);
         /// <summary>
-        /// This tree does not include indexes/columns/rows for tables
+        /// This tree does not include indexes/keymap/rows for tables
         /// or other obvious structural dependencies
         /// </summary>
         internal CTree<long, bool> dependents =>
@@ -342,7 +342,7 @@ namespace Pyrrho.Level3
         internal virtual (Context,DBObject) Add(Context cx,TMetadata md)
         {
             if (defpos>0 && defpos<Transaction.TransPos)
-                cx.toFix += (defpos, true);
+                cx.toFix += (defpos, this);
             var dmd = TMetadata.Empty;
             var rmd = TMetadata.Empty;
             for (var b=md.First();b!=null;b=b.Next())
@@ -954,7 +954,7 @@ namespace Pyrrho.Level3
         internal CTree<long,bool> subs => (CTree<long, bool>?)mem[Subs]??CTree<long, bool>.Empty;
         /// <summary>
         /// A forward reference non-terminal.
-        /// Non-terminal, will always have suggested columns
+        /// Non-terminal, will always have suggested keymap
         /// </summary>
         /// <param name="nm">Name</param>
         /// <param name="cx">The context</param>
@@ -1000,7 +1000,7 @@ namespace Pyrrho.Level3
             BTree<long,object> m, long ap)
         {
             // If rs.name or rs.alias matches this (U), we can consider resolving all U's descendants: 
-            // they should be references to columns of rs.
+            // they should be references to keymap of rs.
             // It is possible that sr itself will define this: but in this case
             // we do NOT replace this with sr, instead the references to U will be orphaned. 
             if (name == sr.name || name == sr.alias)

@@ -340,12 +340,12 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A record profile: a set of similar insertions or updates.
-    /// Similar in the sense that (new) values are provided for a set of columns.
+    /// Similar in the sense that (new) values are provided for a set of keymap.
     /// </summary>
     class RecordProfile
     {
         /// <summary>
-        /// The set of affected columns
+        /// The set of affected keymap
         /// </summary>
         public BTree<long, TypedValue> fields = BTree<long,TypedValue>.Empty;
         /// <summary>
@@ -374,7 +374,7 @@ namespace Pyrrho.Level3
             Load(r);
         }
         /// <summary>
-        /// Determine whether a record profile matches a given set of columns
+        /// Determine whether a record profile matches a given set of keymap
         /// </summary>
         /// <param name="f">The set of fields</param>
         /// <returns>Whether they match</returns>

@@ -2,7 +2,6 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System.Reflection.Emit;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -16,8 +15,9 @@ using System.Text;
 namespace Pyrrho.Level2
 {
     /// <summary>
-    /// PIndex is a way of associating a BTree with a PTable
-    /// A PIndex is made whenever there is a primary, references or unique constraint
+    /// PIndex plays two roles in PyyrhoV8. We no longer have reference indexes, so:
+    /// A PIndex reference physical can specify a keymap and/or a referenced type,
+    /// but the Level3 object it defines is a reference TableColumn, not an index.
     /// </summary>
     internal class PIndex : Physical
     {
@@ -36,7 +36,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The key TableColumns for the index 
         /// </summary>
-        public Domain columns = Domain.Row;
+        public CTree<int,long> keymap = CTree<int,long>.Empty;
         /// <summary>
         /// The constraint type
         /// </summary>
@@ -63,10 +63,22 @@ namespace Pyrrho.Level2
             ConstraintType.RestrictUpdate | ConstraintType.CascadeUpdate
             | ConstraintType.SetDefaultUpdate | ConstraintType.SetNullUpdate;
         public const ConstraintType Cascade = Deletes | Updates;
-        public const ConstraintType Reference = ConstraintType.ForeignKey
-            | ConstraintType.RestrictUpdate | ConstraintType.RestrictDelete;
+        public const ConstraintType Reference = ConstraintType.RestrictUpdate 
+            | ConstraintType.RestrictDelete;
+        internal static ConstraintType ReferentialAction(ConstraintType was, ConstraintType x)
+        {
+            var rd = was & Deletes;
+            var ru = was & Updates;
+            var cd = x & Deletes;
+            var cu = x & Updates;
+            if (cd == ConstraintType.NoType)
+                cd = rd;
+            if (cu == ConstraintType.NoType)
+                cu = ru;
+            return cd | cu;
+        }
         /// <summary>
-        /// The referenced Index for a foreign key
+        /// The Table referenced (a change from v7!)
         /// </summary>
         public long reference;
         /// <summary>
@@ -77,14 +89,10 @@ namespace Pyrrho.Level2
         {
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
             if (!Committed(wr, tabledefpos)) return tabledefpos;
-            for (var b = columns.First(); b is not null; b = b.Next())
+            for (var b = keymap.First(); b is not null; b = b.Next())
                 if (b.value() is long p && !Committed(wr, p)) return p;
-            if (reference >= 0 && wr.cx.db.objects[reference] is Level3.Index xr)
-            {
-                var reftable = xr.tabledefpos;
-                if (!Committed(wr, reftable)) return reftable;
+            if (reference >= 0)
                 if (!Committed(wr, reference)) return reference;
-            }
             return -1;
         }
         internal override bool NeededFor(BTree<long, Physical> physicals)
@@ -103,12 +111,11 @@ namespace Pyrrho.Level2
         /// <param name="tb">The table being indexed</param>
         /// <param name="cl">The defining positions of key TableColumns</param>
         /// <param name="fl">The constraint flags</param>
-        /// <param name="rx">The defining position of the referenced index (or -1)</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PIndex(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, long pp, Database d, bool ifN = false) :
-            this(Type.PIndex, nm, tb, cl, fl, rx, pp, d)
+        public PIndex(string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long pp, Database d, bool ifN = false) :
+            this(Type.PIndex, nm, tb, cl, fl, -1L, pp, d)
         {
             ifNeeded = ifN;
         }
@@ -120,20 +127,20 @@ namespace Pyrrho.Level2
         /// <param name="tb">The table being indexed</param>
         /// <param name="cl">The defining positions of key TableColumns</param>
         /// <param name="fl">The constraint flags</param>
-        /// <param name="rx">The defining position of the referenced index (or -1)</param>
+        /// <param name="rx">The reference table or -1L</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PIndex(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, long pp, Database d) :
+        public PIndex(Type t, string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long rt, long pp, Database d) :
             base(t, pp, d)
         {
             if (fl == ConstraintType.ForeignKey)
                 fl = Reference;
             name = nm ?? throw new DBException("42102").Mix();
             tabledefpos = tb.defpos;
-            columns = cl;
+            keymap = cl;
             flags = fl;
-            reference = rx;
+            reference = rt;
         }
         /// <summary>
         /// Constructor: A new PIndex request from the buffer
@@ -151,14 +158,7 @@ namespace Pyrrho.Level2
         protected PIndex(PIndex x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.cx.Fix(x.tabledefpos);
-            var bs = BList<DBObject>.Empty;
-            for (var b = x.columns.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                {
-                    var nc = wr.cx._Ob(wr.cx.Fix(p)) ?? throw new PEException("PE0098");
-                    bs += nc;
-                }
-            columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Qlx.ROW, bs, bs.Length));
+            keymap = wr.cx.FixTil(x.keymap);
             flags = x.flags;
             name = x.name;
             reference = wr.cx.Fix(x.reference);
@@ -179,9 +179,9 @@ namespace Pyrrho.Level2
             tabledefpos = wr.cx.Fix(tabledefpos);
             wr.PutString(name.ToString());
             wr.PutLong(tabledefpos);
-            wr.PutInt(columns.Length);
-            for (int j = 0; j < columns.Length; j++)
-                wr.PutLong(columns[j] ?? -1L);
+            wr.PutInt((int)keymap.Count);
+            for (var b = keymap.First(); b!=null; b=b.Next())
+                wr.PutLong(b.value());
             wr.PutInt((int)flags);
             reference = wr.cx.Fix(reference);
             wr.PutLong(reference);
@@ -195,19 +195,16 @@ namespace Pyrrho.Level2
         {
             name = rdr.GetString();
             tabledefpos = rdr.GetLong();
+            keymap = CTree<int,long>.Empty;
             int n = rdr.GetInt();
             if (n > 0)
             {
-                var rt = CTree<int,long>.Empty;
                 var rs = CTree<long, Domain>.Empty;
                 for (int j = 0; j < n; j++)
                 {
                     var cp = rdr.GetLong();
-                    rt += (j,cp);
-                    rs += (cp, rdr.context._Dom(cp) ?? Domain.Null); // for Log$ may be historical
+                    keymap += (j,cp);
                 }
-                columns = (rt == CTree<int,long>.Empty) ? Domain.Row : 
-                    new Domain(-1L, rdr.context, Qlx.ROW, rs, rt);
             }
             flags = (ConstraintType)rdr.GetInt();
             if ((int)flags>=16)
@@ -215,19 +212,17 @@ namespace Pyrrho.Level2
             reference = rdr.GetLong();
             if (rdr.context.db.objects[reference] is Table tc)
             {
-                if (rdr.context.db.objects[reference] is Level3.Index rx)
+                if (rdr.context.db.objects[reference] is Table rt)
                 {
                     var sb = new StringBuilder(tc.NameFor(rdr.context));
                     var cm = '(';
-                    for (var b = rx.keys.First(); b != null; b = b.Next())
+                    for (var b = keymap.First(); b != null; b = b.Next())
                         if (rdr.context.db.objects[b.value()] is TableColumn xc)
                         {
                             sb.Append(cm); cm = ',';
                             sb.Append(xc.NameFor(rdr.context));
                         }
                     if (cm != '(') sb.Append(')');
- //                   metadata += (Qlx.REFERENCES, 
-  //                      new TConnector(Qlx.WITH, sb.ToString(), tc, ppos, metadata.ToString(), metadata));
                 }
                 rdr.context.db += tc + (Table.RefCols, ppos);
             }
@@ -267,8 +262,8 @@ namespace Pyrrho.Level2
                         {
                             if (d.delpos == tabledefpos || d.delpos == reference)
                                 return new DBException("40012", d.delpos, that, ct);
-                            for (int j = 0; j < columns.Length; j++)
-                                if (d.delpos == columns[j] || d.delpos == -columns[j])
+                            for (var b = keymap.First(); b!=null; b=b.Next())
+                                if (d.delpos == b.value() || d.delpos == -b.value())
                                     return new DBException("40013", d.delpos, that, ct);
                         }
                         break;
@@ -282,11 +277,8 @@ namespace Pyrrho.Level2
             if (tr is not null && wr.cx.db.objects[((PIndex)ph).tabledefpos] is Table tb
                 && wr.cx.db.objects[ph.ppos] is Level3.Index x)
             {
-                if (tb.indexes[x.keys] is CTree<long, bool> ct)
-                    wr.cx.db += (tb.defpos, tb + (Table.Indexes, tb.indexes + (x.keys, ct - ppos)));
-                if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
-                    wr.cx.db += (rt.defpos, rt //+ (Table.RefIndexes, rt.rindexes - ppos)
-                                 + (Table.SysRefIndexes, rt.sindexes - x.reftabledefpos));
+                if (tb.indexes[x.keys.rowType] is CTree<long, bool> ct)
+                    wr.cx.db += (tb.defpos, tb + (Table.Indexes, tb.indexes + (x.keys.rowType, ct - ppos)));
                 if (tr?.objects[tabledefpos] is Table tt && tt.infos[tt.definer]?.metadata is TMetadata md)
                 {
                     (wr.cx,var o) = wr.cx.Add(tb, md);
@@ -318,95 +310,41 @@ namespace Pyrrho.Level2
         /// <returns>The string representation</returns>
         public override string ToString()
         {
-            string r = GetType().Name + " " + name;
-            r = r + " on " + Pos(tabledefpos) + "(";
-            for (int j = 0; j < columns.Length; j++)
-                r += ((j > 0) ? "," : "") + DBObject.Uid(columns[j] ?? -1L);
-            r += ") " + flags.ToString();
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(' '); sb.Append(name);
+            sb.Append(" on "); sb.Append(DBObject.Uid(tabledefpos));
+            if (keymap != CTree<int, long>.Empty)
+            {
+                var cm = '(';
+                for (var b = keymap.First(); b != null; b = b.Next())
+                { sb.Append(cm); cm = ','; sb.Append(DBObject.Uid(b.value())); }
+                sb.Append(')');
+            }
+            sb.Append(flags);
             if (reference >= 0)
-                r += " refers to [" + Pos(reference) + "]";
-            return r;
+            { sb.Append(" refers to ["); sb.Append(DBObject.Uid(reference)); sb.Append(']'); }
+            return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[tabledefpos] is not Table tb)
                 return null;
-            var x = new Level3.Index(this, cx);
-            x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
-            cx.db += x; // even for the foreign key references case we save x in cx.db
-            if (reference>0)
+            // We don't have a Level3.Index for references
+            if ((!flags.HasFlag(ConstraintType.PrimaryKey)) && (!flags.HasFlag(ConstraintType.Unique)))
             {
-                var rb = cx.db.objects[reference]; // backward compatibility: may be table or index
-                var rt = (rb as Table) ?? (Table?)(cx.db.objects[(rb as Level3.Index)?.tabledefpos??-1L])
-                    ?? throw new PEException("PE14052");
-                if (rt.defpos < 0L)
-                    throw new PEException("PE47872");
-                var d = new CTree<Domain,bool>(rt,true);
-                var rc = CList<TypedValue>.Empty;
-                var tt = tb.rowType;
-                var ts = tb.representation;
-                var lk = -1L; // will become the defpos of the last referencing column
-                var cm = "(";
-                var kn = tb.NameFor(cx);
-                var k1 = "";
-                TableColumn tc = new TableColumn(ppos+1, BTree<long, object>.Empty);
-                cx.db += (Database.NextPos, ppos + 1);
-                Level3.Index? rx = null;
-                if (flags.HasFlag(ConstraintType.ForeignKey))
-                {
-                    rx = rt.FindPrimaryIndex(cx);
-                    var pb = rx?.keys.First();
-                    for (var b = columns.First(); b != null; b = b.Next())
-                    {
-                        lk = b.value();  // prepare a composite name for a new reference column
-                        k1 = cx.NameFor(lk) ?? lk.ToString();
-                        kn += (cm + k1);
-                        if (pb != null)
-                            pb = pb.Next();
-                        cm = ",";
-                        if (b.Next() == null)
-                            break;
-                    }
-                    tc += (TableColumn.Hide, true);
-                    if (rx!=null)
-                        tc += (TableColumn.KeyMap, rx.defpos);
-                } else // use the last column instead of making a new one
-                    tc = (cx.db.objects[tb.rowType.Last()?.value() ?? -1L] as TableColumn) ?? throw new PEException("71711");
-                var nst = cx.db.nextStmt;
-                var dm = Domain.Ref; //new Domain(nst, Qlx.REF, d);
-                cx.Add(dm);
-                var oi = tc.infos[cx.role.defpos]??new ObInfo((cm == ",") ? kn + ")" : k1, Grant.AllPrivileges);
-                // Add a reference column with a name from that column or the table and all foreign keys
-                // with the defpos of the index we are not creating
-                metadata -= Qlx.REFERENCES;// we don't want this in a TableColumn 
-                metadata += (Qlx.ACTION,new TInt(((int)flags)&0xfffffff0));
-                if (!metadata.Contains(Qlx.OPTIONAL))
-                    metadata += (Qlx.OPTIONAL, (tb is UDType)?TBool.False:TBool.True);
-                var c = new TConnector(Qlx.WITH, oi.name ?? "", rt, tc.defpos, true, metadata.ToString(), metadata);
-                if (c.cm is TMetadata mc && mc != metadata) // e.g. OPTIONAL may have been changed
-                    metadata = c.cm;
-                oi += (ObInfo._Metadata,metadata);
-                cx.db += rt + (Table.RefCols, rt.refCols + (tc.defpos, true));
-                tc = tc + (TableColumn._Table,tb.defpos) + (DBObject._Domain, dm) - Domain.Optional
-                    + (TableColumn.KeyMap,ppos)
-                    + (DBObject.Definer, cx.db.role.defpos) + (Level3.Index.RefTable, rt.defpos)
-                    + (DBObject.LastChange, ppos) + (DBObject.Infos,new BTree<long,ObInfo>(cx.db.role.defpos,oi));
-                cx.Install(tc);
-                cx.db += tc;
-                cx._Add(tc);
-                tb += (cx, tc);
-                var u = tb.colRefs[c.rd.defpos] ?? CTree<long, bool>.Empty;
-                tb += (Domain.ColRefs, tb.colRefs + (c.rd.defpos, u + (tc.defpos, true)));
-                cx.AddObs(tb);
+                tb += (defpos, keymap);
+                tb += (defpos - 1, new TInt((int)flags));
+                cx.Add(tb);
                 cx.db += tb;
-                if (cx.db is Transaction tr && tb.infos[tb.definer] is ObInfo ti)
-                    metadata = ti.metadata - Qlx.REFERENCES;
                 return tb;
             }
-   //         if (!x.flags.HasFlag(ConstraintType.NoBuild))
-                x = x.Build(cx);
-            var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
-            tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
+            var x = new Level3.Index(this, cx);
+            x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
+            cx.db += x; 
+            //         if (!x.flags.HasFlag(ConstraintType.NoBuild))
+            x = x.Build(cx);
+            var t = tb.indexes[x.keys.rowType] ?? CTree<long, bool>.Empty;
+            tb += (Table.Indexes, tb.indexes + (x.keys.rowType, t + (x.defpos, true)));
             cx.db += tb;
             x = x.AddRows(tb, cx); // ??
             cx.Install(x);
@@ -442,13 +380,13 @@ namespace Pyrrho.Level2
         /// <param name="tb">The table being indexed</param>
         /// <param name="cl">The defining positions of key TableColumns</param>
         /// <param name="fl">The constraint flags</param>
-        /// <param name="rx">The defining position of the referenced index (or -1)</param>
+        /// <param name="rt">The defining position of the referenced table(or -1)</param>
         /// <param name="af">The adapter function</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PIndex1(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, long pp, Database d) :
-            this(Type.PIndex1, nm, tb, cl, fl, rx, af, pp, d)
+        public PIndex1(string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long rt, string af, long pp, Database d) :
+            this(Type.PIndex1, nm, tb, cl, fl, rt, af, pp, d)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -456,15 +394,15 @@ namespace Pyrrho.Level2
         /// <param name="t">The PIndex type</param>
         /// <param name="nm">The name of the index</param>
         /// <param name="tb">The table being indexed</param>
-        /// <param name="cl">The defining positions of key TableColumns</param>
+        /// <param name="cl">The defining positions of key TableColumns is any</param>
         /// <param name="fl">The constraint flags</param>
-        /// <param name="rx">The defining position of the referenced index (or -1)</param>
+        /// <param name="rt">The defining position of the referenced table (or -1)</param>
         /// <param name="af">The adapter function</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PIndex1(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, long pp, Database d) :
-            base(t, nm, tb, cl, fl, rx, pp, d)
+        public PIndex1(Type t, string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long rt, string af, long pp, Database d) :
+            base(t, nm, tb, cl, fl, rt, pp, d)
         {
             adapter = af;
         }
@@ -511,18 +449,18 @@ namespace Pyrrho.Level2
         /// <param name="tb">The table being indexed</param>
         /// <param name="cl">The defining positions of key TableColumns</param>
         /// <param name="fl">The constraint flags</param>
-        /// <param name="rx">The defining position of the referenced index or referencing column</param>
+        /// <param name="rt">The defining position of the referenced table</param>
         /// <param name="af">The adapter function</param>
         /// <param name="md">The metadata flags</param>
         /// <param name="db">The database</param>
-        public PIndex2(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, TMetadata md, long pp, Database d) :
-            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, pp, d)
+        public PIndex2(string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long rt, string af, TMetadata md, long pp, Database d) :
+            this(Type.PIndex2, nm, tb, cl, fl, rt, af, md, pp, d)
         {
         }
-        protected PIndex2(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, TMetadata md, long pp, Database d)
-            : base(t, nm, tb, cl, fl, rx, af, pp, d)
+        protected PIndex2(Type t, string nm, Table tb, CTree<int,long> cl,
+            ConstraintType fl, long rt, string af, TMetadata md, long pp, Database d)
+            : base(t, nm, tb, cl, fl, rt, af, pp, d)
         {
             metadata = md;
         }

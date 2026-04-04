@@ -297,7 +297,7 @@ namespace Pyrrho.Level2
                 return new DBException("40012",usingTable, that, ct);
             return base.Conflicts(db, cx, that, ct);
         }
-        // Identify the remote columns of the restview and adjust the framing
+        // Identify the remote keymap of the restview and adjust the framing
         void FixCols(Context cx)
         {
             var vs = BTree<string, DBObject>.Empty;

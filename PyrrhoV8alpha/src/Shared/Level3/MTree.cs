@@ -46,12 +46,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a new empty MTree for given TreeInfo info
         /// </summary>
-        /// <param name="ks">The key Domain info</param>
+        /// <param name="ks">The key columns info</param>
         /// <param name="ln">The portion of the key implemented by this MTree</param>
-        internal MTree(Domain ks,TreeBehaviour nd,int ff)
+        internal MTree(Domain kt,TreeBehaviour nd,int ff)
         {
             count = 0;
-            info = ks;
+            info = kt;
             off = ff;
             nullsAndDuplicates = nd;
         }
@@ -113,7 +113,7 @@ namespace Pyrrho.Level3
             if (filt==null)
             {
                 filt = CList<TypedValue>.Empty;
-                for (var b = info.rowType.First(); b != null; b = b.Next())
+                for (var b = info.First(); b != null; b = b.Next())
                     filt += TNull.Value;
             }
             if (filt[off] is TypedValue v && v is not TNull)
@@ -188,7 +188,7 @@ namespace Pyrrho.Level3
                 new TChar("1") : new TInt(1));
         }
         /// <summary>
-        /// Return the tree defined by the off-th key columns, or an empty one
+        /// Return the tree defined by the off-th key keymap, or an empty one
         /// </summary>
         /// <param name="k">A tree of key column values</param>
         /// <param name="off">An index into k</param>

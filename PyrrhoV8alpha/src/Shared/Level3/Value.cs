@@ -384,10 +384,7 @@ namespace Pyrrho.Level3
                         && sv[defpos] is TypedValue lv && lv != TNull.Value)
                             return lv;
             if (name != null && cx.names[name].Item2 is long p)
-            {
-                Console.WriteLine("Named eval for " + name);
                 return cx.values[p] ?? TNull.Value;
-            }
             return _Default();
         }
         internal override void Set(Context cx, TypedValue v)
@@ -452,7 +449,7 @@ namespace Pyrrho.Level3
             return r;
         }
         /// <summary>
-        /// During From construction we want the From to supply the columns needed by a query.
+        /// During From construction we want the From to supply the keymap needed by a query.
         /// We will look these up in the souurce table ObInfo. So now we create a derived
         /// Selection structure that contains only simple SqlValues or SqlTableCols.
         /// The SqlValues will have usable uids. The SqlTableCol uids will need to be replaced,
@@ -523,7 +520,7 @@ namespace Pyrrho.Level3
             return dm;
         }
         /// <summary>
-        /// Transform this, replacing aggregation subexpressions by aggregation columns of dm
+        /// Transform this, replacing aggregation subexpressions by aggregation keymap of dm
         /// The expression must be functionally dependent on dm
         /// </summary>
         /// <param name="c"></param>
@@ -682,7 +679,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The parser is constructing a new RowSet rs whose proposed properties are in m
         /// and whose defining position is ap, and our defpos is > ap.
-        /// If our defpos>ap, there might be a column in m that could replace us: columns
+        /// If our defpos>ap, there might be a column in m that could replace us: keymap
         /// in sr have already been checked.
         /// </summary>
         /// <param name="cx">The context</param>
@@ -718,7 +715,7 @@ namespace Pyrrho.Level3
                         xs += (b.key().Replaced(cx), cx.ReplacedTlb(b.value()));
                     m += (Table.Indexes, xs);
                 }
-                if (m[Index.Keys] is Domain d && d.Length != 0)
+                if (m[Index.Keys] is Domain d && d.Length!=0)
                     m += (Index.Keys, d.Replaced(cx));
             }
             return (new BList<DBObject>(r), m);
@@ -936,7 +933,8 @@ namespace Pyrrho.Level3
                 if (tv is TRow rw)
                     return rw[sPos] ?? dv;
                 if (tv is TInt ti && cx.obs[sc.sPos] is TableColumn tc
-                    && cx._Ob(tc.toType) is Table nt && nt.tableRows[ti.ToInt()??-1L] is TableRow tr)
+                    && tc.domain.kind==Qlx.REF && tc.domain.elType is Domain rd
+                    && cx._Ob(rd.defpos) is Table nt && nt.tableRows[ti.ToInt()??-1L] is TableRow tr)
                     return tr.vals[sPos] ?? dv;
             }
             return cx.values[defpos] ?? cx.values[sPos] ?? dv;
@@ -1893,7 +1891,7 @@ namespace Pyrrho.Level3
         }
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
-            return (cx.obs[target] as QlValue)?.KnownBy(cx, q, ambient) == true
+            return (cx.obs[target] as QlValue ?? cx.obs[from] as QlValue)?.KnownBy(cx, q, ambient) == true
                 || base.KnownBy(cx, q, ambient);
         }
         internal override TypedValue _Eval(Context cx)
@@ -4023,7 +4021,7 @@ namespace Pyrrho.Level3
         }
     }
     /// <summary>
-    /// Prepare an QlValue with reified columns for use in trigger
+    /// Prepare an QlValue with reified keymap for use in trigger
     /// 
     /// </summary>
     internal class SqlOldRow : SqlRow
@@ -11809,8 +11807,8 @@ cx.obs[high] is not QlValue hi)
             {
                 var vp = cx.GetUid();
                 TableRowSet ts = new(cx.GetUid(), cx, nt.defpos, ap);
-                var ll = BList<(QlValue,TableColumn)>.Empty; // expressions and target columns
-                var iC = CTree<int,long>.Empty; // columns for the list of values for the SqlInsert
+                var ll = BList<(QlValue,TableColumn)>.Empty; // expressions and target keymap
+                var iC = CTree<int,long>.Empty; // keymap for the list of values for the SqlInsert
                 var tb = ts.First();
                 for (var bb = ts.rowType.First(); bb != null && tb != null; bb = bb.Next(), tb = tb.Next())
                     if (bb.value() is long bq && cx.NameFor(bq) is string n9
@@ -11823,9 +11821,9 @@ cx.obs[high] is not QlValue hi)
                         ll += (sv,co);
                         iC += ((int)iC.Count, tb.value());
                     }
-                // ll generally has fewer columns than dt
+                // ll generally has fewer keymap than dt
                 // carefully construct what would happen with ordinary SQL INSERT VALUES
-                // we want dm to be constructed as having a subset of fm's columns using fm's iSMap
+                // we want dm to be constructed as having a subset of fm's keymap using fm's iSMap
                 var np = cx.db.nextPos;
                 var dr = CTree<int,long>.Empty;
                 var ds = CTree<long, Domain>.Empty;
@@ -11847,8 +11845,7 @@ cx.obs[high] is not QlValue hi)
                 QlValue n = rn;
                 n = new SqlRowArray(vp, cx, dm, new CList<long>(n.defpos));
                 var sce = n.RowSetFor(ap,vp, cx, fm.rowType, fm.representation)
-                    + (cx, RowSet.RSTargets, fm.rsTargets)
-                    + (RowSet.Asserts, RowSet.Assertions.AssignTarget);
+                    + (cx, RowSet.RSTargets, fm.rsTargets);
                 var s = new SqlInsert(cx.GetUid(), fm, sce.defpos, ts + (Domain.RowType, iC),
                     new BTree<long,object>(SqlInsert.ForNode,RefNode));
                 cx.Add(s);
@@ -12142,7 +12139,7 @@ cx.obs[high] is not QlValue hi)
                 }
            /*         var mp = dm?.model[ec.cn]?[ec.q];
                     for (var b = dm?.colRefs.First(); b != null; b = b.Next()) // the domains that dm references
-                        // b.key() a referenced domain, b.value() the table columns that gets there
+                        // b.key() a referenced domain, b.value() the table keymap that gets there
                         for (var c = b.value().First(); c != null; c = c.Next())
                             if (cx._Ob(c.key()) is TableColumn cr)
                                 for (var e = .First(); e != null; e = e.Next())

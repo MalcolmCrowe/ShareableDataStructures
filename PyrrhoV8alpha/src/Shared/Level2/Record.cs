@@ -54,8 +54,8 @@ namespace Pyrrho.Level2
         public TableRow? prevrec = null;
 
         // For transaction validation, we need snapshots of all structures referencing the tablerow
-        // remember, for indexes Domain gives the index Key columns
-        public CTree<Domain, CTree<long, bool>> inC = CTree<Domain, CTree<long, bool>>.Empty;
+        // remember, for indexes Domain gives the index Key keymap
+        public CTree<CTree<int,long>,CTree<long, bool>> inC = CTree<CTree<int,long>, CTree<long, bool>>.Empty;
         public CTree<long, CTree<long, CTree<long, bool>>> siC
             = CTree<long, CTree<long, CTree<long, bool>>>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
@@ -156,21 +156,23 @@ namespace Pyrrho.Level2
                 for (var b = tb.super.First(); b != null; b = b.Next())
                     suT += (b.key().defpos, true);
                 // (compatibility) compute the reference value if not provided (actual Null may be ok if column  optional)
+                if (tb.colRefs.Count>0L)
                 for (var b = tb.First(); b != null; b = b.Next())
                     if (rdr.context.db.objects[b.value()] is TableColumn tc
-                        && rdr.context._Ob(tc.toType) is Table rt
+                        && tc.domain.kind==Qlx.REF
+                        && rdr.context.db.objects[tc.domain.elType?.defpos??-1L] is Table rt
                         && (!fields.Contains(tc.defpos))
                         && rt.FindPrimaryIndex(rdr.context) is Level3.Index px
-                        && rdr.context._Ob(tc.keyMap) is Level3.Index rx)
+                        && tc.keyMap!=CTree<int,long>.Empty)
                     { 
                         var k = CList<TypedValue>.Empty;
-                        for (var c = rx.keys.First(); c != null; c = c.Next())
+                        for (var c = px.keys.First(); c != null; c = c.Next())
                         {
                             var p = c.key();
                             if (!rdr.context.db.objects.Contains(p) && fields[p] is TypedValue v)
                                 k += v;
                         }
-                        var rp = rx.rows?.Get(k, 0); // maybe optional
+                        var rp = px.rows?.Get(k, 0); // maybe optional
                         if (rp!=null)
                             fields += (tc.defpos,new TInt(rp??-1L));
                     }
@@ -298,7 +300,7 @@ namespace Pyrrho.Level2
                   /*      if (tabledefpos != rec.tabledefpos)
                             break; */
                         for (var b = rec.inC.First(); b != null; b = b.Next())
-                            if (MakeKey(b.key().rowType).CompareTo(rec.MakeKey(b.key().rowType)) == 0)
+                            if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
                                 return new DBException("40026", that);
                         break;
                     } 
@@ -368,11 +370,13 @@ namespace Pyrrho.Level2
             for (var b = tt.colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is TableColumn co
-                        && cx.db.objects[co.toType] is Table rt)
+                        && co.domain.kind==Qlx.REF
+                        && cx.db.objects[co.domain.elType?.defpos??-1L] is Table rt)
                     {
-                        var rr = rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L]
-                            ?? throw new DBException("23000", "referent not found");
-                        vs = Add(tt, vs, co, rt, rr, cx);
+                        //             var rr = rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L]
+                        //                 ?? throw new DBException("23000", "referent not found");
+                        if (rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L] is TableRow rr)
+                            vs = Add(tt, vs, co, rt, rr, cx);
                     }
             if (vs != now.vals)
                 now = new TableRow(now, tt.defpos, vs);
@@ -443,8 +447,8 @@ namespace Pyrrho.Level2
                 if (tb.representation[p] is not Domain dv)
                     throw new PEException("PE10701");
                 if (fields[p] is TypedValue v && v != TNull.Value)
-                    if (dv is NodeType nt 
-                        && (cx.db.objects[nt.defpos] as NodeType)?.tableRows.Contains(v.ToLong() ?? -1L)==true)
+                    if (dv.kind==Qlx.REF && dv.elType is Table nt 
+                        && (cx.db.objects[nt.defpos] as Table)?.tableRows.Contains(v.ToLong() ?? -1L)==true)
                         continue;
                     else if (dv.alts != CTree<Domain,bool>.Empty)
                     {

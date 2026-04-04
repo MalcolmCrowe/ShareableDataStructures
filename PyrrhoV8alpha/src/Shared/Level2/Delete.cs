@@ -326,7 +326,7 @@ namespace Pyrrho.Level2
                     }
             for (var b = tb.rowType.First(); b != null; b = b.Next())
                 if (cx._Ob(b.value()) is TableColumn co 
-                && cx._Ob(co.toType) is Table rt)
+                && co.domain.kind==Qlx.REF && cx.db.objects[co.domain.elType?.defpos??-1L] is Table rt)
                 {
                     var os = rt.sindexes;
                     var cp = co.defpos;

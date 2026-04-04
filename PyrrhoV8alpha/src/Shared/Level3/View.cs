@@ -94,7 +94,7 @@ namespace Pyrrho.Level3
             cx.instSLast = framing.obs.Last()?.key() ?? -1L;
             var ni = cx.GetUid();
             cx.uids += (defpos, ni);
-            cx.Add((Framing)framing.Fix(cx)); // need virtual columns
+            cx.Add((Framing)framing.Fix(cx)); // need virtual keymap
             var ns = (Domain)st.Fix(cx);
             var dt = (Domain)Fix(cx);
             var vi = ((View)New(cx.Fix(mem))).Relocate(ni) + (ViewResult,ns.defpos) + (_From,lp);
@@ -145,8 +145,8 @@ namespace Pyrrho.Level3
         /// and simplify everything by using the constant value.
         /// 5.	If a view column is aggregated, 
         /// we can perform some or all of the aggregation on the target, 
-        /// but we may need to group by the other visible remote columns.
-        /// 6.	With joins we need to preserve columns referenced in the join condition, 
+        /// but we may need to group by the other visible remote keymap.
+        /// 6.	With joins we need to preserve keymap referenced in the join condition, 
         /// and keep track of keys. Then perform the join with the target instead.
         /// </summary>
         /// <param name="cx"></param>
@@ -370,7 +370,7 @@ namespace Pyrrho.Level3
     /// compensated by having fewer requests and reduced network traffic.
     /// If usage becomes costly or is abused, the provider can obviously
     /// withdraw the facility or provide another view for simpler access.
-    /// Exports are built from the RestView's remote columns together with 
+    /// Exports are built from the RestView's remote keymap together with 
     /// UsingOperands supplied as literals for the RestRowSet Build request;
     /// exports can include grouping ids, subquery alias etc.
     /// </summary>
@@ -439,20 +439,20 @@ namespace Pyrrho.Level3
         /// An abstract RestView is created by PRestView.Install that has 
         /// a domain with column uids in the executable range. 
         /// The first step here is to relocate this domain to use new heap uids, 
-        /// SqlValues for its virtual columns.
+        /// SqlValues for its virtual keymap.
         /// Then most of the work is for RestViews that have a usingTable.
         /// In that case we set up a template RestRowSet that is instanced
         /// at Build time for each row found in the usingTable.
         /// We don't want to change the processing used for Views but
         /// for RowSetUsing we need to provide for a Build step and
-        /// distinguish the columns coming from the using table from the
-        /// remote columns that will come from the instanced RestRowSets.
+        /// distinguish the keymap coming from the using table from the
+        /// remote keymap that will come from the instanced RestRowSets.
         /// To do this, RestRowSetUsing overrides ComputeNeeds to add the
-        /// columns coming from the usingTable, so that the restview's uids 
+        /// keymap coming from the usingTable, so that the restview's uids 
         /// are used for these.
         /// </summary>
         /// <param name="cx"></param>
-        /// <param name="cs">The insert columns if provided</param>
+        /// <param name="cs">The insert keymap if provided</param>
         /// <returns>A RestRowSet or RestRowSetUsing</returns>
         internal override DBObject Instance(long lp, Context cx, RowSet? ur = null)
         {
@@ -461,7 +461,7 @@ namespace Pyrrho.Level3
             cx.instDFirst = (cx.parse.HasFlag(ExecuteStatus.Obey)) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (representation.First()?.key() ?? 0L) - 1;
             cx.instSLast = representation.Last()?.key() ?? -1L;
-            // construct our instanced virtual columns, and the instanced domain
+            // construct our instanced virtual keymap, and the instanced domain
             var rt = CTree<int,long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ns = ur?.names??Names.Empty;
@@ -523,7 +523,7 @@ namespace Pyrrho.Level3
                     var vx = cx.names[c].Item2; // a reference in q to this
                     if (vx == qx || qx <0)
                         continue;
-                    if (vx > 0 && qx > 0 && qx!=vx &&  // substitute the references for the instance columns
+                    if (vx > 0 && qx > 0 && qx!=vx &&  // substitute the references for the instance keymap
                             cx.obs[qx] is QlValue ov &&
                             cx.obs[vx] is QlValue tv)
                     {
@@ -540,12 +540,10 @@ namespace Pyrrho.Level3
             } 
             var m = irs.mem;
             var rt = irs.rsTargets;
-            var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
+            var mg = CTree<long, CTree<long, bool>>.Empty; // matching keymap
             var tn = id.ident; // the object name
-            var fa = (pr == Grant.Privilege.Select) ? Assertions.None : Assertions.AssignTarget;
-            fa |= irs.asserts & Assertions.SpecificRows;
             m = m + (ObInfo.Name, tn) /*+ (Target, irs.target)*/ + (Matching, mg)
-                   + (RSTargets, rt) + (Asserts, fa);
+                   + (RSTargets, rt);
             if (a != null)
                 m += (_Alias, a);
             if (irs.keys != Row)
@@ -575,7 +573,7 @@ namespace Pyrrho.Level3
             var md = infos[ro.defpos] ?? throw new DBException("42105").Add(Qlx.VIEW);
             cx.Add(framing);
             var versioned = md.metadata.Contains(Qlx.ENTITY);
-            var key = tb.BuildKey(cx, out Domain keys);
+            var key = tb.BuildKey(cx, out CTree<int,long> keys);
             var fields = CTree<string, bool>.Empty;
             var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
@@ -591,13 +589,13 @@ namespace Pyrrho.Level3
                 var p = b.key();
                 var dt = b.value();
                 var tn = (dt.kind == Qlx.TYPE) ? dt.name : dt.SystemType.Name;
-                if (keys != null)
+                if (keys != CTree<int,long>.Empty)
                 {
-                    int j;
-                    for (j = 0; j < keys.Length; j++)
-                        if (keys[j] == p)
+                    int j=0;
+                    for (var c=keys.First(); c!=null;c=c.Next(),j++)
+                        if (c.value() == p)
                             break;
-                    if (j < keys.Length)
+                    if (j < keys.Count)
                         sb.Append("  [Key(" + j + ")]\r\n");
                 }
                 dt.FieldType(cx, sb);

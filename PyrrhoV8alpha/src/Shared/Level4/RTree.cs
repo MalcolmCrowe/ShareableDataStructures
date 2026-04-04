@@ -26,7 +26,7 @@ namespace Pyrrho.Level4
     internal class RTree
     {
         internal readonly long defpos; // RowSet
-        internal Domain keyType;
+        internal Domain keyType; // Must be an actual domain for key comparison
         internal readonly MTree mt;
         /// <summary>
         /// rows is a set of snapshots of cx.cursors, taken during Build.
