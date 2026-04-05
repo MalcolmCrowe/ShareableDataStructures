@@ -295,6 +295,8 @@ namespace Pyrrho.Level3
         public static Database operator +(Database d, DBObject x)
         {
             var m = d.mem;
+            if (x.defpos > Transaction.TransPos && d is not Transaction)
+                return d;
             if (d.mem[x.defpos] == x)
                 return d;
             m += (x.defpos, x);
@@ -311,6 +313,8 @@ namespace Pyrrho.Level3
         }
         public static Database operator+(Database d,Domain dm)
         {
+            if (dm.defpos > Transaction.TransPos && d is not Transaction)
+                return d;
             var m = d.mem;
             if (dm.name.Length == 0 ||  dm.defpos == -1L)
             {

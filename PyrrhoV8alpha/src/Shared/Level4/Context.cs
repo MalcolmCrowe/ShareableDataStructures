@@ -874,7 +874,6 @@ namespace Pyrrho.Level4
                 var dp = depths[ob.depth] ?? ObTree.Empty;
                 depths += (ob.depth, dp + (ob.defpos, ob));
             }
-            db += ob;
             return ob;
         }
         /// <summary>
