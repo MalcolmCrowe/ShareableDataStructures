@@ -3422,10 +3422,12 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="ty">the kind of literal</param>
         /// <param name="v">the value of the literal</param>
-        public SqlLiteral(long dp, TypedValue v, Domain? td=null) 
-            : base(dp, BTree<long, object>.Empty + (_Domain, v.dataType) + (_Val, v))
+        public SqlLiteral(long dp, TypedValue v, Domain? td = null)
+            : base(dp, BTree<long, object>.Empty + (_Domain, td??v.dataType) + (_Val, v))
         {
-            if (td != null  && v.dataType is not null && !td.CanTakeValueOf(v.dataType))
+ //           if (td is null && v is TRef)
+    //           throw new DBException("PE43121"); // td must be specified for TRef
+            if (td is not null && v.dataType is not null && !td.CanTakeValueOf(v.dataType))
                 throw new DBException("22000", v);
             if (dp == -1L)
                 throw new PEException("PE999");
@@ -10816,7 +10818,7 @@ cx.obs[high] is not QlValue hi)
             for (var t = rhs.First(); t is not null; t = t.Next())
             {
                 var c = t.value().Coerce(cx, a);
-                b = b || (c is TRef rc && rc.elType?.HasValue(cx,c)==true);
+                b = b || (c is TRef rc && rc.elType.HasValue(cx,c)==true);
             }
             return TBool.For(b == found);
         }

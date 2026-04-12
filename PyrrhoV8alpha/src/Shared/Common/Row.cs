@@ -354,14 +354,16 @@ namespace Pyrrho.Common
     // shareable
     internal class TRef : TInt
     {
-        internal readonly Domain? elType; // null allowed for Record reference
+        internal readonly Domain elType;
         internal TRef(long p, Domain typ) : base(typ, p)
         {
+//            if (dataType.kind != Qlx.REF)  
+//                throw new PEException("01234");
             elType = typ;
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TRef((cx.uids[value] is long p && p!=0L)?p:value,(Domain?)elType?.Fix(cx)??Domain.Null);
+            return new TRef((cx.uids[value] is long p && p!=0L)?p:value,(Domain)elType.Fix(cx));
         }
         internal override long? ToLong()
         {
@@ -371,21 +373,19 @@ namespace Pyrrho.Common
         {
             var sb = new StringBuilder();
             sb.Append(DBObject.Uid(value));
-            if (elType is not null)
+            sb.Append('[');
+            if (elType.alts != CTree<Domain, bool>.Empty)
             {
-                sb.Append('['); 
-                if (elType.alts!=CTree<Domain,bool>.Empty)
+                var cm = "";
+                for (var b = elType.alts.First(); b != null; b = b.Next())
                 {
-                    var cm = "";
-                    for (var b=elType.alts.First();b!=null;b=b.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(DBObject.Uid(b.key().defpos));
-                    }
-                } else
-                    sb.Append(DBObject.Uid(elType.defpos));  
-                sb.Append(']');
+                    sb.Append(cm); cm = ",";
+                    sb.Append(DBObject.Uid(b.key().defpos));
+                }
             }
+            else
+                sb.Append(DBObject.Uid(elType.defpos));
+            sb.Append(']');
             return sb.ToString();
         }
     } 

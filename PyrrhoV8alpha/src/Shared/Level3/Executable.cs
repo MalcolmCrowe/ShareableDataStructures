@@ -4205,12 +4205,12 @@ namespace Pyrrho.Level3
             AtSchemaLevel = -333, // bool
             GraphExps = -307; // CList<CList<GqlNode>> GqlNode (alternately with SqlEdges)
         // In MatchStatement we can also have SqlNodes that are SqlPaths 
-        internal CList<CList<GqlNode>> graphExps =>
-            (CList<CList<GqlNode>>)(mem[GraphExps] ?? CList<CList<GqlNode>>.Empty);
+        internal BList<ObTree> graphExps =>
+            (BList<ObTree>)(mem[GraphExps] ?? BList<ObTree>.Empty);
         internal CList<long> stms => 
             (CList<long>?)mem[ConditionalStatement.Then] ?? CList<long>.Empty;
         internal bool atSchemaLevel => (bool)(mem[AtSchemaLevel] ?? false);
-        public GraphInsertStatement(long dp, bool sch, CList<CList<GqlNode>> ge, CList<long> th)
+        public GraphInsertStatement(long dp, bool sch, BList<ObTree> ge, CList<long> th)
             : base(dp, new BTree<long, object>(GraphExps, ge) + (ConditionalStatement.Then, th) +(AtSchemaLevel,sch)
                   + (Gql,GQL.InsertGraphPattern))
         { }
@@ -4235,7 +4235,7 @@ namespace Pyrrho.Level3
             if (cx.next is Context px)
                 cx.names += px.names;
             for (var b = graphExps.First(); b != null; b = b.Next())
-                if (b.value() is CList<GqlNode> ge)
+                if (b.value() is ObTree ge)
                 {
                     var gb = ge.First();
                     var se = gb?.value() is GqlEdge; // GqlReference case is handled below
@@ -4372,7 +4372,7 @@ namespace Pyrrho.Level3
         {
             var r = CTree<long, bool>.Empty;
             for (var b = graphExps.First(); b != null; b = b.Next())
-                if (b.value() is CList<GqlNode> nl)
+                if (b.value() is ObTree nl)
                     for (var c = nl.First(); c != null; c = c.Next())
                         if (c.value() is GqlNode sn)
                             r += (sn.domain.defpos, true);
@@ -5798,7 +5798,7 @@ namespace Pyrrho.Level3
         ForStatement,
         FullEdgePattern,
         GraphExpression,
-        GraphPattern,
+        Graph,
         GraphPatternBindingTable,
         GraphReference,
         GraphReferenceValueType,

@@ -883,10 +883,15 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                         }
                         return r;
                     }
+                case Qlx.REF:
+                    {
+                        var o = rdr.GetInteger();
+                        return new TRef((long)o,elType??Content);
+                    }
                 case Qlx.INTEGER:
                     {
                         var o = rdr.GetInteger();
-                        return new TInteger(this, (Integer)o);
+                        return new TInteger(this, o);
                     }
                 case Qlx.NUMERIC: return new TNumeric(this, rdr.GetDecimal());
                 case Qlx.REAL0: // merge with REAL (an anomaly happened between v5.0 and 5.5)
@@ -946,7 +951,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                             m += el.Get(log, rdr, pp);
                         return m;
                     }
-                case Qlx.REF:
                 case Qlx.ROW:
                 case Qlx.TABLE:
                     {
@@ -1091,7 +1095,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         {
             int j = 1;
             for (var b = alts.First(); b != null; b = b.Next(), j++)
-                if (b.key().EqualOrStrongSubtypeOf(dt) || (b.key().elType?.EqualOrStrongSubtypeOf(dt)==true))
+                if (b.key().EqualOrStrongSubtypeOf(dt) || (b.key().elType?.EqualOrStrongSubtypeOf(dt) == true))
                     return (j, b.key());
             return (-1, dt);
         }
@@ -1190,12 +1194,12 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.INTERVAL: wr.WriteByte((byte)DataType.Interval); break;
                 case Qlx.NODETYPE:
                 case Qlx.EDGETYPE:
+                case Qlx.REF:
                     wr.WriteByte((byte)DataType.Integer); break;
                 case Qlx.TYPE:
                     wr.WriteByte((byte)DataType.DomainRef);
                     var nd = (Domain?)wr.cx._Ob(defpos) ?? Content; // without nms
                     wr.PutLong(wr.cx.db.Find(nd)?.defpos ?? Content.defpos); break;
-                case Qlx.REF:
                 case Qlx.ROW: wr.WriteByte((byte)DataType.Row); break;
                 default:
                     if (EqualOrStrongSubtypeOf(nt) && wr.cx.db.Find(this) is Domain d
@@ -1916,6 +1920,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                      return true;
                  if (defpos==EdgeType.defpos && dt is EdgeType) 
                      return true; */
+            if (kind == Qlx.REF && dt.kind == Qlx.INTEGER)
+                return true; //??
             if (kind == Qlx.ANY)
                 return true;
             if ((dt.kind == Qlx.TABLE || dt.kind == Qlx.ROW) && (int)dt.rowType.Count == 1
@@ -2980,7 +2986,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     if (d.kind == Qlx.TABLE || d.kind == Qlx.TYPE
                         || d.kind == Qlx.NODETYPE || d.kind == Qlx.EDGETYPE)
                     {
-                        if (v is TRef rf && d.defpos == rf.elType?.defpos)
+                        if (v is TRef rf && d.defpos == rf.elType.defpos)
                             return v;
                         if (v is TInt ri && cx._Ob(d.defpos) is Table t && ri.ToLong() is long rp
                             && t.tableRows.Contains(rp))
@@ -2995,7 +3001,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             if (kind == Qlx.TABLE || kind == Qlx.TYPE
                 || kind == Qlx.NODETYPE || kind == Qlx.EDGETYPE)
             {
-                if (v is TRef rf && defpos == rf.elType?.defpos)
+                if (v is TRef rf && defpos == rf.elType.defpos)
                     return v;
                 if (v is TInt ri && cx._Ob(defpos) is Table t && ri.ToLong() is long rp
                     && t.tableRows.Contains(rp))

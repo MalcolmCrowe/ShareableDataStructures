@@ -49,7 +49,7 @@ namespace Pyrrho.Level3
             LastData = -258, // long
             MultiplicityIndexes = -467, // CTree<long,long> Column,Index
             RefCols = -271, // CTree<long,bool> TableColumn referencing this table 
-            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,CTree<long,bool>>>>
+            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,bool>>>
                                   // referencedTable.sindexes[referencedrec][referencingcol][referencingrec]
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> CheckFields
@@ -1200,7 +1200,7 @@ namespace Pyrrho.Level3
             }
             else
             {
-                Domain? dm = nt.FindOrCreateRefDomain(cx, tc.rd);
+                Domain? dm = FindOrCreateRefDomain(cx, tc.rd);
                 tn = new TConnector(tc.q, tc.cn, tc.rd, cx.db.nextPos, tc.fk, tc.cs, tc.cm);
                 var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn) + (Qlx.OPTIONAL, TBool.False);
                 var pc = new PColumn3(ut, cn, dm, "", md, nst, cx.db.nextPos, cx, false);
@@ -1216,11 +1216,11 @@ namespace Pyrrho.Level3
             return ((Table)cx.Add(ut), tn);
         }
 
-        internal Domain FindOrCreateRefDomain(Context cx, Domain rd)
+        internal static Domain FindOrCreateRefDomain(Context cx, Domain rd)
         {
             var np = cx.db.nextPos;
             var dm = (cx.db.refTypes[rd] is long rp && rp != 0L) ? cx._Ob(rp) as Domain :
-                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", Qlx.REF, 0, 0, CharSet.UCS, culture.Name, "",
+                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", Qlx.REF, 0, 0, CharSet.UCS, rd.culture.Name, "",
                 rd, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
             if (dm is null) throw new PEException("PE33611");
             if (dm.defpos == np)
@@ -1564,7 +1564,8 @@ namespace Pyrrho.Level3
             for (var b = e.docValue.First(); b != null; b = b.Next())
                 if (!(ni.names.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
                 {
-                    var nc = new PColumn3(r, b.key(), b.value().domain,
+                    var dm = (b.value() is SqlLiteral sl) ? sl.domain : b.value().domain;
+                    var nc = new PColumn3(r, b.key(), dm,
                         ni.metadata.ToString(), ni.metadata, cx.db.nextStmt, cx.db.nextPos, cx, true);
                     r = (Table?)cx.Add(nc)
                         ?? throw new DBException("42105");

@@ -5471,7 +5471,7 @@ namespace Pyrrho.Level4
                                         throw new DBException("23000");
                                 }
                                 else
-                                    v = new TRef(Int.Coerce(cx, v).ToLong() ?? -1L, rt);
+                                    v = Table.FindOrCreateRefDomain(cx,rt).Coerce(cx,v);
                             }
                             cx.CheckMetadata(tp, v);
                             vs += (tp, v);

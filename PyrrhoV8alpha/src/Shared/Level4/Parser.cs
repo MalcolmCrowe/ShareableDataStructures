@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Collections;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -1578,7 +1579,7 @@ namespace Pyrrho.Level4
             return r;
         }
         /// <summary>
-        /// Create: CREATE GraphPattern {',' GraphPattern } [THEN Statements END].
+        /// Create: CREATE Graph {',' Graph } [THEN Statements END].
         /// A graph fragment results in the addition of at least one Record
         /// in a node type: the node type definition comprising a tble and UDT may 
         /// be created and/or altered on the fly, and may extend to further edge and edge types.
@@ -1763,9 +1764,14 @@ namespace Pyrrho.Level4
             // state M9
             return r;
         }
-        CList<CList<GqlNode>> ParseInsertGraphList(bool sch)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="sch"></param>
+        /// <returns></returns>
+        BList<ObTree> ParseInsertGraphList(bool sch)
         {
-            var svgs = CList<CList<GqlNode>>.Empty;
+            var svgs = BList<ObTree>.Empty;
             // the current token is LPAREN
             while (tok == Qlx.LPAREN || tok==Qlx.LBRACK)
             {
@@ -1775,14 +1781,14 @@ namespace Pyrrho.Level4
             };
             return svgs;
         }
-        CList<GqlNode> ParseInsertGraphStep(bool sch)
+        ObTree ParseInsertGraphStep(bool sch)
         {
-            // the current token is LPAREN or LBRACK
-            var svg = CList<GqlNode>.Empty;
+            var svg = ObTree.Empty;
             for (; ; )
             {
+                // the current token is LPAREN or LBRACK
                 (var n, svg) = ParseInsertGraphItem(svg, sch);
-                while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE || tok == Qlx.ARROWBASETILDE)
+                while (Match(Qlx.RARROW,Qlx.ARROWBASE,Qlx.ARROWBASETILDE,Qlx.ARROWL,Qlx.ARROWR))
                     (n, svg) = ParseInsertGraphItem(svg, sch, n);
                 if (Match(Qlx.AMPERSAND))
                     Next();
@@ -1807,19 +1813,21 @@ namespace Pyrrho.Level4
             cx.parsingGQL = pm; 
             return (tgs, svg);
         }
+        static int _pigi=0;
         /// <summary>
-        /// GraphPattern: Node Path .
-        /// Path: { Edge Node }.
+        /// Graph: Node Path.
+        /// Path: { Edge (Node | ('{' Graph '}')}.
         /// Node: '(' GraphItem ')'.
         /// Edge: '-[' GraphItem ']->' | '<-[' GraphItem ']-' | '->'  | '<-'  .
         /// GraphItem: [Value][Label][doc]. // labels are in role.dbobjects or made PTypes, become longs
         /// Label: ':' (id|Value){(':'|'&')(id|Value)}. // in this version that is the limit of complexity
         /// </summary>
         /// <param name="svg">The graph fragments so far</param>
-        /// <param name="ln">The node to attach the new node or edge</param>
-        /// <returns>An GqlNode for the new node or edge and the tree of all the graph fragments</returns>
-        (GqlNode, CList<GqlNode>) ParseInsertGraphItem(CList<GqlNode> svg, bool sch = false, GqlNode? ln = null)
+        /// <param name="ln">A list of preceding nodes to attach the new nodes or edges</param>
+        /// <returns>A list of preceding nodes with the new one at the end, and the list of all the fragments seen</returns>
+        (GqlNode, ObTree) ParseInsertGraphItem(ObTree svg, bool sch = false, GqlNode? ln = null)
         {
+            var pigi = ++_pigi;
             var og = lxr.tgs;
             lxr.tgs = CTree<long, TGParam>.Empty;
             var ro = cx.role;
@@ -1828,32 +1836,30 @@ namespace Pyrrho.Level4
                 Next();
             var cn = (lxr.val != TNull.Value) ? lxr.val.ToString() : "";
             var ab = Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW, Qlx.ARROWR, Qlx.ARROWL,
-                Qlx.TILDE,Qlx.ARROWBASETILDE,Qlx.RBRACKTILDE);
+                Qlx.TILDE, Qlx.ARROWBASETILDE, Qlx.RBRACKTILDE);
             TypedValue ac = TNull.Value;
-            if (ln != null && (ab==Qlx.ARROWBASE||ab==Qlx.RARROW || ab==Qlx.ARROWR || ab==Qlx.ARROWL
-                ||ab==Qlx.TILDE || ab==Qlx.RBRACKTILDE || ab==Qlx.ARROWBASETILDE))
+            if (ln != null && (ab == Qlx.ARROWBASE || ab == Qlx.RARROW || ab == Qlx.ARROWR || ab == Qlx.ARROWL
+                || ab == Qlx.TILDE || ab == Qlx.RBRACKTILDE || ab == Qlx.ARROWBASETILDE))
                 ac = new TConnector(ab, cn, ln.domain);
- //           if (ln is not GqlEdge || !Match(Qlx.LPAREN)) // nonGQL node->node
- //           {
             var b = new Ident(this);
             var bound = cx.bindings.Contains(cx.names[b.ident].Item2);
             var nb = b;
             long id = -1L;
             var lp = LexLp();
             QlValue? nd = null;
-            Domain? dm =  null;
+            Domain? dm = null;
             if (tok == Qlx.Id)
             {
                 if (cx.role.dbobjects.Contains(b.ident))
                     throw new DBException("42104", b.ident);
                 var ix = cx.names[b.ident].Item2;
-                if (ix<=0L)
+                if (ix <= 0L)
                 {
                     id = lp;
                     if (cx._Ob(b.uid) is DBObject bo)
-                        cx.Add(b.ident,lp,bo);
+                        cx.Add(b.ident, lp, bo);
                     else
-                        cx.names+=b;
+                        cx.names += b;
                 }
                 else
                 {
@@ -1871,15 +1877,15 @@ namespace Pyrrho.Level4
             Qlx tk = tok;
             if (tok == Qlx.COLON)
             {
-                if (bound && b.ident!="COLON")
+                if (bound && b.ident != "COLON")
                     throw new DBException("42104", b.ident);
                 Next();
-                dm = ParseLabelClause((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType,true,
+                dm = ParseLabelClause((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType, true,
                     b.ident, (ab == Qlx.LPAREN) ? null : ln?.domain);
                 if (dm.OnInsert(cx, 0L) is CTree<Domain, bool> ds && ds.Count == 1L && ds.First()?.key() is Domain df
                         && df.defpos > 0)
                     dm = df;
-                if (ac is TConnector ad && dm is Table ea && ea.defpos>0 && ln!=null)
+                if (ac is TConnector ad && dm is Table ea && ea.defpos > 0 && ln != null)
                     ac = ea.PreConnect(cx, ab, ln.domain, ad.cn);
             }
             var dc = CTree<string, QlValue>.Empty;
@@ -1899,50 +1905,83 @@ namespace Pyrrho.Level4
                         var iq = new Ident(b, ic);
                         var iu = new Ident(it, ic);
                         cx.Add(iu.ident, lp, bo); // does cx.names += (iu.ident,px)  and children
-                        cx.names += (iq.ident, (lp,px));
-                        cx.names += (ic.ident, (lp,px));
+                        cx.names += (iq.ident, (lp, px));
+                        cx.names += (ic.ident, (lp, px));
                     }
                     dc += (n.ident, v);
                     if (tok == Qlx.COMMA)
                         Next();
                 }
                 Mustbe(Qlx.RBRACE);
-            } else 
+            }
+            else
                 if (dm is not null && cx._Ob(nd?.domain.defpos ?? -1L) is Table rt)
-                dm = rt;
-            var m = BTree<long, object>.Empty + (SqlValueExpr.Op,tk);
+                    dm = rt;
+            var m = BTree<long, object>.Empty + (SqlValueExpr.Op, tk);
             GqlNode? an = null;
-            var ahead = CList<GqlNode>.Empty;
-            if (ln is not null || ab==Qlx.LBRACK)
+            var ahead = ObTree.Empty;
+            if (Match(Qlx.RPAREN))
+                Next();
+            else if ((ln is not null || ab == Qlx.LBRACK))
             {
-                cn = (lxr.val!=TNull.Value)?lxr.val.ToString():"";
+                cn = (lxr.val != TNull.Value) ? lxr.val.ToString() : "";
                 var ba = Mustbe(Qlx.ARROW, Qlx.RARROWBASE, Qlx.ARROWTILDE, Qlx.RBRACKTILDE);
                 (an, ahead) = ParseInsertGraphItem(ahead, sch);
                 m += (GqlNode.PreCon, ac);
-                m += (GqlNode.PostCon,(dm as Table)?.PostConnect(cx, ba, an.domain, cn)??throw new PEException("PE70631"));
+                m += (GqlNode.PostCon, (dm as Table)?.PostConnect(cx, ba, an.domain, cn) ?? throw new PEException("PE70631"));
                 if (ln != null)
                     m += (GqlNode.Before, ln);
                 if (an != null)
                     m += (GqlNode.After, an);
             }
             else
-                Mustbe(Qlx.RPAREN,Qlx.RBRACK,Qlx.RBRACKTILDE,Qlx.ARROWBASETILDE);
+                Mustbe(Qlx.RPAREN, Qlx.RBRACK, Qlx.RBRACKTILDE, Qlx.ARROWBASETILDE);
             if (cx.obs[id] is GqlNode r)
                 r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm), m);
             else
-                r = (ab == Qlx.LPAREN) ? new GqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, 
+                r = (ab == Qlx.LPAREN) ? new GqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs,
                     dm, m)
-                    : new GqlEdge(nb, BList<Ident>.Empty, cx, -1L, dc, lxr.tgs, 
-                     dm, m+(SqlValueExpr.Modifier,ab));
+                    : new GqlEdge(nb, BList<Ident>.Empty, cx, -1L, dc, lxr.tgs,
+                     dm, m + (SqlValueExpr.Modifier, ab));
             if (wh is not null)
                 r += (RowSet._Where, wh);
             cx.Add(r);
             cx.Add(b.ident, lp, r);
-            svg += r;
-            if (Match(Qlx.ARROWL,Qlx.ARROWR))
+            svg += (r.defpos,r); // r is new node: maybe there is an arrow to attach something?
+            if (Match(Qlx.ARROWL, Qlx.ARROWR))
             {
-                var ei = lxr.val.ToString();
-                var (rn, rvg) = ParseInsertGraphItem(CList<GqlNode>.Empty, false, r);
+                var nw = tok;
+                Next();
+                var braceseen = (Match(Qlx.LBRACE)); // might be several to attach
+                if (braceseen) 
+                    Next();
+                for(; ;)
+                {
+                    var (rn, rvg) = ParseInsertGraphItem(ObTree.Empty, false, r);
+                    svg += rvg;
+                    if (nw == Qlx.ARROWR) // a reference to rn gets added to r
+                    {
+                        if (rn.domain is not Table rt || rt.defpos < 0) throw new DBException("42000");
+                        var rd = Table.FindOrCreateRefDomain(cx, rt);
+                        dc += (rt.name, new SqlLiteral(cx.GetUid(), new TRef(rn.defpos, rd), rd));
+                        r += (GqlNode.DocValue, dc);
+                        cx.Add(r);
+                        svg += (r.defpos,r);
+                    } else // a reference to r gets added to rn
+                    {
+                        if (r.domain is not Table ot || ot.defpos < 0) throw new DBException("42000");
+                        var dr = Table.FindOrCreateRefDomain(cx, ot);
+                        rn += (GqlNode.DocValue, rn.docValue+(ot.name, new SqlLiteral(cx.GetUid(), new TRef(r.defpos,dr), dr)));
+                    }
+                    cx.Add(rn);
+                    svg += (rn.defpos,rn);
+                    if (braceseen && Match(Qlx.COMMA))
+                        Next();
+                    else
+                        break;
+                }
+                if (braceseen)
+                    Mustbe(Qlx.RBRACE); 
             }
             if (an != null)
             {
@@ -1951,6 +1990,16 @@ namespace Pyrrho.Level4
             }
             lxr.tgs = og;
             return (r, svg);
+        }
+        /// <summary>
+        /// Push a node onto a possibly empty list
+        /// </summary>
+        /// <param name="r"></param>
+        /// <param name="ln"></param>
+        /// <returns></returns>
+        CTree<int,GqlNode> Push(GqlNode r,CTree<int,GqlNode>? ln)
+        {
+            return (ln == null) ? new CTree<int, GqlNode>(0, r) : ln + ((int)ln.Count, r);
         }
         /// <summary>
         /// MatchNode: '(' MatchItem ')' { (MatchEdge|MatchPath) MatchNode } .
@@ -4080,7 +4129,7 @@ namespace Pyrrho.Level4
             {
                 if (cr.domain.kind == Qlx.Null)// make cr a new simple reference to rt
                 {
-                    var rd = tb.FindOrCreateRefDomain(cx, rt) ?? throw new DBException("42105");
+                    var rd = Table.FindOrCreateRefDomain(cx, rt) ?? throw new DBException("42105");
                     cx.Add(cr + (DBObject._Domain, rd));
                     if (cx.db is Transaction ta && ta.physicals[p] is PColumn pc)
                     {
@@ -4132,7 +4181,7 @@ namespace Pyrrho.Level4
                         cx.Add(km);
                         ri = km.ppos;
                     }
-                    var dm = tb.FindOrCreateRefDomain(cx, rt);
+                    var dm = Table.FindOrCreateRefDomain(cx, rt);
                     var pc = new PColumn3(tb, refname.ident, dm, "", md, cx.db.nextStmt, cx.db.nextPos, cx)
                     {
                         refindex = ri,
@@ -8876,7 +8925,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
 		/// Insert = INSERT INTO Table_id [ Cols ]  TypedValue [Classification]
-        ///        |  INSERT GraphPattern.
+        ///        |  INSERT Graph.
         /// </summary>
         /// <returns>the executable</returns>
         Executable ParseSqlInsert(BTree<long,object> m)
@@ -11270,8 +11319,6 @@ namespace Pyrrho.Level4
             }
             var tc = cx._Ob(ns[k.ident].Item2) as TableColumn;
             var xd = tc?.domain ?? Domain.Content;
-     //       if (tc?.tc] is TConnector cc && cc.rd is Domain ct)
-     //           xd += (RowSet.Target, ct); 
             Mustbe(Qlx.Id);
             lxr.docValue = true;
             Mustbe(Qlx.COLON,Qlx.DOUBLECOLON,Qlx.TYPED); // GQL extra options
@@ -11279,6 +11326,12 @@ namespace Pyrrho.Level4
                 return (k, (QlValue)cx.Add(new SqlLiteral(k.uid, ParseDataType())));
             Ident q = new(lxr.val.ToString(), LexDp()); // capture instance reference
             QlValue? r = null;
+            if (tok==Qlx.Id && cx.obs[cx.names[q.ident].Item2] is GqlNode n && n.domain.defpos > 0)
+            {
+                var rd = Table.FindOrCreateRefDomain(cx, n.domain);
+                r = new SqlLiteral(cx.GetUid(), new TRef(n.defpos, rd), rd);
+                Next();
+            }
             if (tok == Qlx.Id && !cx.Known(q.ident) && q.uid >= Transaction.Analysing)
             {
                 cx.bindings += (q.uid, Domain.Null);
@@ -11324,7 +11377,7 @@ namespace Pyrrho.Level4
                 Mustbe(Qlx.RPAREN);
                 return (q, (QlValue)cx.Add(new SqlLiteral(q.uid, v)));
             }
-            if (lxr.caseSensitive && eq == "toInteger") // alow JavaScript cast
+            if (lxr.caseSensitive && eq == "toInteger") // allow JavaScript cast
             {
                 Next();
                 Mustbe(Qlx.LPAREN);
