@@ -5512,7 +5512,7 @@ namespace Pyrrho.Level4
                                     }
                             }
                         if ((!tc.optional) && vs[tc.defpos] == TNull.Value)
-                 //           && tc.domain.kind== Qlx.REF && (tc.domain.elType is null || tc.domain.elType.defpos<0))
+              //              && tc.domain.kind== Qlx.REF && (tc.domain.elType is null || tc.domain.elType.defpos<0))
                             throw new DBException("22004", tc.NameFor(cx));
                         for (var cb = tc.checks?.First(); cb != null; cb = cb.Next())
                             if (cx._Ob(cb.key()) is Check ck)

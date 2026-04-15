@@ -2534,7 +2534,7 @@ namespace Pyrrho.Level4
                                 }
             for (var b = gs.First(); b != null; b = b.Next())
                 if (b.value() is TGParam g && g.value != "" && b.key()>=Transaction.Analysing
-                    && cx.obs[g.uid] is DBObject sn && !re.Contains(sn.defpos) && g.IsBound(cx) is null)
+                    && cx.obs[g.uid] is DBObject sn && !re.Contains(sn.defpos) && !g.IsBound(cx))
                 {
                     var dr = (sn is Domain d)?d:sn.domain;
                     var gp = g.uid;

@@ -1950,15 +1950,15 @@ namespace Pyrrho.Level5
         {
             return (obj is TGParam tp && tp.uid == uid) ? 0 : -1;
         }
-        internal DBObject? IsBound(Context cx)
+        internal bool IsBound(Context cx)
         {
             if (type.HasFlag(Type.Node) && cx._Ob(cx.role.nodeTypes[value]) is Table nt)
-                return nt;
+                return true;
             if (type.HasFlag(Type.Edge) && cx._Ob(cx.role.edgeTypes[value]) is Domain d)
-                return d as Table ??Domain.TypeSpec;
+                return d as Table != null;
             if (type.HasFlag(Type.Type) && cx._Ob(cx.role.dbobjects[value]) is Table n)
-                return n;
-            return null;
+                return true;
+            return false;
         }
         public override string ToString() 
         {
