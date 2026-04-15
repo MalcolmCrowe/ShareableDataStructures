@@ -191,6 +191,7 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         public TConnector? TCon(Domain dt)
         {
+            var tm = optional ? (TMetadata.Empty + (Qlx.OPTIONAL, TBool.True)) : null;
             if (arrow != 0)
             {
                 var q = (arrow & 0xf) switch
@@ -203,16 +204,9 @@ namespace Pyrrho.Level2
                 var s = cn;
                 if (cn == "")
                     s = name;
-                TMetadata? tm = optional?(TMetadata.Empty+(Qlx.OPTIONAL,TBool.True)):null;
                 return new TConnector(q, s, dt, ppos, false, "",tm);
             }
-            // The reference Pindex on Install leaves hints in the refTable!
-            if ((dt.mem[refindex] as CTree<int, long> ?? keymap) != CTree<int, long>.Empty)
-            {
-                TMetadata? tm = optional ? (TMetadata.Empty + (Qlx.OPTIONAL, TBool.True)) : null;
                 return new TConnector(Qlx.TO, name, dt, ppos, true, "", tm);
-            }
-            return null;
         }
         public void FromTCon(TConnector tc)
         {
