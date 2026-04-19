@@ -887,7 +887,7 @@ namespace Pyrrho.Level3
             if (ers.First(cx) is Cursor cu)
             {
                 if (ers.tree != null)
-                    rs = rs + (Index.Tree, ers.tree) + (Index.Keys, ers.keys);
+                    rs = rs + (Index.Tree, ers.tree) + (RowSet.KeysList, ers.keysList);
                 if (rs.Insert(cx, rs, rs)[rs.target] is TargetActivation ta)
                 {
                     ta.db = cx.db;

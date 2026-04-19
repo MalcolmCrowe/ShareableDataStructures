@@ -88,7 +88,7 @@ namespace Pyrrho.Level4
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal GraphType? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by USE
-        internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4 };
+        internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4, Yes = 5 };
         internal ParsingGQL parsingGQL = ParsingGQL.No;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // bindings, and cache of RowSetPredicate RowSet (not initialised from parent, not copied to parent on exit)
@@ -246,7 +246,7 @@ namespace Pyrrho.Level4
                         return Lookup(ns, os);
                     return (ob, n.sub);
                 }
-                else
+                else if (f>0L || parsingGQL==ParsingGQL.No)
                 {
                     var nf = GetUid();
                     var q = new QlInstance(n.lp, nf, this, n.ident, f, ob);
@@ -1128,6 +1128,18 @@ namespace Pyrrho.Level4
             }
             return ms;
         }
+        internal CTree<CTree<int, long>, Domain> ReplacedTTilD(CTree<CTree<int, long>, Domain> xs)
+        {
+            for (var b = xs.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var nk = ReplacedTil(k);
+                var nv = (Domain)b.value().Fix(this);
+                if (k.CompareTo(nk) != 0 || nv!=b.value())
+                    xs = xs - k + (nk, nv);
+            }
+            return xs;
+        }
         internal CTree<CTree<int, long>, CTree<long, bool>> ReplacedTTilTlb(CTree<CTree<int,long>, CTree<long, bool>> xs)
         {
             for (var b = xs.First(); b != null; b = b.Next())
@@ -1608,6 +1620,7 @@ namespace Pyrrho.Level4
                 //        case JoinRowSet.JoinUsing: v = ReplacedTll((CTree<long, long>)v); break;
                         case JoinRowSet.JSecond: v = Replaced((long)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Replaced(this); break;
+                        case RowSet.KeysList: v = ReplacedTTilD((CTree<CTree<int, long>, Domain>)v); break;
                 //        case GqlNode._Label: v = ((DBObject)v).Replaced(this); break;
                         case CompositeRowSet._Left: v = Replaced((long)v); break;
                         case QlValue.Left: v = Replaced((long)v); break;
@@ -1859,6 +1872,7 @@ namespace Pyrrho.Level4
                         case JoinRowSet.JSecond: v = Fix((long)v); break;
                         case TableColumn.KeyMap: v = FixTil((CTree<int,long>)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Fix(this); break;
+                        case RowSet.KeysList: v = FixTTilD((CTree<CTree<int, long>, Domain>)v); break;
                         case QlValue.Left: v = Fix((long)v); break;
                         case CompositeRowSet._Left: v = Fix((long)v); break;
                         case Database.Levels: v = FixTLl((CTree<Level, long>)v); break;
@@ -2358,17 +2372,11 @@ namespace Pyrrho.Level4
                 p = role.dbobjects[s];
             return _Ob(p) as Table;
         }
-        internal Table FindOrCreate(CTree<Domain,bool>ts)
+        internal Table? FindOrCreateTable(string s)
         {
-            var kind = ts.First()?.key()?.kind ?? Qlx.NODETYPE;
-            var u = new Table(-1L, BTree<long, object>.Empty + (Domain.Kind, kind));
-            if (db.objects[db.types[u]] is Table nt)
-                return nt;
-            var nst = db.nextStmt;
-            u = (UDType)u.Relocate(nst);
-            db += (Database.NextStmt, nst + 1);
-            db += (Database.Types, db.types + (u, nst));
-            return u;
+            if (FindTable(s) is Table t) return t;
+            var pt = new PTable(s, Domain.TableType, db.nextPos, this);
+            return (Table?)Add(pt);
         }
         internal string? NameFor(long p)
         {
@@ -3004,6 +3012,18 @@ namespace Pyrrho.Level4
                     var v = FixTlb(x);
                     if (nk.CompareTo(k)!=0 || v != b.value())
                         xs = xs - k + (nk, v);
+                }
+            return xs;
+        }
+        internal CTree<CTree<int, long>, Domain> FixTTilD(CTree<CTree<int, long>, Domain> xs)
+        {
+            for (var b = xs.First(); b != null; b = b.Next())
+                if (b.key() is CTree<int, long> k)
+                {
+                    var nk = FixTil(k);
+                    var nv = (Domain)b.value().Fix(this);
+                    if (nk.CompareTo(k) != 0 || nv!=b.value())
+                        xs = xs - k + (nk, nv);
                 }
             return xs;
         }

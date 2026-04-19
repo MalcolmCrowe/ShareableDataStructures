@@ -225,8 +225,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dp"></param>
         /// <param name="u">A list of alt domains</param>
-        internal Domain(long dp, CTree<Domain, bool> u)
-            : this(dp, BTree<long, object>.Empty + (Kind, Qlx.UNION) + (Alts, u))
+        internal Domain(long dp, CTree<Domain, bool> u, long role=-502)
+            : this(dp, _Mem(role,u) + (Kind, Qlx.UNION) + (Alts, u))
         { }
         public Domain(long dp, Qlx t, CTree<Domain, bool> u)
     : this(dp, BTree<long, object>.Empty + (Kind, t) + (Under, u))
@@ -292,6 +292,18 @@ namespace Pyrrho.Level3
             if (ds != 0)
                 m += (Display, ds);
             return m;
+        }
+        static BTree<long, object> _Mem(long role, CTree<Domain, bool> a)
+        {
+            var ns = Names.Empty;
+            for (var b = a.First(); b != null; b = b.Next())
+                if (b.key() is Domain d)
+                {
+                    ns += d.names;
+                    if (d.infos[role] is ObInfo di)
+                        ns += di.names;
+                }
+            return new BTree<long, object>(ObInfo._Names, ns);
         }
         internal static Domain UnionType(long lp, params Domain[] u)
         {
@@ -540,13 +552,13 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             var adds = new int[flags.Length];
             // see if we are going to add index flags stuff
             var j = 0;
-            for (var ib = (this as RowSet)?.keys.First(); j < flags.Length && ib != null;
+            for (var ib = (this as RowSet)?.rowOrder.First(); j < flags.Length && ib != null;
                 ib = ib.Next(), j++)
             {
                 var found = false;
                 for (var b = rowType.First(); b != null;
                     b = b.Next())
-                    if (b.key() == ib.key())
+                    if (b.value().CompareTo(ib.key())==0)
                     {
                         adds[b.key()] = (j + 1) << 4;
                         found = true;

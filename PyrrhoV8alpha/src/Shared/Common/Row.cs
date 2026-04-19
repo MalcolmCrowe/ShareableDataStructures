@@ -1909,10 +1909,7 @@ namespace Pyrrho.Common
         /// <param name="n">A multiplicity</param>
         internal TMultiset Remove(TypedValue a, long n)
         {
-            var o = tree[a];
-            if (o == null)
-                return this; // was DBException 22103
-            long m = (long)o;
+            var m = tree[a];
             var nt = tree;
             if (m <= n)
                 nt -= a;

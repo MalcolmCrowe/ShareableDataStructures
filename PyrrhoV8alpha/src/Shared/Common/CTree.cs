@@ -198,7 +198,7 @@ namespace Pyrrho.Common
         /// </summary>
         public readonly Qlx kind;
         /// <summary>
-        /// A simple Domain (no columns). 
+        /// A simple Domain (no keymap). 
         /// keyType.kind==Qlx.SET and keyType.elType!= Domain.Null for set valued foreign keys
         /// </summary>
         public Domain keyType; 

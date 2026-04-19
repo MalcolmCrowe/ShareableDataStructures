@@ -546,8 +546,8 @@ namespace Pyrrho.Level3
                    + (RSTargets, rt);
             if (a != null)
                 m += (_Alias, a);
-            if (irs.keys != Row)
-                m += (Index.Keys, irs.keys);
+            if (irs.keysList.Count>0)
+                m += (KeysList, irs.keysList);
             irs = (InstanceRowSet)irs.Apply(m, cx); 
         //    cx.UpdateDefs(id, irs, a);
             return (RowSet)(cx.obs[irs.defpos]??throw new PEException("PE70303"));

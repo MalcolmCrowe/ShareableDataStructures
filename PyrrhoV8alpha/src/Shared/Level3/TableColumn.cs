@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             Checks = -268,  // CTree<long,bool> CheckFields
-            ColumnDefault = -158, // long QlValue
+            ColumnDefault = -121, // long QlValue
             _Generation = -269, // GenerationRule (C)
             Hide = -272, // bool (omit from display e.g. a foreign key reference column)
             KeyMap = -70, // CTree<int,long> TableColumn (may be empty)

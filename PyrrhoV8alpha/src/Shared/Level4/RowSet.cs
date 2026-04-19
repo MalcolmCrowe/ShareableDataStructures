@@ -73,6 +73,7 @@ namespace Pyrrho.Level4
             GroupIds = -408, // CTree<long,Domain> temporary during SplitAggs
             Having = -200, // CTree<long,bool> QlValue
             ISMap = -213, // CTree<long,long> QlValue,TableColumn
+            KeysList = -158, // CTree<CTree<int,long>,Domain> TableColumn List of all available keys
             _Matches = -182, // CTree<long,TypedValue> matches guaranteed elsewhere
             Matching = -183, // CTree<long,CTree<long,bool>> QlValue QlValue (symmetric)
             OrdSpec = -184, // Domain
@@ -97,9 +98,10 @@ namespace Pyrrho.Level4
             (CTree<CTree<int,long>, CTree<long, bool>>?)mem[Table.Indexes] ?? CTree<CTree<int,long>, CTree<long, bool>>.Empty;
         /// <summary>
         /// keys are added where the current set of columns includes all the keys from a target index or ordering.
-        /// At most one keys entry is currently allowed: ordering if available, then target index
+        /// For a TableRowSet these are the primary index if any, and any reference column keymaps.
         /// </summary>
-        internal Domain keys => (Domain)(mem[Level3.Index.Keys] ?? Row);
+        internal CTree<CTree<int,long>,Domain> keysList => 
+            (CTree<CTree<int,long>,Domain>)(mem[KeysList] ?? CTree<CTree<int,long>,Domain>.Empty);
         internal Domain ordSpec => (Domain?)mem[OrdSpec] ?? Row;
         internal BTree<long, PeriodSpec> periods =>
             (BTree<long, PeriodSpec>?)mem[Periods] ?? BTree<long, PeriodSpec>.Empty;
@@ -847,9 +849,9 @@ namespace Pyrrho.Level4
             var ng = cx.FixLl(groupings);
             if (ng != groupings)
                 r += (Groupings, ng);
-            var nk = keys.Fix(cx);
-            if (nk != keys)
-                r += (Level3.Index.Keys, nk);
+            var nk = cx.FixTTilD(keysList);
+            if (nk != keysList)
+                r += (KeysList, nk);
             var xs = cx.FixTTilTlb(indexes);
             if (xs != indexes)
                 r += (Table.Indexes, xs);
@@ -912,9 +914,9 @@ namespace Pyrrho.Level4
             var xs = cx.ReplacedTTilTlb(r.indexes);
             if (xs != r.indexes)
                 r += (Table.Indexes, xs);
-            var ks = r.keys.Replaced(cx);
-            if (ks != r.keys)
-                r += (Level3.Index.Keys, ks);
+            var ks = cx.ReplacedTTilD(keysList);
+            if (ks != r.keysList)
+                r += (KeysList, ks);
             var si = cx.ReplacedTll(r.sIMap);
             if (si != r.sIMap)
                 r += (SIMap, si);
@@ -1122,8 +1124,8 @@ namespace Pyrrho.Level4
             for (var bm = _First(cx); bm != null; bm = bm.Next(cx))
             {
                 var kb = key.First();
-                for (var b = keys.First(); kb is not null && b != null; b = b.Next(), kb = kb.Next())
-                    if (kb.value() != TNull.Value && b.value() is long p && cx.obs[p] is QlValue s &&
+                for (var b = rowOrder.First(); kb is not null && b != null; b = b.Next(), kb = kb.Next())
+                    if (kb.value() != TNull.Value && cx.db.objects[b.value()] is QlValue s &&
                         s.Eval(cx).CompareTo(kb.value()) != 0)
                         goto next;
                 return bm;
@@ -1195,16 +1197,21 @@ namespace Pyrrho.Level4
                 }
                 sb.Append(']');
             }
-            if (keys != Row)
+            if (keysList.Count!=0L)
             {
-                cm = " key (";
-                for (var b = keys.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(Uid(p));
-                    }
-                sb.Append(')');
+                cm = " keys ";
+                for (var b = keysList.First(); b != null; b = b.Next())
+                {
+                    var cc = "(";
+                    sb.Append(cm); cm = ",";
+                    for (var c =b.key().First();c!=null;c=c.Next())
+                        if (c.value() is long p)
+                        {
+                            sb.Append(cc); cm = ",";
+                            sb.Append(Uid(p));
+                        }
+                    sb.Append(')');
+                }
             }
             if (ordSpec != Row)
             {
@@ -1954,7 +1961,7 @@ namespace Pyrrho.Level4
                 if (kb.value() != TNull.Value)
                     return null;
             return new TrivialCursor(_cx, this);
-        }
+        } 
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new TrivialRowSet(dp, m);
@@ -2281,8 +2288,8 @@ namespace Pyrrho.Level4
                         m += (Table.Indexes, xs);
                     }
                 }
-            if (r.keys != Row)
-                m += (Level3.Index.Keys, r.keys);
+            if (r.keysList.Count>0)
+                m += (KeysList, r.keysList);
             var ns = Names.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
@@ -3105,10 +3112,22 @@ namespace Pyrrho.Level4
                 rt += ((int)rt.Count, ps.defpos);
                 rs += (ps.defpos, Int);
             }
+            //Make a list of all keys (Primary Index and keymaps) for optimising orderings
+            var kl = CTree<CTree<int, long>, Domain>.Empty;
+            for (var b=xs.First();b!=null;b=b.Next())
+            {
+                var c = b.value().First();
+                if (c != null && cx.db.objects[c.key()] is Level3.Index x)
+                    kl += (b.key(), x.keys);
+            }
+            for (var b = tb.refCols.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is TableColumn c && c.keyMap.Count > 0L
+                    && c.domain.elType is Table et && et.FindPrimaryIndex(cx) is Level3.Index x)
+                    kl += (c.keyMap, x.keys);
             cx.defs += (dp, ns);
             var r = (m ?? BTree<long, object>.Empty)
-                + (RowType,rt) + (Representation,rs)
-                + (SRowType, sr) + (Table.Indexes, xs)
+                + (RowType,rt) + (Representation,rs) + (RowOrder,pk)
+                + (SRowType, sr) + (Table.Indexes, xs) + (KeysList,kl)
                 + (Table.LastData, tb.lastData) + (ObInfo.Defs,ds)
                 + (Target,t) + (ObInfo._Names,ns) + (ObInfo.Name,tn.ident)
                 + (_Ident,tn) +(RSTargets,new CTree<long, long>(t,dp));
@@ -3412,7 +3431,7 @@ namespace Pyrrho.Level4
                      && sp.op == Qlx.REF && cx.obs[wh.right]?.Eval(cx) is TInt p)
                     return SingleNodeCursor.New(cx, this+(SingleNode,p.ToLong()??-1L));
             var key = CList<TypedValue>.Empty;
-            for (var b = keys.First(); b != null; b = b.Next())
+            for (var b = rowOrder.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     TypedValue v = TNull.Value;
@@ -3440,7 +3459,7 @@ namespace Pyrrho.Level4
         public override Cursor? Last(Context _cx)
         {
             var key = CList<TypedValue>.Empty;
-            for (var b = keys.First(); b != null; b = b.Next())
+            for (var b = rowOrder.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     TypedValue v = TNull.Value;
@@ -3580,11 +3599,11 @@ namespace Pyrrho.Level4
                     throw new PEException("PE50320");
                 if (_cx._Ob(trs.target) is not Table table || table.infos[ro.defpos] is null)
                     throw new DBException("42105").Add(Qlx.TABLE);
-                if (trs.keys!=Row)
+                if (trs.rowOrder!=Row)
                 {
                     var t = (trs.index >= 0 && _cx._Ob(trs.index) is Level3.Index ix)? ix.rows : null;
-                    if (t == null && trs.indexes.Contains(trs.keys.rowType))
-                        for (var b = trs.indexes[trs.keys.rowType]?.First(); b != null; b = b.Next())
+                    if (t == null && trs.indexes.Contains(trs.rowOrder.rowType))
+                        for (var b = trs.indexes[trs.rowOrder.rowType]?.First(); b != null; b = b.Next())
                             if (_cx._Ob(b.key()) is Level3.Index iy)
                             {
                                 t = iy.rows;
@@ -3639,7 +3658,7 @@ namespace Pyrrho.Level4
                 key ??= CList<TypedValue>.Empty;
                 if (_cx._Ob(trs.target) is not Table table)
                     throw new PEException("PE48175");
-                if (trs.keys != Row && trs.tree != null)
+                if (trs.rowOrder != Row && trs.tree != null)
                 {
                     var t = trs.tree;
                     for (var bmk = t.PositionAt(key, 0); bmk != null; bmk = bmk.Previous())
@@ -3711,7 +3730,7 @@ namespace Pyrrho.Level4
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
-                            rec.MakeKey(_trs.keys.rowType));
+                            rec.MakeKey(_trs.rowOrder.rowType));
                         if (rb.Matches(_cx))
                         {
                             _table._ReadConstraint(_cx, rb);
@@ -3766,7 +3785,7 @@ namespace Pyrrho.Level4
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
-                            rec.MakeKey(_trs.keys.rowType));
+                            rec.MakeKey(_trs.rowOrder.rowType));
                         if (rb.Matches(_cx))
                         {
                             _table._ReadConstraint(_cx, rb);
@@ -3838,7 +3857,7 @@ namespace Pyrrho.Level4
         internal DistinctRowSet(Context cx,RowSet r) 
             : base(r.scope,cx.GetUid(),cx,r.mem+(_Source,r.defpos)
                   +(Table.LastData,r.lastData)+(_Where,r.where)
-                  +(_Matches,r.matches) + (Level3.Index.Keys,r)
+                  +(_Matches,r.matches) + (RowOrder,r)
                   +(ObInfo._Names, r.names))
         {
             cx.Add(this);
@@ -3884,10 +3903,10 @@ namespace Pyrrho.Level4
         internal override RowSet Build(Context cx)
         {
             var sce = (RowSet?)cx.obs[source]??throw new PEException("PE1801");
-            var mt = new MTree(keys,TreeBehaviour.Ignore,0);
+            var mt = new MTree(rowOrder,TreeBehaviour.Ignore,0);
             for (var a = sce.First(cx); a != null; a = a.Next(cx))
                 mt += (a.ToKey(), 0, 0);
-            return (RowSet)cx.Add(this+(_Built,true)+(Level3.Index.Tree,mt)+(Level3.Index.Keys,keys));
+            return (RowSet)cx.Add(this+(_Built,true)+(Level3.Index.Tree,mt)+(RowOrder,rowOrder));
         }
 
         protected override Cursor? _First(Context cx)
@@ -4029,9 +4048,10 @@ namespace Pyrrho.Level4
                 return this;
             }
             var ms = (CTree<long,TypedValue>?)mm[_Matches]??CTree<long, TypedValue>.Empty;
-            for (var b = keys.First(); b != null; b = b.Next())
-                if (b.value() is long p && ms.Contains(p) && cx.obs[source] is RowSet sc)
-                    return sc.Apply(mm, cx); // remove this from the pipeline
+            for (var b = keysList.First(); b != null; b = b.Next())
+                for (var c = b.key().First();c!=null;c=c.Next())
+                    if (c.value() is long p && ms.Contains(p) && cx.obs[source] is RowSet sc)
+                        return sc.Apply(mm, cx); // remove this from the pipeline
             return base.Apply(mm, cx);
         }
         internal override bool CanSkip(Context cx)
@@ -4066,7 +4086,7 @@ namespace Pyrrho.Level4
             if (this.tree?.Count>0 && cx.cursors==BTree<long,TRow>.Empty) // hack for lateral
                 return this;
             var sce = (RowSet?)cx.obs[source] ?? throw new DBException("42105").Add(Qlx.TABLE);
-            var tree = new RTree(sce.defpos, cx, keys,
+            var tree = new RTree(sce.defpos, cx, rowOrder,
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
             for (var e = sce.First(cx); e != null; e = e.Next(cx))
             {

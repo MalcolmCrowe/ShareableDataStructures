@@ -208,6 +208,8 @@ namespace Pyrrho.Level4
                             if (cx.obs[c.key()] is RowSet rs)
                                 rs.Apply(new BTree<long, object>(RowSet._Where, new CTree<long, bool>(k.defpos, true)),
                                     cx);
+                if (cx.undefined != CTree<long, long>.Empty)
+                    throw new DBException("42112", cx.obs[cx.undefined.First()?.key() ?? -1L]?.mem[ObInfo.Name] ?? "?");
                 if (cx.parse.HasFlag(ExecuteStatus.Obey))
                 {
                     var ac = new LabelledActivation(cx, "");
@@ -2171,7 +2173,7 @@ namespace Pyrrho.Level4
                         if (al.Count == 1L)
                             dm = al.First()?.key();
                         else
-                            dm = new Domain(-1L, al);
+                            dm = new Domain(-1L, al, cx.role.defpos);
                 }
                 // state M30
                 if (tok == Qlx.WHERE)
@@ -2372,13 +2374,13 @@ namespace Pyrrho.Level4
         {
             var id = new Ident(this);
             Mustbe(Qlx.Id);
-            var r = new CTree<Domain,bool>(cx.FindTable(id.ident)??throw new DBException("42107",id.ident),true);
+            var r = new CTree<Domain,bool>(cx.FindOrCreateTable(id.ident)??throw new DBException("42105"),true);
             while (Match(dl))
             {
                 Next();
                 id = new Ident(this);
                 Mustbe(Qlx.Id);
-                r += (cx.FindTable(id.ident) ?? throw new DBException("42107", id.ident), true);
+                r += (cx.FindOrCreateTable(id.ident) ?? throw new DBException("42105"), true);
             }
             return r;
         }
@@ -2484,7 +2486,6 @@ namespace Pyrrho.Level4
                                 if (dd.value() is long ep)
                                     xs += (ep, true);
             // state M18
-            cx. parsingGQL = pm;
             var (ers, ns) = BindingTable(cx, lp, tgs, svgs);
             m += ers.mem;
             m += (ObInfo._Names, ns);
@@ -2494,6 +2495,7 @@ namespace Pyrrho.Level4
             m += (DBObject._Domain, ers);
             if (Match(Qlx.WHERE) && ParseWhereClause(m) is CTree<long, bool> wh) // GQL-169
                 m += (RowSet._Where, wh);
+            cx.parsingGQL = Context.ParsingGQL.Yes;
             StartStatement();
             if (Match(Qlx.MATCH,Qlx.BEGIN,Qlx.SET,Qlx.Id,Qlx.CREATE,Qlx.INSERT))
             {
@@ -2502,6 +2504,7 @@ namespace Pyrrho.Level4
             }
             var ms = new MatchStatement(cx, tg, tgs, svgs, m);
             cx.Add(ms);
+            cx.parsingGQL = pm;
             ers += (BindingRowSet.Builder, ms.defpos);
             ers += (RowSet._Built, false);
             cx.Add(ers);
@@ -5634,7 +5637,7 @@ namespace Pyrrho.Level4
                     if (i == len - 1)
                     {
                         if (cx.names[ic.ident].Item2 is long px && px>0
-                            && cx.obs[px]?.domain is Table ut && ic[1] is Ident ip 
+                            && cx.obs[px]?.domain is Domain ut && ic[1] is Ident ip 
                             && ut.names.Contains(ip.ident))
                         {
                             var pb = cx.obs[px] ?? new QlValue(new Ident(ic.ident, px), il, cx, xp);
@@ -8192,6 +8195,17 @@ namespace Pyrrho.Level4
             }
             r = (SelectRowSet)(cx.obs[r.defpos] ?? throw new PEException("PE20100"));
             r = (SelectRowSet)r.Apply(m, cx);
+ /*           for (var b = cx.undefined.First(); b != null; b = b.Next())
+            {
+                DBObject? qv = null;
+                var ns = cx.names;
+                if (cx.obs[b.key()] is DBObject uo)
+                {
+                    var (ls, mm) = uo.Resolve(cx, r, m, 0L);
+                }
+            }
+            if (cx.undefined != CTree<long, long>.Empty)
+                throw new DBException("42112", cx.obs[cx.undefined.First()?.key() ?? -1L]?.mem[ObInfo.Name] ?? "?"); */
             return r;
         }
         /// <summary>

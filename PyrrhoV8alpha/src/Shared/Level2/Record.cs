@@ -66,9 +66,11 @@ namespace Pyrrho.Level2
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
             {
                 if (!Committed(wr, b.key())) return b.key();
-                if (tr.objects[b.key()] is TableColumn tc 
-                    && b.value() is TRef tp && !Committed(wr,tp.value))
-                        return tp.value;
+                if (tr.objects[b.key()] is TableColumn tc && tc.domain.elType is Domain rd
+                    && !Committed(wr, rd.defpos))
+                    return rd.defpos;
+                if (b.value() is TRef tp && !Committed(wr, tp.value))
+                    return tp.dataType.defpos;
             }
             return -1;
         }
@@ -121,6 +123,8 @@ namespace Pyrrho.Level2
         {
             tabledefpos = wr.cx.Fix(x.tabledefpos);
             fields = CTree<long, TypedValue>.Empty;
+            if (x.node > 0)
+                wr.cx.uids += (x.node, defpos);
             for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
                 fields += (wr.cx.Fix(b.key()), b.value().Fix(wr.cx));
             subType = wr.cx.Fix(x.subType);
@@ -211,8 +215,7 @@ namespace Pyrrho.Level2
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
                 if (cs[d.key()] is Domain ndt && d.value() is TypedValue o)
                 {
-                    if (ndt.kind!=Qlx.REF)
-                        ndt = (Domain)((Domain)(wr.cx.db.objects[ndt.defpos]??throw new PEException("PE20281"))).Fix(wr.cx);
+                    ndt = (Domain)((Domain)(wr.cx.db.objects[ndt.defpos]??throw new PEException("PE20281"))).Fix(wr.cx);
                     var k = wr.cx.Fix(d.key());
                     wr.PutLong(k); // coldefpos
                     var dt = (Domain)o.dataType.Fix(wr.cx) ?? Domain.Null;
