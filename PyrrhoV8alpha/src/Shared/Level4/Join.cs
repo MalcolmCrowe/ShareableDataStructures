@@ -1,6 +1,9 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
+using System.Collections;
+using System.Security.Cryptography;
 using System.Text;
+using static Pyrrho.Level4.SystemRowSet;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -21,9 +24,11 @@ namespace Pyrrho.Level4
 	internal class JoinRowSet : RowSet
     {
         internal const long
+            RefCol = -212, // FDRowSet
             JFirst = -447, // long RowSet
             JSecond = -448, // long RowSet
             JoinCond = -203, // CTree<long,bool>
+     //       JoinFactors = -209,// CTree<long,CTree<long,bool>> Table,RowSet accumulated factors in a join
             JoinKind = -204, // Qlx
             JoinUsing = -208, // CTree<long,long> QlValue QlValue (right->left)
             Natural = -207, // Qlx
@@ -31,12 +36,15 @@ namespace Pyrrho.Level4
         /// <summary>
         /// NATURAL or USING or NO (the default)
         /// </summary>
-        public Qlx naturaljoin => (Qlx)(mem[Natural] ?? Qlx.NO);
+        public Qlx naturaljoin => (Qlx)(mem[Natural] ?? Qlx.NO);  // Natural handled in construction
+   //     public CTree<long, CTree<long, bool>> joinFactors =>
+   //         (CTree<long, CTree<long, bool>>)(mem[JoinFactors] ?? CTree<long, CTree<long, bool>>.Empty);
+        public long refCol => (long)(mem[RefCol] ?? -1L);
         /// <summary>
         /// The tree of common TableColumns for natural join
         /// </summary>
-        internal CTree<long,long> joinUsing =>
-            (CTree<long,long>)(mem[JoinUsing] ??CTree<long,long>.Empty); 
+        internal CTree<long, long> joinUsing => // JoinUsing handled in construction
+            (CTree<long, long>)(mem[JoinUsing] ?? CTree<long, long>.Empty);
         /// <summary>
         /// the kind of Join
         /// </summary>
@@ -49,92 +57,128 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Simple On-conditions: left=right
         /// </summary>
-        internal CTree<long,long> onCond =>
-            (CTree<long, long>)(mem[OnCond] ??CTree<long,long>.Empty);
+        internal CTree<long, long> onCond =>
+            (CTree<long, long>)(mem[OnCond] ?? CTree<long, long>.Empty);
         /// <summary>
         /// The two row sets being joined
         /// </summary>
-		internal long first => (long)(mem[JFirst]??-1L);
-        internal long second => (long)(mem[JSecond]??-1L);
+		internal long first => (long)(mem[JFirst] ?? -1L);
+        internal long second => (long)(mem[JSecond] ?? -1L);
         /// <summary>
         /// Constructor: build the rowset for the Join.
         /// Important: we have already identified the references and aliases in the select tree.
         /// </summary>
         /// <param name="j">The Join part</param>
-		public JoinRowSet(long dp,Context cx, RowSet lr, Qlx k,RowSet rr,long ap,
-            BTree<long,object>? m = null)
-            : base(lr.scope,dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp)),ap))
+		public JoinRowSet(long dp, Context cx, RowSet lr, Qlx k, RowSet rr, long ap,
+            BTree<long, object>? m = null)
+            : base(lr.scope, dp, cx, _Mem(cx, m, k, lr, (RowSet)cx.Add(rr + (_From, dp)), ap))
         {
             cx.Add(this);
         }
         protected JoinRowSet(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx, BTree<long, object>? m,
-            Qlx k,RowSet lr, RowSet rr,long ap)
+        static BTree<long, object> _Mem(Context cx, BTree<long, object>? m,
+            Qlx k, RowSet lr, RowSet rr, long ap)
         {
             m ??= BTree<long, object>.Empty;
-            m += (JoinKind, (k==Qlx.COMMA)?Qlx.CROSS:k);
+            m += (JoinKind, (k == Qlx.COMMA) ? Qlx.CROSS : k);
             m += (JFirst, lr.defpos);
             m += (JSecond, rr.defpos);
             m += (ISMap, lr.iSMap + rr.iSMap);
             m += (SIMap, lr.sIMap + rr.sIMap);
-            var oc = (CTree<long, long>)(m[OnCond] ??CTree<long,long>.Empty);
-            // Step 1: examine the names and find names in common
-            var cm = CTree<string, (long, long)>.Empty; // common names
-            var ns = CTree<long,string>.Empty; // all names
-            var lc = CTree<long,bool>.Empty; // left keymap to rename (true) or drop (false)
-            var rc = CTree<long,bool>.Empty; // right keymap to rename (true) or drop (false)
+            var oc = (CTree<long, long>)(m[OnCond] ?? CTree<long, long>.Empty);
+            var os = (CTree<long, bool>)(m[_Operands] ?? CTree<long, bool>.Empty);
+            var star = false;
+            for (var b = os.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlStar)
+                    star = true;
+            var ns = CTree<long, string>.Empty; // all names
+            var cm = CTree<string, (long, long)>.Empty; // common names in ns
+            var lc = CTree<long, bool>.Empty; // left columns to retain (true) or drop (false)
+            var rc = CTree<long, bool>.Empty; // right columns to retain (true) or drop (false)
+            bool rev = false;
             for (var b = lr.names.First(); b != null; b = b.Next())
                 if (b.value().Item2 is long lp)
                 {
                     var n = b.key();
-                    var rk = rr.names[n].Item2;
+                    var rp = rr.names[n].Item2;
                     ns += (lp, n);
-                    if (rk!=-1L)
+                    if (cx.obs[rp]?.domain.kind is Qlx rk && rk==cx.obs[lp]?.domain.kind)
                     {
-                        cm += (n, (lp, rk));
+                        cm += (n, (lp, rp));
                         lc += (lp, true);
-                        rc += (rk, true);
-                    } 
+                        rc += (rp, true);
+                    }
                 }
             for (var b = rr.names.First(); b != null; b = b.Next())
                 if (b.value().Item2 is long rp)
                     ns += (rp, b.key());
             // Step 2: consider NATURAL and USING
-            if (cm!=CTree<string,(long,long)>.Empty)
+            var nt = (Qlx)(m[Natural] ?? Qlx.NO);
+            if (nt == Qlx.NATURAL)
             {
-                var nt = (Qlx)(m[Natural] ?? Qlx.NO);
-                if (nt==Qlx.NATURAL)
+                for (var b = cm.First(); b != null; b = b.Next())
                 {
-                    for (var b = cm.First(); b != null; b = b.Next())
+                    var (lk, rk) = b.value();
+                    oc += b.value();
+                    lc += (lk, true);
+                    rc += (rk, false);
+                }
+                cm = CTree<string, (long, long)>.Empty;
+            }
+            if (nt == Qlx.USING)
+            {
+                var ju = (CTree<long, long>)(m[JoinUsing] ?? CTree<long, long>.Empty);
+                for (var b = ju.First(); b != null; b = b.Next())
+                    if (b.value() is long lk && b.key() is long rk)
                     {
-                        oc += b.value();
-                        var (lk, rk) = b.value();
-                        lc += (lk,true);
-                        rc += (rk,false);
+                        oc += (lk, rk);
+                        lc += (lk, true);
+                        rc += (rk, false);
+                        cm -= ns[lk] ?? "";
                     }
-                    cm = CTree<string, (long, long)>.Empty;
-                }
-                if (nt==Qlx.USING)
+            }
+            for (var b = lr.rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is QlValue tc && tc.domain.kind == Qlx.REF
+                    && tc.domain.elType?.defpos == rr.target)
                 {
-                    var ju = (CTree<long, long>)(m[JoinUsing]??CTree<long,long>.Empty);
-                    for (var b = ju.First(); b != null; b = b.Next())
-                        if (b.value() is long lk)
-                        {
-                            var rk = b.key();
-                            oc += (lk, rk);
-                            lc += (lk, true);
-                            rc += (rk, false);
-                            cm -= ns[lk] ?? "";
-                        }
+                    m += (JoinKind, Qlx.REF);
+                    m += (RefCol, tc.defpos);
+                    k = Qlx.REF;
+                    break; 
                 }
-            } 
-            // Step 3: rename the keymap remaining in lc, rc and construct the join's domain
+            for (var b = rr.rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is QlValue tc && tc.domain.kind == Qlx.REF
+                    && tc.domain.elType?.defpos == lr.target)
+                {
+                    m += (JoinKind, Qlx.REF);
+                    m += (RefCol, tc.defpos);
+                    k = Qlx.REF;
+                    rev = true;
+                    break; 
+                }
+            /*        var jf = CTree<long, CTree<long, bool>>.Empty;
+                    if (lr is JoinRowSet l1)
+                        jf += l1.joinFactors;
+                    if (lr is TableRowSet l2)
+                    {
+                        var x = jf[l2.target] ?? CTree<long, bool>.Empty;
+                        jf += (l2.target, x + (l2.defpos, true));
+                    }
+                    if (rr is JoinRowSet r1)
+                        jf += r1.joinFactors;
+                    if (rr is TableRowSet r2)
+                    {
+                        var x = jf[r2.target] ?? CTree<long, bool>.Empty;
+                        jf += (r2.target, x + (r2.defpos, true));
+                    }
+                    m += (JoinFactors, jf); */
+            // Step 3: rename the columns remaining in lc, rc and construct the join's domain
             var ls = BList<string>.Empty;
             var rs = BList<string>.Empty;
             var lm = BTree<string, QlValue>.Empty;
             var nn = Names.Empty;
-            var cs = CTree<int,long>.Empty;
+            var cs = CTree<int, long>.Empty;
             var fs = CList<long>.Empty;
             var re = CTree<long, Domain>.Empty;
             for (var b = lr.rowType.First(); b != null; b = b.Next())
@@ -146,8 +190,9 @@ namespace Pyrrho.Level4
                     if (((!lc.Contains(sv.defpos)) || lc[sv.defpos]) && !cm.Contains(n))
                     {
                         ls += n;
-                        nn += (n, (ap,sv.defpos));
-                        cs += ((int)cs.Count,sv.defpos);
+                        nn += (n, (ap, sv.defpos));
+                        if (star || os.Contains(sv.defpos))
+                            cs += ((int)cs.Count, sv.defpos);
                     }
                     else if (cm.Contains(n))
                     {
@@ -157,14 +202,15 @@ namespace Pyrrho.Level4
                             var nl = sv + (_Alias, ln);
                             cx.Replace(sv, nl);
                             ls += ln;
-                            nn += (ln, (ap,sv.defpos));
+                            nn += (ln, (ap, sv.defpos));
                         }
                         else
                         {
-                            nn += (n, (ap,sv.defpos));
+                            nn += (n, (ap, sv.defpos));
                             ls += n;
                         }
-                        cs += ((int)cs.Count, sv.defpos);
+                        if (star || os.Contains(sv.defpos))
+                            cs += ((int)cs.Count, sv.defpos);
                     }
                     else
                         fs += sv.defpos;
@@ -178,8 +224,9 @@ namespace Pyrrho.Level4
                     if (((!rc.Contains(rv.defpos)) || rc[rv.defpos]) && !cm.Contains(n))
                     {
                         rs += n;
-                        nn += (n, (ap,rv.defpos));
-                        cs += ((int)cs.Count, rv.defpos);
+                        nn += (n, (ap, rv.defpos));
+                        if (star || os.Contains(rv.defpos))
+                            cs += ((int)cs.Count, rv.defpos);
                     }
                     else if (cm.Contains(n))
                     {
@@ -189,11 +236,11 @@ namespace Pyrrho.Level4
                             var nr = rv + (_Alias, rn);
                             cx.Replace(rv, nr);
                             rs += rn;
-                            nn += (rn, (ap,rv.defpos));
+                            nn += (rn, (ap, rv.defpos));
                         }
                         else
                         {
-                            nn += (n, (ap,rv.defpos));
+                            nn += (n, (ap, rv.defpos));
                             rs += n;
                         }
                         cs += ((int)cs.Count, rv.defpos);
@@ -201,9 +248,8 @@ namespace Pyrrho.Level4
                     else
                         fs += rv.defpos;
                 }
-
             var ds = (int)cs.Count;
-            // add the dropped keymap after the display in case they are referenced in where conditions
+            // add the dropped columns after the display in case they are referenced in where conditions
             for (var b = fs.First(); b != null; b = b.Next())
                 cs += ((int)cs.Count, b.value());
             m += (ObInfo._Names, nn);
@@ -212,12 +258,12 @@ namespace Pyrrho.Level4
             m += (Display, ds);
             // Step 4: construct orderings based on the onCondition (as modified above).
             // note that there may be further optimisations once the TableExpression is complete
-            if (oc ==CTree<long,long>.Empty)
+            if (oc == CTree<long, long>.Empty)
             {
                 if (m[JoinKind] is Qlx.INNER)
                     m += (JoinKind, Qlx.CROSS); // will be reviewed later
             }
-            else
+            else 
             {
                 var ma = (CTree<long, CTree<long, bool>>)(m[Matching] ?? CTree<long, CTree<long, bool>>.Empty);
                 var lo = Row; // left ordering
@@ -239,15 +285,37 @@ namespace Pyrrho.Level4
                             && cx._Ob(mm) is DBObject mo)
                             cx.Add(li, ap, mo);
                     }
-                lr = lr.Sort(cx, lo, false);
-                rr = rr.Sort(cx, ro, false);
-                m += (JFirst, lr.defpos);
-                m += (JSecond, rr.defpos);
-                m += (Matching, ma);
-                m += (OnCond, oc);
+                if (k != Qlx.REF)
+                {
+                    lr = lr.Sort(cx, lo, false);//, jf);
+                    rr = rr.Sort(cx, ro, false);//, jf);
+                }
+                m += (Matching, rev ? Reverse(ma) : ma);
             }
+            m += (JFirst, rev ? rr.defpos : lr.defpos);
+            m += (JSecond, rev ? lr.defpos : rr.defpos);
+            m += (OnCond, rev ? Reverse(oc) : oc);
             m += (RSTargets, lr.rsTargets + rr.rsTargets);
             return cx.DoDepth(m);
+        }
+        static CTree<long,long> Reverse(CTree<long,long> oc)
+        {
+            var r = CTree<long, long>.Empty;
+            for (var b = oc.First(); b != null; b = b.Next())
+                r += (b.value(), b.key());
+            return r;
+        }
+        static CTree<long, CTree<long, bool>> Reverse(CTree<long, CTree<long, bool>> oc)
+        {
+            var r = CTree<long, CTree<long, bool>>.Empty;
+            for (var b = oc.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                {
+                    var s = r[c.key()] ?? CTree<long, bool>.Empty;
+                    s += (b.key(), c.value());
+                    r += (c.key(), s);
+                }
+            return r;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -257,7 +325,7 @@ namespace Pyrrho.Level4
         {
             return new JoinRowSet(dp, m);
         }
-        internal override bool Knows(Context cx, long rp, bool ambient=false)
+        internal override bool Knows(Context cx, long rp, bool ambient = false)
         {
             return rp == first || rp == second || base.Knows(cx, rp, ambient);
         }
@@ -274,7 +342,7 @@ namespace Pyrrho.Level4
                         return (ls?.representation.Contains(lv.defpos) == true) ? c : -c;
                 }
             for (var b = onCond.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is QlValue lv && b.value() is long bv 
+                if (cx.obs[b.key()] is QlValue lv && b.value() is long bv
                     && cx.obs[bv] is QlValue rv)
                 {
                     c = lv.Eval(cx).CompareTo(rv.Eval(cx));
@@ -305,12 +373,12 @@ namespace Pyrrho.Level4
             var (cx, p, o) = x;
             if (rs.mem[p] == o)
                 return rs;
-            switch(p)
+            switch (p)
             {
                 case JoinCond: m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, d)); break;
-        //        case JoinUsing:
-                case OnCond:m += (_Depth, cx._DepthTVV((CTree<long, long>)o, d)); break;
-                default: m = rs._Depths(cx, m, d, p, o);break;
+                //        case JoinUsing:
+                case OnCond: m += (_Depth, cx._DepthTVV((CTree<long, long>)o, d)); break;
+                default: m = rs._Depths(cx, m, d, p, o); break;
             }
             return (JoinRowSet)rs.New(m + (p, o));
         }
@@ -341,15 +409,15 @@ namespace Pyrrho.Level4
                 r += (OnCond, oc);
             return r;
         }
-        internal override CTree<long,bool> Sources(Context cx)
+        internal override CTree<long, bool> Sources(Context cx)
         {
-            return new CTree<long,bool>(first,true) + (second,true);
+            return new CTree<long, bool>(first, true) + (second, true);
         }
         internal override BTree<long, RowSet> AggSources(Context cx)
         {
             var f = first;
             var s = second;
-            var rf = (RowSet?)cx.obs[f]??throw new PEException("PE1500");
+            var rf = (RowSet?)cx.obs[f] ?? throw new PEException("PE1500");
             var rs = (RowSet?)cx.obs[s] ?? throw new PEException("PE1500");
             return new BTree<long, RowSet>(f, rf) + (s, rs);
         }
@@ -359,7 +427,7 @@ namespace Pyrrho.Level4
             var ps = second;
             var rf = (RowSet?)cx.obs[pf] ?? throw new PEException("PE1500");
             var rs = (RowSet?)cx.obs[ps] ?? throw new PEException("PE1500");
-            var r =  rf.SourceCursors(cx) +rs.SourceCursors(cx);
+            var r = rf.SourceCursors(cx) + rs.SourceCursors(cx);
             if (cx.cursors[pf] is Cursor cf)
                 r += (pf, cf);
             if (cx.cursors[ps] is Cursor cr)
@@ -377,38 +445,38 @@ namespace Pyrrho.Level4
                     jc += (b.key(), true);
             }
             if (jc != joinCond)
-                r +=(cx, JoinCond, jc);
+                r += (cx, JoinCond, jc);
             r += (JFirst, cx.ObReplace(first, so, sv));
             r += (JSecond, cx.ObReplace(second, so, sv));
             if (so.defpos != sv.defpos)
             {
-                var oc = CTree<long,long>.Empty;
+                var oc = CTree<long, long>.Empty;
                 var ch = false;
                 for (var b = onCond.First(); b != null; b = b.Next())
                 {
                     var k = b.key();
                     var nk = (k == so.defpos) ? sv.defpos : k;
                     var v = b.value();
-                    var nv = (v==so.defpos) ? sv.defpos : v;
+                    var nv = (v == so.defpos) ? sv.defpos : v;
                     ch = ch || (nk != k) || (nv != v);
                     oc += (nk, nv);
                 }
                 if (ch)
-                    r+=(cx, OnCond, oc);
+                    r += (cx, OnCond, oc);
             }
             return r;
         }
-        internal override RowSet Apply(BTree<long, object> mm,Context cx,BTree<long,object>? m=null)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
         {
             if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
             }
-            var fi = (RowSet?)cx.obs[first]??throw new PEException("PE1407");
-            var se = (RowSet?)cx.obs[second]??throw new PEException("PE1407");
+            var fi = (RowSet?)cx.obs[first] ?? throw new PEException("PE1407");
+            var se = (RowSet?)cx.obs[second] ?? throw new PEException("PE1407");
             var mg = matching;
-         //   mm += (Matching, mg);
+            //   mm += (Matching, mg);
             m ??= mem;
             var lo = Row;
             var ro = Row;
@@ -485,9 +553,9 @@ namespace Pyrrho.Level4
                                 if (lf && rs && cx.obs[sv.left] is QlValue vl && cx.obs[sv.right] is QlValue vr)
                                 {
                                     mm += (OnCond, onCond + (sv.left, sv.right));
-                                    lo = (Domain)lo.New(lo.mem + (RowType, lo.rowType + ((int)lo.rowType.Count,vl.defpos))
+                                    lo = (Domain)lo.New(lo.mem + (RowType, lo.rowType + ((int)lo.rowType.Count, vl.defpos))
                                         + (Representation, lo.representation + (vl.defpos, vl.domain)));
-                                    ro = (Domain)ro.New(ro.mem + (RowType, ro.rowType + ((int)ro.rowType.Count,vr.defpos))
+                                    ro = (Domain)ro.New(ro.mem + (RowType, ro.rowType + ((int)ro.rowType.Count, vr.defpos))
                                         + (Representation, ro.representation + (vr.defpos, vr.domain)));
                                 }
                                 else if (ls && rf)
@@ -512,7 +580,7 @@ namespace Pyrrho.Level4
             }
             if (mm[JoinCond] is CTree<long, bool> jc)
                 m += (JoinCond, jc);
-            if (mm[OnCond] is CTree<long,long> v)
+            if (mm[OnCond] is CTree<long, long> v && joinKind!=Qlx.REF)
             {
                 if (joinKind == Qlx.CROSS)
                     m += (JoinKind, Qlx.INNER);
@@ -520,11 +588,11 @@ namespace Pyrrho.Level4
                 fi = fi.Sort(cx, (Domain)lo.New(lo.mem + (RowType, lo.rowType + fi.ordSpec.rowType)
                     + (Representation, lo.representation + fi.ordSpec.representation)), fi.distinct);
                 se = se.Sort(cx, (Domain)ro.New(ro.mem + (RowType, ro.rowType + se.ordSpec.rowType)
-                    + (Representation, ro.representation + se.ordSpec.representation)), se.distinct);
+                    + (Representation, ro.representation + se.ordSpec.representation)), se.distinct);//,  joinFactors);
             }
             m += (JFirst, fi.defpos);
             m += (JSecond, se.defpos);
-            if (mm[Assig] is CTree<UpdateAssignment, bool>sg)
+            if (mm[Assig] is CTree<UpdateAssignment, bool> sg)
             {
                 var sf = fi.assig;
                 var ss = se.assig;
@@ -532,7 +600,7 @@ namespace Pyrrho.Level4
                 for (var b = sg.First(); b != null; b = b.Next())
                 {
                     var ua = b.key();
-                    if (!Knows(cx,ua.vbl))
+                    if (!Knows(cx, ua.vbl))
                         sg -= b.key();
                     if (fi.representation.Contains(ua.vbl))
                     {
@@ -546,9 +614,9 @@ namespace Pyrrho.Level4
                     }
                 }
                 if (sf != fi.assig)
-                    fi.Apply(new BTree<long,object>(Assig, sf),cx);
+                    fi.Apply(new BTree<long, object>(Assig, sf), cx);
                 if (ss != se.assig)
-                    se.Apply(new BTree<long,object>(Assig, ss),cx);
+                    se.Apply(new BTree<long, object>(Assig, ss), cx);
                 if (gs != assig)
                     m += (Assig, gs);
             }
@@ -568,6 +636,7 @@ namespace Pyrrho.Level4
                 Qlx.LEFT => LeftJoinBookmark.New(_cx, this),
                 Qlx.RIGHT => RightJoinBookmark.New(_cx, this),
                 Qlx.FULL => FullJoinBookmark.New(_cx, this),
+                Qlx.REF => FDJoinBookmark.New(_cx,this),
                 _ => throw new PEException("PE57"),
             };
             var b = r?.MoveToMatch(_cx);
@@ -582,6 +651,7 @@ namespace Pyrrho.Level4
                 Qlx.LEFT => LeftJoinBookmark.New(this, cx),
                 Qlx.RIGHT => RightJoinBookmark.New(this, cx),
                 Qlx.FULL => FullJoinBookmark.New(this, cx),
+                Qlx.REF => FDJoinBookmark.New(this, cx),
                 _ => throw new PEException("PE57"),
             };
             var b = r?.MoveToMatch(cx);
@@ -590,21 +660,21 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(' ');sb.Append(joinKind);
-            if (joinCond!=CTree<long,bool>.Empty)
-            { 
+            sb.Append(' '); sb.Append(joinKind);
+            if (joinCond != CTree<long, bool>.Empty)
+            {
                 sb.Append(" JoinCond: ");
                 var cm = "(";
-                for (var b=joinCond.First();b is not null;b=b.Next())
+                for (var b = joinCond.First(); b is not null; b = b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.key()));
                 }
                 sb.Append(')');
             }
-            sb.Append(" First: ");sb.Append(Uid(first));
+            sb.Append(" First: "); sb.Append(Uid(first));
             sb.Append(" Second: "); sb.Append(Uid(second));
-            if (onCond!=CTree<long, long>.Empty)
+            if (onCond != CTree<long, long>.Empty)
             {
                 sb.Append(" on");
                 var cm = " ";
@@ -628,7 +698,7 @@ namespace Pyrrho.Level4
     ///     /
     /// </summary>
 	internal abstract class JoinBookmark : Cursor
-	{
+    {
         /// <summary>
         /// The associated join row set
         /// </summary>
@@ -637,8 +707,8 @@ namespace Pyrrho.Level4
         internal readonly bool _useLeft, _useRight;
         internal readonly BTree<long, TRow> _ts;
         protected JoinBookmark(Context cx, JoinRowSet jrs, Cursor? left, bool ul, Cursor? right,
-            bool ur, int pos) : base(cx, jrs, pos, (left?._ds??E)+(right?._ds??E), 
-                _Vals(jrs,cx.obs[jrs.first] as Domain??throw new PEException("PE1403"), left, ul, right, ur))
+            bool ur, int pos) : base(cx, jrs, pos, (left?._ds ?? E) + (right?._ds ?? E),
+                _Vals(jrs, cx.obs[jrs.first] as Domain ?? throw new PEException("PE1403"), left, ul, right, ur))
         {
             _jrs = jrs;
             _left = left;
@@ -647,7 +717,7 @@ namespace Pyrrho.Level4
             _useRight = ur;
             _ts = cx.cursors;
         }
-        protected JoinBookmark(JoinBookmark cu, Context cx, long p, TypedValue v) 
+        protected JoinBookmark(JoinBookmark cu, Context cx, long p, TypedValue v)
             : base(cu, cx, p, v)
         {
             _jrs = cu._jrs;
@@ -657,9 +727,9 @@ namespace Pyrrho.Level4
             _useRight = cu._useRight;
             _ts = cx.cursors;
         }
-        protected JoinBookmark(Context cx,JoinBookmark cu) 
-            :base(cx,(RowSet?)cx.obs[cu._jrs.defpos]??throw new PEException("PE1408"),
-                 cu._pos,cu._ds,cu) 
+        protected JoinBookmark(Context cx, JoinBookmark cu)
+            : base(cx, (RowSet?)cx.obs[cu._jrs.defpos] ?? throw new PEException("PE1408"),
+                 cu._pos, cu._ds, cu)
         {
             _jrs = cu._jrs;
             _left = cu._left;
@@ -724,8 +794,8 @@ namespace Pyrrho.Level4
         /// Constructor: a new Inner Join enumerator
         /// </summary>
         /// <param name="j">The part row set</param>
-        InnerJoinBookmark(Context _cx,JoinRowSet j, Cursor? left, Cursor? right,int pos=0) 
-            : base(_cx,j,left,true,right,true,pos)
+        InnerJoinBookmark(Context _cx, JoinRowSet j, Cursor? left, Cursor? right, int pos = 0)
+            : base(_cx, j, left, true, right, true, pos)
         {
             // warning: now check the joinCondition using AdvanceToMatch
         }
@@ -735,16 +805,16 @@ namespace Pyrrho.Level4
         {
             return new InnerJoinBookmark(this, cx, p, v);
         }
-        internal static InnerJoinBookmark? New(Context cx,JoinRowSet j)
+        internal static InnerJoinBookmark? New(Context cx, JoinRowSet j)
         {
             var lrs = ((RowSet?)cx.obs[j.first]);
             var left = lrs?.First(cx);
             var right = ((RowSet?)cx.obs[j.second])?.First(cx);
             if (left == null || right == null)
                 return null;
-            for (;;)
+            for (; ; )
             {
-                var bm = new InnerJoinBookmark(cx,j, left, right);
+                var bm = new InnerJoinBookmark(cx, j, left, right);
                 int c = j.Compare(cx);
                 if (c == 0)
                     return bm;
@@ -789,7 +859,7 @@ namespace Pyrrho.Level4
             if (right?.Mb() is MTreeBookmark mb0 && mb0.hasMore((int)_jrs.joinCond.Count))
             {
                 right = right.Next(_cx);
-                return new InnerJoinBookmark(_cx,_jrs, left, right, _pos + 1);
+                return new InnerJoinBookmark(_cx, _jrs, left, right, _pos + 1);
             }
             left = left?.Next(_cx);
             if (left == null)
@@ -800,15 +870,15 @@ namespace Pyrrho.Level4
             var mb = (left.Mb() is MTreeBookmark ml && ml.changed((int)_jrs.joinCond.Count)) ? null :
                 right?.Mb()?.ResetToTiesStart((int)_jrs.joinCond.Count);
             if (mb != null)
-                right = right?.ResetToTiesStart(_cx,mb);
+                right = right?.ResetToTiesStart(_cx, mb);
             else
                 right = right?.Next(_cx);
             if (right == null)
                 return null;
             for (; ; )
             {
-                var ret = new InnerJoinBookmark(_cx,_jrs, left, right, _pos + 1);
-                int c = _jrs.Compare( _cx);
+                var ret = new InnerJoinBookmark(_cx, _jrs, left, right, _pos + 1);
+                int c = _jrs.Compare(_cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
@@ -857,10 +927,96 @@ namespace Pyrrho.Level4
                 }
                 else
                     if ((right = right.Previous(_cx)) == null)
-                    return null;
+                        return null;
             }
         }
     }
+    /// <summary>
+    /// An enumerator for a functional-dependent rowset.
+    /// In such a part, there is a condition that uniquely determines
+    /// an operand of the rowset.
+    /// So we enumerate the other operand and position for the determined
+    /// operand.
+    /// </summary>
+    internal class FDJoinBookmark : JoinBookmark
+    {
+        readonly RowSet _sce;
+        readonly TableRowSet _dst; // guaranteed to be a tableRowSet
+        readonly long _refCol;
+        /// <summary>
+        /// Constructor for the functional-dependent join (always left=source,right=dest)
+        /// refCol is a reference column targeting the dest
+        /// </summary>
+        /// <param name="rs">The Join RowSet</param>
+        FDJoinBookmark(Context cx, JoinRowSet jrs, Cursor left, Cursor right, int pos)
+            : base(cx, jrs, left, true, right, true, pos)
+        {
+            _refCol = jrs.refCol;
+            _sce = cx.obs[jrs.first] as RowSet ?? throw new PEException("PE56012");
+            _dst = cx.obs[jrs.second] as TableRowSet ?? throw new PEException("PE56013");
+        }
+        /// <summary>
+        /// A new FD bookmark
+        /// </summary>
+        /// <param name="j">the join rowset</param>
+        /// <returns>the bookmark</returns>
+        internal static FDJoinBookmark? New(Context cx, JoinRowSet j)
+        {
+            var sce = cx.obs[j.first] as RowSet ?? throw new PEException("PE56022");
+            var dst = cx.obs[j.second] as TableRowSet ?? throw new PEException("PE56023");
+            for (var left = sce.First(cx); left != null; left = left.Next(cx))
+                if (TableRowSet.TableCursor.New(cx, dst, left.values[j.refCol]?.ToLong() ?? -1L) is Cursor right
+                    && right.Matches(cx))
+                {
+                    cx.values += right.values;
+                    cx.values += left.values;
+                    return new FDJoinBookmark(cx, j, left, right, 0);
+                }
+            return null;
+        }
+        internal static FDJoinBookmark? New(JoinRowSet j,Context cx)
+        {
+            var sce = cx.obs[j.first] as RowSet ?? throw new PEException("PE56022");
+            var dst = cx.obs[j.second] as TableRowSet ?? throw new PEException("PE56023");
+            for (var left = sce.Last(cx); left != null; left = left.Previous(cx))
+                if (TableRowSet.TableCursor.New(cx, dst, left.values[j.refCol]?.ToLong() ?? -1L) is Cursor right
+                    && right.Matches(cx))
+                    return new FDJoinBookmark(cx, j, left, right, 0);
+            return null;
+        }
+        /// <summary>
+        /// Move to the next row in a functional-dependent rowset
+        /// </summary>
+        /// <returns>a bookmark for the next row or null</returns>
+        protected override JoinBookmark? _Next(Context cx)
+        {
+            var left = _left;
+            for (; ; )
+            {
+                left = left?.Next(cx);
+                if (left == null)
+                    return null;
+                if (TableRowSet.TableCursor.New(cx, _dst, left.values[_refCol]?.ToLong() ?? -1L) is Cursor right
+                    && right.Matches(cx))
+                    return new FDJoinBookmark(cx, _jrs, left, right, 0);
+            }
+        }
+
+        protected override Cursor? _Previous(Context cx)
+        {
+            var left = _left;
+            for (; ; )
+            {
+                left = left?.Previous(cx);
+                if (left==null)
+                    return null;
+                if (TableRowSet.TableCursor.New(cx, _dst, left.values[_refCol]?.ToLong() ?? -1L) is Cursor right
+                    && right.Matches(cx))
+                    return new FDJoinBookmark(cx, _jrs, left, right, 0);
+            }
+        }
+    }
+
     /// <summary>
     /// Enumerator for a left join
     ///     /
@@ -872,8 +1028,8 @@ namespace Pyrrho.Level4
         /// Constructor: a left join enumerator for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        LeftJoinBookmark(Context _cx,JoinRowSet j, Cursor? left, Cursor? right,bool ur,int pos) 
-            : base(_cx,j,left,true,right,ur,pos)
+        LeftJoinBookmark(Context _cx, JoinRowSet j, Cursor? left, Cursor? right, bool ur, int pos)
+            : base(_cx, j, left, true, right, ur, pos)
         {
             // care: ensure you AdvanceToMatch
             hideRight = right;
@@ -889,7 +1045,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">the join row set</param>
         /// <returns>a bookmark for the first entry or null if there is none</returns>
-        internal static LeftJoinBookmark? New(Context cx,JoinRowSet j)
+        internal static LeftJoinBookmark? New(Context cx, JoinRowSet j)
         {
             if (cx.obs[j.first] is not RowSet lr || cx.obs[j.second] is not RowSet sr)
                 throw new PEException("PE47192");
@@ -897,16 +1053,16 @@ namespace Pyrrho.Level4
             var right = sr.First(cx);
             if (left == null)
                 return null;
-            for (;;)
+            for (; ; )
             {
                 if (right == null)
-                    return new LeftJoinBookmark(cx,j, left, null, false, 0);
-                var bm = new LeftJoinBookmark(cx,j, left, right,true,0);
+                    return new LeftJoinBookmark(cx, j, left, null, false, 0);
+                var bm = new LeftJoinBookmark(cx, j, left, right, true, 0);
                 int c = j.Compare(cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
-                    return new LeftJoinBookmark(cx,j, left, right, false, 0);
+                    return new LeftJoinBookmark(cx, j, left, right, false, 0);
                 else
                     right = right.Next(cx);
             }
@@ -947,7 +1103,7 @@ namespace Pyrrho.Level4
             if (_useRight && right?.Mb() is MTreeBookmark mr && mr.hasMore((int)_jrs.joinCond.Count))
             {
                 right = right.Next(_cx);
-                return new LeftJoinBookmark(_cx,_jrs, left, right, true, _pos + 1);
+                return new LeftJoinBookmark(_cx, _jrs, left, right, true, _pos + 1);
             }
             left = left?.Next(_cx);
             if (left == null)
@@ -964,18 +1120,18 @@ namespace Pyrrho.Level4
                 else
                     right = right?.Next(_cx);
             }
-            for (;;)
+            for (; ; )
             {
                 if (left == null)
                     return null;
                 if (right == null)
-                    return new LeftJoinBookmark(_cx,_jrs, left, null, false, _pos + 1);
-                var ret = new LeftJoinBookmark(_cx,_jrs, left, right, true, _pos + 1);
+                    return new LeftJoinBookmark(_cx, _jrs, left, null, false, _pos + 1);
+                var ret = new LeftJoinBookmark(_cx, _jrs, left, right, true, _pos + 1);
                 int c = _jrs.Compare(_cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
-                    return new LeftJoinBookmark(_cx,_jrs, left, right, false, _pos + 1);
+                    return new LeftJoinBookmark(_cx, _jrs, left, right, false, _pos + 1);
                 else
                     right = right.Next(_cx);
             }
@@ -1030,12 +1186,12 @@ namespace Pyrrho.Level4
         /// Constructor: a right join enumerator for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        RightJoinBookmark(Context _cx,JoinRowSet j, Cursor? left, bool ul, Cursor? right,int pos) 
-            : base(_cx,j,left,ul,right,true,pos)
+        RightJoinBookmark(Context _cx, JoinRowSet j, Cursor? left, bool ul, Cursor? right, int pos)
+            : base(_cx, j, left, ul, right, true, pos)
         {
             // care: ensure you AdvanceToMatch
         }
-        RightJoinBookmark(RightJoinBookmark cu,Context cx,long p,TypedValue v):base(cu, cx, p, v) 
+        RightJoinBookmark(RightJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
@@ -1046,7 +1202,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">the join row set</param>
         /// <returns>the bookmark for the first row or null if none</returns>
-        internal static RightJoinBookmark? New(Context cx,JoinRowSet j)
+        internal static RightJoinBookmark? New(Context cx, JoinRowSet j)
         {
             if (cx.obs[j.first] is not RowSet lr || cx.obs[j.second] is not RowSet sr)
                 throw new PEException("PE47193");
@@ -1054,21 +1210,21 @@ namespace Pyrrho.Level4
             var right = sr.First(cx);
             if (right == null)
                 return null;
-            for (;;)
+            for (; ; )
             {
                 if (left == null)
-                    return new RightJoinBookmark(cx,j, null, false, right, 0);
-                var bm = new RightJoinBookmark(cx,j, left, true, right,0);
-                int c = j.Compare( cx);
+                    return new RightJoinBookmark(cx, j, null, false, right, 0);
+                var bm = new RightJoinBookmark(cx, j, left, true, right, 0);
+                int c = j.Compare(cx);
                 if (c == 0)
                     return bm;
                 if (c < 0)
                     left = left.Next(cx);
                 else
-                    return new RightJoinBookmark(cx,j, left, false, right, 0);
+                    return new RightJoinBookmark(cx, j, left, false, right, 0);
             }
         }
-        internal static RightJoinBookmark? New(JoinRowSet j,Context cx)
+        internal static RightJoinBookmark? New(JoinRowSet j, Context cx)
         {
             if (cx.obs[j.first] is not RowSet lr || cx.obs[j.second] is not RowSet sr)
                 throw new PEException("PE47194");
@@ -1101,7 +1257,7 @@ namespace Pyrrho.Level4
             if (_useLeft && right?.Mb() is MTreeBookmark mr && mr.hasMore((int)_jrs.joinCond.Count))
             {
                 right = right.Next(_cx);
-                return new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
+                return new RightJoinBookmark(_cx, _jrs, left, true, right, _pos + 1);
             }
             right = right?.Next(_cx);
             if (right == null)
@@ -1118,20 +1274,20 @@ namespace Pyrrho.Level4
                 else
                     left = left?.Next(_cx);
             }
-            for (;;)
+            for (; ; )
             {
                 if (right == null)
                     return null;
                 if (left == null)
-                    return new RightJoinBookmark(_cx,_jrs, null, false, right, _pos + 1);
-                var ret = new RightJoinBookmark(_cx,_jrs, left, true, right, _pos + 1);
+                    return new RightJoinBookmark(_cx, _jrs, null, false, right, _pos + 1);
+                var ret = new RightJoinBookmark(_cx, _jrs, left, true, right, _pos + 1);
                 int c = _jrs.Compare(_cx);
                 if (c == 0)
                     return ret;
                 if (c < 0)
                     left = left.Next(_cx);
                 else
-                    return new RightJoinBookmark(_cx,_jrs, left, false, right, _pos + 1);
+                    return new RightJoinBookmark(_cx, _jrs, left, false, right, _pos + 1);
             }
         }
         protected override Cursor? _Previous(Context _cx)
@@ -1185,11 +1341,11 @@ namespace Pyrrho.Level4
         /// Constructor: a full join bookmark for a join rowset
         /// </summary>
         /// <param name="j">The join rowset</param>
-        FullJoinBookmark(Context _cx,JoinRowSet j, Cursor? left, bool ul, Cursor? right, 
+        FullJoinBookmark(Context _cx, JoinRowSet j, Cursor? left, bool ul, Cursor? right,
             bool ur, int pos)
-            : base(_cx,j, left, ul, right, ur, pos)
+            : base(_cx, j, left, ul, right, ur, pos)
         { }
-        FullJoinBookmark(FullJoinBookmark cu,Context cx, long p, TypedValue v):base(cu,cx,p,v)
+        FullJoinBookmark(FullJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
@@ -1200,19 +1356,19 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">the join row set</param>
         /// <returns>a bookmark for the first row or null if none</returns>
-        internal static FullJoinBookmark? New(Context cx,JoinRowSet j)
+        internal static FullJoinBookmark? New(Context cx, JoinRowSet j)
         {
             var left = ((RowSet?)cx.obs[j.first])?.First(cx);
             var right = ((RowSet?)cx.obs[j.second])?.First(cx);
             if (left == null && right == null)
                 return null;
-            var bm = new FullJoinBookmark(cx,j, left, true, right, true, 0);
+            var bm = new FullJoinBookmark(cx, j, left, true, right, true, 0);
             int c = j.Compare(cx);
             if (c == 0)
                 return bm;
             if (c < 0)
-                return new FullJoinBookmark(cx,j, left, true, right, false, 0);
-            return new FullJoinBookmark(cx,j, left, false, right, true, 0);
+                return new FullJoinBookmark(cx, j, left, true, right, false, 0);
+            return new FullJoinBookmark(cx, j, left, false, right, true, 0);
         }
         internal static FullJoinBookmark? New(JoinRowSet j, Context cx)
         {
@@ -1238,11 +1394,11 @@ namespace Pyrrho.Level4
         {
             var left = _left;
             var right = _right;
-            if (_useLeft && _useRight && right?.Mb() is MTreeBookmark mr 
+            if (_useLeft && _useRight && right?.Mb() is MTreeBookmark mr
                 && mr.hasMore((int)_jrs.joinCond.Count))
             {
                 right = right.Next(_cx);
-                return new FullJoinBookmark(_cx,_jrs, left, true, right, true, _pos + 1);
+                return new FullJoinBookmark(_cx, _jrs, left, true, right, true, _pos + 1);
             }
             if (_useLeft)
                 left = left?.Next(_cx);
@@ -1253,11 +1409,11 @@ namespace Pyrrho.Level4
             {
                 if (_useLeft)
                 {
-                    var mb = (left == null || (left.Mb() is MTreeBookmark ml 
+                    var mb = (left == null || (left.Mb() is MTreeBookmark ml
                         && ml.changed((int)_jrs.joinCond.Count))) ? null :
                         right?.Mb()?.ResetToTiesStart((int)_jrs.joinCond.Count);
                     if (mb != null)
-                        right = right?.ResetToTiesStart(_cx,mb);
+                        right = right?.ResetToTiesStart(_cx, mb);
                     else
                         right = right?.Next(_cx);
                 }
@@ -1267,12 +1423,12 @@ namespace Pyrrho.Level4
             if (left == null && right == null)
                 return null;
             if (left == null)
-                return new FullJoinBookmark(_cx,_jrs, null, false, right, true, _pos + 1);
+                return new FullJoinBookmark(_cx, _jrs, null, false, right, true, _pos + 1);
             if (right == null)
-                return new FullJoinBookmark(_cx,_jrs, left, true, right, false, _pos + 1);
-            new FullJoinBookmark(_cx,_jrs, left, true, right, true, _pos + 1);
+                return new FullJoinBookmark(_cx, _jrs, left, true, right, false, _pos + 1);
+            new FullJoinBookmark(_cx, _jrs, left, true, right, true, _pos + 1);
             int c = _jrs.Compare(_cx);
-            return new FullJoinBookmark(_cx,_jrs, left, c <= 0, right, c >= 0, _pos + 1);
+            return new FullJoinBookmark(_cx, _jrs, left, c <= 0, right, c >= 0, _pos + 1);
         }
         protected override Cursor? _Previous(Context _cx)
         {
@@ -1325,12 +1481,12 @@ namespace Pyrrho.Level4
         /// Constructor: a cross join bookmark for a join row set
         /// </summary>
         /// <param name="j">a join row set</param>
-        CrossJoinBookmark(Context _cx,JoinRowSet j, Cursor? left = null, Cursor? right = null,
-            int pos=0) : base(_cx,j,left,true,right,true,pos)
+        CrossJoinBookmark(Context _cx, JoinRowSet j, Cursor? left = null, Cursor? right = null,
+            int pos = 0) : base(_cx, j, left, true, right, true, pos)
         { }
-        CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v) 
+        CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v)
             : base(cu, cx, p, v) { }
-        public static CrossJoinBookmark? New(Context cx,JoinRowSet j)
+        public static CrossJoinBookmark? New(Context cx, JoinRowSet j)
         {
             if (cx.obs[j.first] is not RowSet fi || cx.obs[j.second] is not RowSet se)
                 throw new PEException("PE48168");
@@ -1338,7 +1494,7 @@ namespace Pyrrho.Level4
             if (f == null) // don't test s (possible lateral dependency)
                 return null;
             var s = se.First(cx);
-            for (;; )
+            for (; ; )
             {
                 if (s != null)
                 {
@@ -1356,7 +1512,7 @@ namespace Pyrrho.Level4
                 }
             }
         }
-        public static CrossJoinBookmark? New(JoinRowSet j,Context cx)
+        public static CrossJoinBookmark? New(JoinRowSet j, Context cx)
         {
             if (cx.obs[j.first] is not RowSet fi || cx.obs[j.second] is not RowSet se)
                 throw new PEException("PE48169");

@@ -4997,7 +4997,7 @@ namespace Pyrrho.Level4
                 var on = cx.names;
                 cx.names = cx.anames;
                 ep = cx.GetUid();
-                dm = ParseSelectList(-1L,m+ (DBObject.Scope, LexDp())
+                (var os,dm) = ParseSelectList(-1L,m+ (DBObject.Scope, LexDp())
                     +(DBObject._Domain, xp + (Domain.Kind, Qlx.ROW)));
                 cx.names = on + cx.names;
                 if (dm.aggs == CTree<long, bool>.Empty)
@@ -5009,7 +5009,7 @@ namespace Pyrrho.Level4
                     RowSet sr = new SelectRowSet(ap, ii, cx, dm, new ExplicitRowSet(ap, ep, cx, sd, BList<(long, TRow)>.Empty));
                     if (xp.mem[Domain.Nodes] is CTree<long, bool> xs) // passed to us for MatchStatement Return handling
                         sr += (Domain.Nodes, xs);
-                    sr = ParseSelectRowSet(new BTree<long,object>(DBObject._Domain,sr)); // this is what we will do with it
+                    sr = ParseSelectRowSet(new BTree<long,object>(DBObject._Domain,sr)+(RowSet._Operands,os)); // this is what we will do with it
                     ep = sr.defpos;
                     dm = sd;
                 }
@@ -7885,6 +7885,7 @@ namespace Pyrrho.Level4
             var id = new Ident(this);
             var d = false;
             Domain dm;
+            var os = (CTree<long, bool>)(m[RowSet._Operands] ?? CTree<long, bool>.Empty);
             if (cx.role.dbobjects[lxr.val.ToString()] is long d0 && d0 == 0L)
             {
                 Mustbe(Qlx.SELECT, Qlx.RETURN, Qlx.YIELD);
@@ -7893,14 +7894,15 @@ namespace Pyrrho.Level4
                     cx.names += nn;
                 var lp = LexDp();
                 d = ParseDistinctClause();
-                dm = ParseSelectList(id.uid, m + (DBObject.Scope, id.lp));
+                (var ps,dm) = ParseSelectList(id.uid, m + (DBObject.Scope, id.lp));
+                os += ps;
                 cx.Add(dm);
                 cx.names += on;
             }
             else
                 dm = (Domain)(cx.db.objects[d0] ?? throw new PEException("PE10000"));
             RowSet te = ParseTableExpression(id.uid, m + (DBObject._Domain, dm) 
-                + (DBObject.Scope,id.lp));
+                + (DBObject.Scope,id.lp) + (RowSet._Operands,os));
             te = (SelectRowSet?)cx.obs[te.defpos] ?? throw new PEException("PE1967");
             if (d)
                 te = new DistinctRowSet(cx, te);
@@ -7928,9 +7930,10 @@ namespace Pyrrho.Level4
         /// <param name="dp">The position of the SELECT keyword</param>
         /// <param name="xp">the expected valueType type, or Domain.Content</param>
         /// <returns>a "Domain" whose rowtype may contain SqlReviews for local keymap</returns> 
-		Domain ParseSelectList(long dp, BTree<long, object> m)
+		(CTree<long,bool>,Domain) ParseSelectList(long dp, BTree<long, object> m)
         {
             QlValue v;
+            var os = CTree<long, bool>.Empty;
             m -= ObInfo.Name;
             var dm = m[DBObject._Domain] as Domain ?? Domain.Content;
             var b = dm.First();
@@ -7939,6 +7942,7 @@ namespace Pyrrho.Level4
             m -= ObInfo._Names;
             var vs = BList<DBObject>.Empty;
             v = ParseSelectItem(dp, dm, b, c, m);
+            os += v.Operands(cx);
             if (v is not null) // star items do not have a value to add at this stage
                 vs += v;
             while (tok == Qlx.COMMA)
@@ -7948,9 +7952,12 @@ namespace Pyrrho.Level4
                 c = c?.Next();
                 v = ParseSelectItem(dp, dm, b, c, m);
                 if (v is not null)
+                {
                     vs += v;
+                    os += v.Operands(cx);
+                }
             }
-            return (Domain)cx.Add(new Domain(cx.GetUid(), cx, Qlx.TABLE, vs, vs.Length));
+            return (os,(Domain)cx.Add(new Domain(cx.GetUid(), cx, Qlx.TABLE, vs, vs.Length)));
         }
         QlValue ParseSelectItem(long q, Domain dm, ABookmark<int,long>? b, ABookmark<int,string>? c, BTree<long, object> m)
         {
@@ -8246,6 +8253,11 @@ namespace Pyrrho.Level4
             {
                 var lp = LexDp();
                 a = ParseJoinPart(lp, a.Apply(new BTree<long, object>(DBObject._From, lp), cx), m);
+/*                if (a is JoinRowSet ja)
+                {
+                    var fs = (CTree<long, CTree<long, bool>>)(m[JoinRowSet.JoinFactors] ?? CTree<long, CTree<long, bool>>.Empty);
+                    m += (JoinRowSet.JoinFactors, fs + ja.joinFactors);
+                } */
             }
             return a;
         }
@@ -8642,6 +8654,8 @@ namespace Pyrrho.Level4
             Qlx jkind;
             RowSet right;
             var jm = BTree<long, object>.Empty;
+            if (m[RowSet._Operands] is CTree<long, bool> os)
+                jm += (RowSet._Operands, os);
             if (Match(Qlx.COMMA))
             {
                 jkind = Qlx.CROSS;
@@ -8695,6 +8709,7 @@ namespace Pyrrho.Level4
                     var rs = CList<QlValue>.Empty;
                     var lm = cx.Map(left.rowType);
                     var rm = cx.Map(right.rowType);
+       //             var jf = (CTree<long, CTree<long, bool>>)(m[JoinRowSet.JoinFactors] ?? CTree<long, CTree<long, bool>>.Empty);
                     for (var b = oc.First(); b != null; b = b.Next())
                     {
                         if (cx.obs[b.key()] is not SqlValueExpr se || se.domain.kind != Qlx.BOOLEAN)

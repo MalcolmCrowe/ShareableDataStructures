@@ -76,6 +76,7 @@ namespace Pyrrho.Level4
             KeysList = -158, // CTree<CTree<int,long>,Domain> TableColumn List of all available keys
             _Matches = -182, // CTree<long,TypedValue> matches guaranteed elsewhere
             Matching = -183, // CTree<long,CTree<long,bool>> QlValue QlValue (symmetric)
+            _Operands = -160, // CTree<long,bool> QlValue
             OrdSpec = -184, // Domain
             Periods = -185, // BTree<long,PeriodSpec>
             UsingOperands = -411, // CTree<long,long> QlValue
@@ -119,6 +120,8 @@ namespace Pyrrho.Level4
         internal long groupSpec => (long)(mem[Group] ?? -1L);
         internal CTree<long, bool> ambient =>
             (CTree<long, bool>)(mem[Ambient] ?? CTree<long, bool>.Empty);
+        internal CTree<long, bool> operands =>
+            (CTree<long, bool>)(mem[_Operands] ?? CTree<long, bool>.Empty);
         new internal long target => (long)(mem[Target] // for table-focussed RowSets
             ?? rsTargets.First()?.key() ?? -1L); // for safety
         internal CTree<long, long> rsTargets =>
@@ -302,7 +305,7 @@ namespace Pyrrho.Level4
                 }
             return base._Lookup(lp, cx, ic, n, r);
         }
-        internal virtual RowSet Sort(Context cx, Domain os, bool dct)
+        internal virtual RowSet Sort(Context cx, Domain os, bool dct, CTree<long,CTree<long,bool>>? others = null) // for others see JoinRowSet and TableRowSet.Sort
         {
             if (os.CompareTo(rowOrder) == 0 && rowOrder!=Row) // skip if current rowOrder already finer
                 return this;
@@ -2657,22 +2660,26 @@ namespace Pyrrho.Level4
                     cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
                     sce = sce.Build(cx);
                     if (nrest)
-                        for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
+                        for (var rb = sce.First(cx); rb != null; 
+                            rb = rb.Next(cx))
                             if (r.groupings.Count == 0)
                                 for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
                                 {
                                     if (cx.obs[b0.key()] is SqlFunction sf0)
                                         sf0.AddIn(TRow.Empty, cx);
                                 }
-                            else for (var g = r.groupings.First(); g != null; g = g.Next())
+                            else for (var g = r.groupings.First(); g != null; 
+                                g = g.Next())
                                     if (g.value() is long p && cx.obs[p] is Grouping gg)
                                     {
                                         var vals = CTree<long, TypedValue>.Empty;
-                                        for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
+                                        for (var gb = gg.keys.First(); gb != null; 
+                                        gb = gb.Next())
                                             if (gb.value() is long gp && cx.obs[gp] is QlValue v)
                                                 vals += (gp, v.Eval(cx));
                                         var key = new TRow(r.groupCols, vals);
-                                        for (var b1 = ags.First(); b1 != null; b1 = b1.Next())
+                                        for (var b1 = ags.First(); b1 != null; 
+                                        b1 = b1.Next())
                                             if (cx.obs[b1.key()] is SqlFunction sf1)
                                                 sf1.AddIn(key, cx);
                                     }
@@ -2729,7 +2736,7 @@ namespace Pyrrho.Level4
             }
             return (RowSet)cx.Add(this + (_Built, true));
         }
-        internal override RowSet Sort(Context cx, Domain os, bool dct)
+        internal override RowSet Sort(Context cx, Domain os, bool dct, CTree<long, CTree<long, bool>>? others = null)
         {
             if (rows.Count > 0)
             {
@@ -3516,16 +3523,23 @@ namespace Pyrrho.Level4
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Delete, null, fl));
         }
-        internal override RowSet Sort(Context cx, Domain os, bool dct)
+        internal override RowSet Sort(Context cx, Domain os, bool dct, CTree<long, CTree<long, bool>>? others = null)
         {
             cx.Add(os);
-            if (indexes.Contains(os.rowType))
+            if (keysList.Contains(os.rowType))
             {
                 var ot = (RowSet)cx.Add(this + (Level3.Index.Keys, os) + (RowOrder, os));
                 if (!dct)
                     return ot;
                 return (RowSet)cx.Add(new DistinctRowSet(cx, ot));
             }
+            // a single ordering column can be supplied by a keymap in a table of the join
+                // (we only provide this if the referenced table is a preceding factor)
+            if (os.Length == 1 && os[0] is long p && cx.obs[p] is QlInstance q
+                && cx.db.objects[q.sPos] is TableColumn tc && cx.db.objects[tc.tabledefpos] is Table ct)
+                for (var c= others?[ct.defpos]?.First(); c!=null;c=c.Next())
+                    if (cx.obs[c.key()] is TableRowSet cs && cs.representation.Contains(q.defpos))
+                return new JoinRowSet(cx.GetUid(), cx, this, Qlx.REF, cs, 0L, new BTree<long,object>(Distinct,dct));
             return base.Sort(cx, os, dct);
         }
         internal override void Show(StringBuilder sb)
@@ -4063,7 +4077,7 @@ namespace Pyrrho.Level4
                     match = false;
             return match || (sc is InstanceRowSet && rowOrder.CompareTo(sc.rowOrder) == 0);
         }
-        internal override RowSet Sort( Context cx, Domain os, bool dct)
+        internal override RowSet Sort( Context cx, Domain os, bool dct, CTree<long, CTree<long, bool>>? others = null)
         {
             if (os.CompareTo(rowOrder)==0) // skip if same
                 return this;

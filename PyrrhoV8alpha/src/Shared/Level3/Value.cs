@@ -8892,14 +8892,16 @@ namespace Pyrrho.Level3
             var dr = rq.display;
             if (dr == 0)
                 dr = (int)rq.rowType.Count;
+            var os = CTree<long, bool>.Empty;
             for (var c = rq.rowType.First(); c != null && c.key() < dr; c = c.Next())
                 if (c.value() is long p && cx.obs[p] is DBObject ob)
                 {
                     if (cx.obs[p] is DBObject nv)
                         ob = nv;
                     vs += cx.Add(ob);
+                    os += (ob.defpos, true);
                 }
-            return (vs, m);
+            return (vs, m + (RowSet._Operands,os));
         }
         internal override CTree<long, bool> Needs(Context cx)
         {

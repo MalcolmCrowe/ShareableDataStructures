@@ -1639,6 +1639,7 @@ namespace Pyrrho.Level4
                         case SqlFunction.Op1: v = Replaced((long)v); break;
                         case SqlFunction.Op2: v = Replaced((long)v); break;
                         case SimpleCaseStatement._Operand: v = Replaced((long)v); break;
+                        case RowSet._Operands: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case WindowSpecification.Order: v = ((Domain)v).Replaced(this); break;
                         case Domain.OrderFunc: v = Replaced((long)v); break;
                         case FetchStatement.Outs: v = ReplacedLl((CList<long>)v); break;
@@ -1908,6 +1909,7 @@ namespace Pyrrho.Level4
                         case SqlFunction.Op1: v = Fix((long)v); break;
                         case SqlFunction.Op2: v = Fix((long)v); break;
                         case SimpleCaseStatement._Operand: v = Fix((long)v); break;
+                        case RowSet._Operands: v = FixTlb((CTree<long, bool>)v); break;
                         case WindowSpecification.Order: v = ((Domain)v).Fix(this); break;
                         case Domain.OrderFunc: v = Fix((long)v); break;
                         case RowSet.OrdSpec: v = ((Domain)v).Fix(this); break;
