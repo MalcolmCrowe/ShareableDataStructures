@@ -235,8 +235,6 @@ namespace Pyrrho.Level4
                 case ISMap:
                 case RSTargets:
                 case SIMap:
-                case TransitionRowSet.TargetTrans:
-                case TransitionRowSet.TransTarget:
                 case UsingOperands: m += (_Depth, cx._DepthTVV((CTree<long, long>)o, d)); break;
                 case Matching: m += (_Depth, cx._DepthTVTVb((CTree<long, CTree<long, bool>>)o, d)); break;
                 case ExplicitRowSet.ExplRows: m += (_Depth, Context._DepthLPlT(this, (BList<(long, TRow)>)o, d)); break;
@@ -5167,7 +5165,7 @@ namespace Pyrrho.Level4
     /// 
     /// All of these activations and cursors share the immutable _trs, and
     /// for a tablecolumn c and corresponding sqlvalue s, 
-    /// s=_trs.targetTrans[c] and c=_trs.transTarget[s].
+    /// s=_trs.sImap[c] and c=_trs.iSmap[s].
     /// 
     /// On creation of Table/TriggerActivations cursor values are placed for uids.
     /// On exit from Target/Table/TriggerActivations, values are gathered back into
@@ -5178,15 +5176,13 @@ namespace Pyrrho.Level4
     internal class TransitionRowSet : RowSet
     {
         internal const long
-            Defaults = -415, // CTree<long,TypedValue>  QlValue
-            TargetTrans = -418, // CTree<long,long>   TableColumn,QlValue
-            TransTarget = -419; // CTree<long,long>   QlValue,TableColumn
+            Defaults = -415; // CTree<long,TypedValue>  QlValue
         internal CTree<long, TypedValue> defaults =>
             (CTree<long, TypedValue>?)mem[Defaults] ?? CTree<long, TypedValue>.Empty;
-        internal CTree<long, long> targetTrans =>
-            (CTree<long, long>)(mem[TargetTrans]??CTree<long,long>.Empty);
-        internal CTree<long, long> transTarget =>
-            (CTree<long, long>)(mem[TransTarget]??CTree<long,long>.Empty);
+        internal CTree<long, long> sImap =>
+            (CTree<long, long>)(mem[SIMap]??CTree<long,long>.Empty);
+        internal CTree<long, long> iSmap =>
+            (CTree<long, long>)(mem[ISMap]??CTree<long,long>.Empty);
         internal TransitionRowSet(TargetActivation cx, TableRowSet ts, RowSet data)
             : base(data.scope,cx.GetUid(), cx,_Mem(cx, ts, data)+(_Where,ts.where)+(_Data,data.defpos)
                   +(Matching,ts.matching))
@@ -5219,8 +5215,8 @@ namespace Pyrrho.Level4
                         dfs += (tc.defpos, tv);
                         cx.values += (tc.defpos, tv);
                     }
-            m += (TargetTrans, ts.sIMap);
-            m += (TransTarget, ts.iSMap);
+            m += (SIMap, ts.sIMap);
+            m += (ISMap, ts.iSMap);
             m += (Defaults, dfs);
             return m;
         }
@@ -5286,12 +5282,12 @@ namespace Pyrrho.Level4
             var ds = cx.ReplaceTlT(defaults, so, sv);
             if (ds != defaults)
                 r +=(cx, Defaults, ds);
-            var gt = cx.ReplacedTll(targetTrans);
-            if (gt != targetTrans)
-                r += (cx,TargetTrans, gt);
-            var tg = cx.ReplacedTll(transTarget);
-            if (tg != transTarget)
-                r += (cx,TransTarget, tg);
+            var gt = cx.ReplacedTll(sImap);
+            if (gt != sImap)
+                r += (cx,SIMap, gt);
+            var tg = cx.ReplacedTll(iSmap);
+            if (tg != iSmap)
+                r += (cx,ISMap, tg);
             return r;
         }
         internal override void Show(StringBuilder sb)
@@ -5302,7 +5298,7 @@ namespace Pyrrho.Level4
             {
                 sb.Append(" TransTarget: (");
                 var cm = "";
-                for (var b = transTarget.First(); b != null; b = b.Next())
+                for (var b = iSmap.First(); b != null; b = b.Next())
                     if (b.value() is long p)
                     {
                         sb.Append(cm); cm = ","; sb.Append(Uid(b.key()));
@@ -5359,7 +5355,7 @@ namespace Pyrrho.Level4
             }
             TransitionCursor(TransitionCursor cu, TableActivation ta, long p, TypedValue v)
                 : base(cu, ta.next??throw new PEException("PE49207"),
-                      cu._trs.targetTrans[p],v)
+                      cu._trs.sImap[p],v)
             {
                 _trs = cu._trs;
                 _fbm = cu._fbm;
@@ -5463,7 +5459,7 @@ namespace Pyrrho.Level4
                 var fb = (cx._tty != PTrigger.TrigType.Insert) ?
                     cx.next.cursors[trs.rsTargets[cx._tgt.defpos]] : null;
                 for (var b = trs.First(); b != null; b = b.Next())
-                    if (b.value() is long p && trs.transTarget[p] is long tp)
+                    if (b.value() is long p && trs.iSmap[p] is long tp)
                     {
                         if (trc[p] is TypedValue v)
                         {
@@ -5609,7 +5605,7 @@ namespace Pyrrho.Level4
                                         v = ix.rows.NextKey(tc.domain.kind, k, 0, b.key());
                                 }
                                 vs += (tc.defpos, v);
-                                cx.values += (trc._trs.targetTrans[tc.defpos], v);
+                                cx.values += (trc._trs.sImap[tc.defpos], v);
                                 k += v;
                             }
                     }
@@ -5622,7 +5618,7 @@ namespace Pyrrho.Level4
                     cx = cx.next;
                 TableActivation ta = cx as TableActivation ?? throw new PEException("PE1932");
                 var trc = (TransitionCursor?)cx.next?.cursors[_trs.defpos] ?? throw new PEException("PE1933");
-                var tp = _trs.targetTrans[p];
+                var tp = _trs.sImap[p];
                 if (tp >= 0)
                     trc += (ta, tp, v);
                 cx.next.cursors += (_trs.defpos, trc);
@@ -5742,7 +5738,7 @@ namespace Pyrrho.Level4
             var rm =CTree<long,long>.Empty;
             var rb = trs.rowType.First();
             for (var b=dm.rowType.First();b is not null&&rb is not null;b=b.Next(),rb=rb.Next())
-            if (b.value() is long p && rb.value() is long q &&  trs.transTarget[q] is long f){
+            if (b.value() is long p && rb.value() is long q &&  trs.iSmap[q] is long f){
                 ma += (f, p);
                 rm += (p, f);
             }

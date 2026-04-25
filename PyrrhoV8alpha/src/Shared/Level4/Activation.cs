@@ -539,12 +539,12 @@ namespace Pyrrho.Level4
                             if (b.value() is UpdateAssignment ua)
                             {
                                 var tv = ua.Eval(this);
-                                if (trs.transTarget[ua.vbl] is long tp && tp!=0L)
+                                if (trs.iSmap[ua.vbl] is long tp && tp!=0L)
                                 {
                                     CheckMetadata(tp, tv);
                                     newRow += (tp, tv);
                                 }
-                                else if (trs.targetTrans.Contains(ua.vbl)) 
+                                else if (trs.sImap.Contains(ua.vbl)) 
                                     newRow += (ua.vbl, tv);
                             }
                         newRow = ReferenceColumns(tgc, newRow);

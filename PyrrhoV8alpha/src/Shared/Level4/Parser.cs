@@ -337,7 +337,7 @@ namespace Pyrrho.Level4
         /// <returns>The Executable results of the Parse</returns>
         public Executable ParseStatement(BTree<long, object> m)
         {
-            if (m.Contains(CallStatement.Optional) &&
+            if (m.Contains(Domain.Optional) &&
                 !Match(Qlx.CALL, Qlx.MATCH, Qlx.LBRACE, Qlx.LPAREN, Qlx.BEGIN))
                 throw new DBException("42000", "OPTIONAL");
             var xp = m[DBObject._Domain] as Domain ?? Domain.Null;
@@ -411,7 +411,7 @@ namespace Pyrrho.Level4
                     case Qlx.OPTIONAL:
                         {
                             Next();
-                            m += (CallStatement.Optional, true);
+                            m += (Domain.Optional, true);
                             if (tok == Qlx.MATCH)
                                 return ParseMatchStatement(m);
                             if (tok == Qlx.CALL)
@@ -435,6 +435,7 @@ namespace Pyrrho.Level4
                     case Qlx.REPEAT: return ParseRepeat(m);
                     case Qlx.REMOVE: goto case Qlx.DELETE; // some GQL TBD
                     case Qlx.RESIGNAL: return ParseSignal();
+                    case Qlx.YIELD: 
                     case Qlx.RETURN:
                         if (cx.bindings.Count==0 && m[Procedure.ProcBody] is bool b && b == true)
                             return ParseReturn(m);
@@ -492,7 +493,6 @@ namespace Pyrrho.Level4
                     case Qlx.WHEN: return ParseConditionalStmt(m);
                     case Qlx.WHERE: goto case Qlx.FILTER;
                     case Qlx.WITH: goto case Qlx.MATCH; // wow
-                    case Qlx.YIELD: return ParseSelectStatement(m);
                 }
             throw new DBException("42000");
         }

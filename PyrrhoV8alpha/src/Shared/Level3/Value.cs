@@ -922,7 +922,7 @@ namespace Pyrrho.Level3
                     if (from==-1L || (c is CalledActivation ca && ca.bindings.Contains(sPos)))
                         return cx.values[sPos] ?? dv;
                     if (c is TriggerActivation ta && ta.trigTarget?[defpos] is long cp
-                            && ta._trs?.targetTrans[cp] is long fp
+                            && ta._trs?.sImap[cp] is long fp
                             && cx.values[fp] is TypedValue v && v.dataType.kind==domain.kind)
                         return v; 
                 }

@@ -3188,10 +3188,9 @@ namespace Pyrrho.Level3
 	internal class CallStatement : Executable
     {
         internal const long
-             Call = -335,       // long SqlCall
-             Optional = -384;   // bool
+             Call = -335;       // long SqlCall
         public long call => (long)(mem[Call] ?? -1L);
-        public bool optional => (bool)(mem[Optional] ?? false);
+        public bool optional => (bool)(mem[Domain.Optional] ?? false);
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
@@ -4673,7 +4672,7 @@ namespace Pyrrho.Level3
         [Flags]
         internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
-        internal bool optional => (bool)(mem[CallStatement.Optional] ?? false);
+        internal bool optional => (bool)(mem[Domain.Optional] ?? false);
         internal int size => (int)(mem[RowSetSection.Size] ?? 0); // see NestedStatement._Obey()
         /// <summary>
         /// This private field is modified only at the start of _Obey

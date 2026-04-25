@@ -1976,9 +1976,7 @@ namespace Pyrrho.Level4
                         case ProcRowSet.TableResult: v = ((TList)v).Fix(this); break;
                     //    case Table.TableRows: v = FixTlR((BTree<long, TableRow>)v); break; !!!!!
                         case RowSet.Target: v = Fix((long)v); break;
-                        case TransitionRowSet.TargetTrans: v = FixTll((CTree<long, long>)v); break;
                         case ConditionalStatement.Then: v = (Executable)(((Executable)v).Fix(this)); break;
-                        case TransitionRowSet.TransTarget: v = FixTll((CTree<long, long>)v); break;
                         case SqlTreatExpr.TreatExpr: v = Fix((long)v); break;
                         case TransitionTable.Trig: v = Fix((long)v); break;
                         case Table.Triggers: v = FixTTElb((CTree<PTrigger.TrigType, CTree<long, bool>>)v); break;
@@ -3336,7 +3334,7 @@ namespace Pyrrho.Level4
                 if (b.value() is DBObject v)
                     os += (k, v);
             }
-            return r + (Obs, os);
+            return r + (Obs, os) + (ObInfo._Names,cx.names);
         }
         internal override Basis New(BTree<long, object> m)
         {
