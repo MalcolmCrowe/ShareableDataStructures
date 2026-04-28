@@ -1662,7 +1662,7 @@ namespace Pyrrho.Level4
                         {
                             gp = new TGParam(pi.uid, gp.value, Domain.PathType, TGParam.Type.Path, dp);
                             lxr.tgs += (pi.uid, gp);
-                            var qi = cx.Add(new GqlPath(pi, cx));
+                            var qi = cx.Add(new QlValue(pi, new BList<Ident>(pi), cx, Domain.PathType));
                             cx.Add(pi.ident, pi.lp, qi);
                             cx.bindings += (pi.uid, qi.domain);
                             tgs = lxr.tgs;
@@ -1670,6 +1670,10 @@ namespace Pyrrho.Level4
                         Mustbe(Qlx.EQL);
                     }
                 }
+                else if (Match(Qlx.LPAREN))
+                    pi = new Ident(this);
+                if (pi!=null)
+                    cx.names += pi;
                 // state M12
                 (tgs, var s) = ParseGqlMatch(dp, pi, tgs, m);
                 // state M13
@@ -1713,7 +1717,7 @@ namespace Pyrrho.Level4
                             cd = new Domain(-1L, Qlx.ARRAY, cd);
                         ps += (b.key(), cd);
                     }
-                if (cx.obs[pi.uid] is GqlPath gp)
+                if (cx.obs[pi.uid] is QlValue gp)
                     cx.Add(gp + (DBObject._Domain, new Domain(cx.GetUid(), cx, Qlx.PATH, ps, pt))
                         + (ObInfo._Names,pn));
             }
@@ -2064,7 +2068,6 @@ namespace Pyrrho.Level4
                 if (r is not null)
                     throw new DBException("42002", b.ident);
                 // state M22
-                var pl = cx.GetUid();
                 var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs, m);
                 var pe = cx.obs[svp.Last()?.value() ?? -1L] as GqlNode;
                 var ps = cx.obs[svp.First()?.value() ?? -1L] as GqlNode;
@@ -2077,7 +2080,7 @@ namespace Pyrrho.Level4
                 // state M24
                 tgs += tgp;
                 (var sa, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, ab, m, ln, pe);
-                r = new GqlPath(cx.GetUid(), cx, svp, qu, ln?.uid??-1L, sa.defpos);
+                r = new GqlPath(pi.uid, cx, svp, qu, ln?.uid??-1L, sa.defpos);
                 if (pe?.before is GqlEdge ge && ge.postCon is TConnector ce)
                     r += (GqlNode.PostCon, ce);
                 if (bf?.domain.defpos < 0 && ps?.domain.defpos > 0)

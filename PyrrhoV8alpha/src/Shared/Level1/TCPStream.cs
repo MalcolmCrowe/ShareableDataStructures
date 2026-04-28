@@ -138,8 +138,10 @@ namespace Pyrrho.Level1
                 for (var b = tn.dataType.First(); b != null; b = b.Next(), j++)
                     if (b.value() is long p && cx._Dom(p) is Domain d)
                     {
-                        bb += Domain.NameFor(cx, p, b.key());
                         var c = tn.tableRow.vals[p]??TNull.Value;
+                        bb += Domain.NameFor(cx, p, b.key());
+                        if (d.kind == Qlx.REF)
+                            d = Domain.Int;
                         c = d.Coerce(cx, c);
                         bb += d.name;
                         bb += d.Typecode(); // other flags are 0
@@ -184,7 +186,7 @@ namespace Pyrrho.Level1
                 var (cx, tl) = x;
                 bb += "LIST";  
                 int n = tl.Length;
-                var et = tl.dataType.elType ?? throw new DBException("22G03");
+                var et = tl.dataType.elType ?? Domain.NodeType;
                 bb += et.ToString();
                 bb += et.Typecode();
                 bb += n;
@@ -331,6 +333,7 @@ namespace Pyrrho.Level1
                         if (tv is TNode tn)
                             return b + (cx, tn);
                         return b +(cx, (TRow)tv);
+                    case Qlx.PATH:
                     case Qlx.LIST: return b+(cx, (TList)tv);
                     case Qlx.VECTOR: return b+(cx, (TVector)tv);
                     case Qlx.ARRAY: return b+(cx, (TArray)tv);

@@ -2234,6 +2234,9 @@ namespace Pyrrho.Level4
         {
             m ??= BTree<long, object>.Empty;
             m += (Scope, ap);
+            m += (RowOrder, dm);
+            m += (RowType, dm.rowType);
+            m += (Representation, dm.representation);
             var gr = (long)(m[Group] ?? -1L);
             if (gr >= 0)
             {
@@ -2251,7 +2254,7 @@ namespace Pyrrho.Level4
             var rc = CTree<long, bool>.Empty;
             var wh = (CTree<long, bool>?)m[_Where];
             // For SelectRowSet, we compute the RdCols: all needs of selectors and wheres
-            if (m[ISMap] is CTree<long,long> im)
+            if (dm.kind!=Qlx.PATH && m[ISMap] is CTree<long,long> im)
             {
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx._Ob(p) is DBObject ob)

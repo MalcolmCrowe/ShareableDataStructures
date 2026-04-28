@@ -891,11 +891,17 @@ namespace Pyrrho.Common
             list = ts;
         }
         internal TList(Domain dt, CList<TypedValue> a) : base(dt) { list = a; }
-        internal TList(Domain dt,CTree<int,long> a): base(Domain.Int)
+        internal TList(Domain dt, CTree<int, long> a) : base(Domain.Int)
         {
             list = CList<TypedValue>.Empty;
             for (var b = a.First(); b != null; b = b.Next())
-                list += new TInt(b.value()); 
+                list += new TInt(b.value());
+        }
+        internal TList(CList<TNode>a, int off) :base(Domain.PathType)
+        {
+            list = CList<TypedValue>.Empty;
+            for (var b = a.PositionAt(off); b != null; b = b.Next())
+                list += b.value();
         }
         internal override TypedValue Fix(Context cx)
         {

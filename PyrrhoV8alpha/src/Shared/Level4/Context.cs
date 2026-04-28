@@ -76,7 +76,6 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal CTree<Domain,long> newTypes = CTree<Domain,long>.Empty; // uncommitted types
         internal BTree<long,Names> defs = BTree<long,Names>.Empty; // nested lexical scopes
-        internal TRow? path = null;
         internal Qlx inclusionMode = Qlx.ANY;
         internal CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>> paths // shortest/longest
             = CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty; // GqlPath,TNode,TNode,Bindings
@@ -2383,9 +2382,15 @@ namespace Pyrrho.Level4
             var ob = _Ob(p);
             if (ob is null)
                 return null;
-            return ob.infos[role.defpos]?.name ??
+            var s = ob.infos[role.defpos]?.name ??
                 (string?)ob.mem[DBObject._Alias] ??
                 (string?)ob.mem[ObInfo.Name];
+            if (s!=null && s != "")
+                return s;
+            for (var b = names.First(); b != null; b = b.Next())
+                if (b.value().Item2 == p)
+                    return b.key();
+            return s;
         }
         internal Grant.Privilege Priv(long p)
         {

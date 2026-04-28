@@ -2979,9 +2979,10 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.PATH:
                     {
-                        if (cx.obs[right] is QlValue pi)
-                            return cx.path?[pi.defpos] ?? TNull.Value;
-                        break;
+                        //             if (cx.obs[right] is QlValue pi)
+                        //                 return cx.path?[pi.defpos] ?? TNull.Value;
+                        throw new NotImplementedException();
+                      //  break;
                     }
                 case Qlx.PERIOD:
                     {
@@ -12379,11 +12380,13 @@ cx.obs[high] is not QlValue hi)
             MatchExps = -487, // CList<long> GqlNode
             InclusionMode = -497, // Qlx
             MatchMode = -483, // Qlx
-            PathId = -488;  // long
+            PathId = -488,  // long
+            TrailFrom = -494; // int
         internal Qlx mode => (Qlx)(mem[MatchMode] ?? Qlx.NONE);
         internal Qlx inclusion => (Qlx)(mem[InclusionMode] ?? Qlx.NONE);
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal CList<long> matchExps => (CList<long>)(mem[MatchExps] ?? CList<long>.Empty);
+        internal int trailFrom => (int)(mem[TrailFrom] ?? 0);
         public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, CList<long> p, long pp)
             : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp)
                   + (InclusionMode,sh))

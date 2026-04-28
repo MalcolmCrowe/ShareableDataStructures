@@ -2,13 +2,8 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System.ComponentModel;
-using System.Diagnostics.Contracts;
 using System.Globalization;
-using System.Reflection.Emit;
-using System.Security.AccessControl;
 using System.Text;
-using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -856,7 +851,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 Qlx.BLOB => 5,
                 Qlx.ROW => 6,
                 Qlx.ARRAY or Qlx.VECTOR => 7, // TArray or TVector
-                Qlx.SET or Qlx.LIST or Qlx.MULTISET => 15, // TList or TSet or TMultiset
+                Qlx.PATH or Qlx.SET or Qlx.LIST or Qlx.MULTISET => 15, // TList or TSet or TMultiset
                 Qlx.TABLE or Qlx.TYPE or Qlx.NODETYPE or Qlx.EDGETYPE => 12,
                 Qlx.BOOLEAN => 9,
                 Qlx.INTERVAL => 10,
@@ -2974,7 +2969,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                         && u.tableRows.Contains(rp))
                             return new TRef(rp, u);
                 }*/
-            if (v == TNull.Value)
+            if (kind==Qlx.PATH || v == TNull.Value)
                     return v;
             if (v is TList ta && ta.Length == 1)// && CanTakeValueOf(ta.dataType))
                 return Coerce(cx, ta[0]);
@@ -4726,16 +4721,19 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         }
         public static string NameFor(Context cx, long p, int i)
         {
-            var sv = cx._Ob(p);
-            if (sv?.NameFor(cx) is string a && a.Length > 0)
-                return a;
-            if (sv?.alias is string b && b.Length > 0)
-                return b;
-            if (sv?.name is string c && c.Length > 0)
-                return c;
-            if (sv?.mem[ObInfo.Name] is string d && d.Length > 0)
-                return d;
-            return "Col" + i;
+            /*         var sv = cx._Ob(p);
+                     if (sv?.NameFor(cx) is string a && a.Length > 0)
+                         return a;
+                     if (sv?.alias is string b && b.Length > 0)
+                         return b;
+                     if (sv?.name is string c && c.Length > 0)
+                         return c;
+                     if (sv?.mem[ObInfo.Name] is string d && d.Length > 0)
+                         return d; */
+            var s = cx.NameFor(p);
+            if (s==null || s.Length==0)
+                return "Col" + i;
+            return s;
         }
         internal virtual CTree<Domain, bool> OnInsert(Context cx, long _ap, BTree<long, object>? m = null,
             CTree<TypedValue, bool>? cs = null)
