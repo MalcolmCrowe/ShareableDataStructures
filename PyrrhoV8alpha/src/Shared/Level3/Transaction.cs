@@ -373,8 +373,8 @@ namespace Pyrrho.Level3
             }
             wr.PutBuf();
             df.Flush();
-            wr.cx.db -= NextPos;
             var r = new Database(wr.cx.db, wr.Length);
+            r -= NextPos;
             lock (_lock)
                 databases += (name, r - Role - User);
             cx.db = r;

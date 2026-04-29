@@ -553,6 +553,8 @@ namespace Pyrrho.Level3
                 rdr.context.db = new Database(rdr.context.db -NextPos,df.Length);
             }
             var d = rdr.context?.db ?? throw new PEException("PE1013");
+            for (var b = d.objects.PositionAt(p.ppos); b != null; b = b.Next())
+                d -= b.key();
             if (PyrrhoStart.VerboseMode)
                 Console.WriteLine("Database " + name + " loaded to " + rdr.Position);
             lock (_lock)
