@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
             _Framing = -167, // Framing
             _From = -306, // long RowSet (or maybe an edge connector QlInstance)
             Gql = -144, // GQL nonterminal
-            HavingDom = -363, // Domain
+            HavingDom = -198, // Domain
             _Ident = -409, // Ident (used in ForwardReference, SqlReview, ParseTypeClause, and RowSet)
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)

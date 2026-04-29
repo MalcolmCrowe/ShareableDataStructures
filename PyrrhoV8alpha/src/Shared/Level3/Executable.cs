@@ -125,6 +125,11 @@ namespace Pyrrho.Level3
                 throw new DBException("42161", w030);
             return this;
         }
+
+        internal object Replaced(Context context)
+        {
+            throw new NotImplementedException();
+        }
     }
     internal class RollbackStatement(long dp) : Executable(dp)
     {
@@ -2106,7 +2111,7 @@ namespace Pyrrho.Level3
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
         {
             var r = base._Fix(cx, m);
-            var nt = then.Fix(cx);
+            var nt = (Executable)then.Fix(cx);
             if (nt != then)
                 r += (Then, nt);
             var ns = cx.Fix(search);
@@ -2146,7 +2151,7 @@ namespace Pyrrho.Level3
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
                 r+=(cx, Search, no);
-            var nt = then._Replace(cx,so,sv);
+            var nt = (Executable)then._Replace(cx,so,sv);
             if (nt != then)
                 r+=(cx, Then, nt);
             var ni = cx.ReplacedLl(elsif);
@@ -2769,7 +2774,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
-            var tn = then.Fix(cx);
+            var tn = (Executable)then.Fix(cx);
             if (tn != then)
                 r += (ConditionalStatement.Then, tn);
             return r;
@@ -4202,14 +4207,14 @@ namespace Pyrrho.Level3
     {
         internal const long
             AtSchemaLevel = -333, // bool
-            GraphExps = -307; // CList<CList<GqlNode>> GqlNode (alternately with SqlEdges)
+            GraphExps = -307; // BList<ObTree> GqlNode (alternately with GqlEdges)
         // In MatchStatement we can also have SqlNodes that are SqlPaths 
         internal BList<ObTree> graphExps =>
             (BList<ObTree>)(mem[GraphExps] ?? BList<ObTree>.Empty);
-        internal CList<long> stms => 
-            (CList<long>?)mem[ConditionalStatement.Then] ?? CList<long>.Empty;
+        internal Executable stm => 
+            (Executable)(mem[ConditionalStatement.Then] ?? EmptyStatement.Empty);
         internal bool atSchemaLevel => (bool)(mem[AtSchemaLevel] ?? false);
-        public GraphInsertStatement(long dp, bool sch, BList<ObTree> ge, CList<long> th)
+        public GraphInsertStatement(long dp, bool sch, BList<ObTree> ge, Executable th)
             : base(dp, new BTree<long, object>(GraphExps, ge) + (ConditionalStatement.Then, th) +(AtSchemaLevel,sch)
                   + (Gql,GQL.InsertGraphPattern))
         { }
@@ -4474,16 +4479,8 @@ namespace Pyrrho.Level3
                 sb.Append(" SCHEMA");
             string cm;
             sb.Append('['); sb.Append(graphExps);sb.Append(']');
-            if (stms!=CList<long>.Empty)
-            {
-                cm = " THEN [";
-                for (var b = stms.First(); b != null; b = b.Next())
-                    if (b.value() is long p) {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(Uid(p));
-                    }
-                if (cm == ",") sb.Append(']');
-            }
+            if (stm != EmptyStatement.Empty)
+            { sb.Append(" THEN "); sb.Append(stm); }
             return sb.ToString();
         }
     }
@@ -5365,22 +5362,36 @@ namespace Pyrrho.Level3
                         ds = Traverse(cx, ms, xn, tr, cr, pd, nl, ctr, ds);
                 return ds;
             }
-           var la = tr.Contains(Domain.TypeSpec.defpos) ? tr[Domain.TypeSpec.defpos].Item1 : int.MaxValue;
+            var la = tr.Contains(Domain.TypeSpec.defpos) ? tr[Domain.TypeSpec.defpos].Item1 : int.MaxValue;
             for (var b = (cx.db.objects[pn.defpos] as Table)?.sindexes[pd.tableRow.defpos]?.First();
-                b != null; b = b.Next())
+                 b != null; b = b.Next())
                 if (cx._Ob(b.key()) is TableColumn cc
-                    && cx._Ob(cc.tabledefpos) is Table rt
-                    && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
-                    && (ne == "" || nx == "" || // ne == nx)
-                        xn.domain.EqualOrStrongSubtypeOf(rt)))
+                    && cx._Ob(cc.tabledefpos) is Table rt)
                 {
                     if (xn.preCon is TConnector tc && tc.cp != cc.defpos)
-                        continue;
-                    var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        if (rt.tableRows[c.key()] is TableRow dr
-                            && lm-- > 0 && la-- > 0)
-                            ds += (dr.defpos, dr);
+                       continue;  
+                    if (rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
+                    && (ne == "" || nx == "" || // ne == nx)
+                        xn.domain.EqualOrStrongSubtypeOf(rt)))
+                    {
+                        var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            if (rt.tableRows[c.key()] is TableRow dr
+                                && lm-- > 0 && la-- > 0)
+                                ds += (dr.defpos, dr);
+                    }
+                    else if (xn.domain.kind == Qlx.UNION)
+                    {
+                        for (var d = xn.domain.alts.First(); d != null; d = d.Next())
+                            if (rt.EqualOrStrongSubtypeOf(d.key()) && d.key().representation.Contains(cc.defpos))
+                            {
+                                var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
+                                for (var c = b.value().First(); c != null; c = c.Next())
+                                    if (rt.tableRows[c.key()] is TableRow dr
+                                        && lm-- > 0 && la-- > 0)
+                                        ds += (dr.defpos, dr);
+                            }
+                    }
                 }
             return ds;
         }

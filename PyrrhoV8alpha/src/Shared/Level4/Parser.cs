@@ -1618,7 +1618,7 @@ namespace Pyrrho.Level4
             // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
             var ge = ParseInsertGraphList(sch);
-            var st = CList<long>.Empty;
+            var st = EmptyStatement.Empty;
             var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
             return cs;
         }
@@ -1934,7 +1934,7 @@ namespace Pyrrho.Level4
                 var ba = Mustbe(Qlx.ARROW, Qlx.RARROWBASE, Qlx.ARROWTILDE, Qlx.RBRACKTILDE);
                 (an, ahead) = ParseInsertGraphItem(ahead, sch);
                 m += (GqlNode.PreCon, ac);
-                m += (GqlNode.PostCon, (dm as Table)?.PostConnect(cx, ba, an.domain, cn) ?? throw new PEException("PE70631"));
+                m += (GqlNode.PostCon, (dm as Table)?.PostConnect(cx, ba, an.domain, cn) ?? TNull.Value); // TBD
                 if (ln != null)
                     m += (GqlNode.Before, ln);
                 if (an != null)
@@ -2276,16 +2276,14 @@ namespace Pyrrho.Level4
             lxr.tgs = og;
             return (r, svg, tgs);
         }
-        Domain ParseLabelClause(Domain dm,bool create = true, string? a = null, Domain? lt = null, Domain? at = null)
+        Domain ParseLabelClause(Domain dm, bool create = true, string? a = null, Domain? lt = null, Domain? at = null)
         {
-         var lp = LexLp();
+            var lp = LexLp();
             var id = new Ident(this);
             Mustbe(Qlx.Id);
             PType pt;
             Domain r = cx.FindTable(id.ident) ?? Domain.NodeType;
-            if (r.defpos > 0)
-                return r;
-            if (r.defpos<0 && create && Match(Qlx.DOUBLEARROW, Qlx.IMPLIES, Qlx.COLON))
+            if (r.defpos < 0 && create && Match(Qlx.DOUBLEARROW, Qlx.IMPLIES, Qlx.COLON))
             {
                 Next();
                 pt = new PType2(id.ident, Domain.TypeSpec, ParseTypeReferenceList(Qlx.COMMA), cx.db.nextStmt, cx.db.nextPos, cx);
@@ -2302,12 +2300,24 @@ namespace Pyrrho.Level4
                         ?? throw new DBException("42105"));
                 }
             }
-            else
+            else  if (r.defpos<0)
             {
                 r = (Domain)cx.Add(new GqlLabel(id.lp, id.uid, id.ident, cx));
                 cx.bindings += (id.uid, r);
-            } 
-            return r; 
+            } else
+            {
+                var ab = tok;
+                while (Match(Qlx.VBAR, Qlx.AMPERSAND))
+                {
+                    var al = new CTree<Domain, bool>(r, true);
+                    Next();
+                    al += (ParseLabelClause(dm), true);
+                    r = (ab == Qlx.VBAR) ? new Table(lp, al)
+                        : (Table)(cx.Add(new PType2("" + lp, Domain.NodeType, al, cx.db.nextStmt, cx.db.nextPos, cx))
+                        ?? throw new DBException("42105"));
+                }
+            }
+            return r;
             /*
             var lp = LexLp();
             var neg = false;
@@ -11308,6 +11318,8 @@ namespace Pyrrho.Level4
                         continue;
                     if (i > 0)
                         Mustbe(Qlx.COMMA);
+                    if (cx.conn.refIdsToPos && dt.kind == Qlx.REF)
+                        dt = Domain.Int;
                     var v = ParseSqlValue(m+(DBObject._Domain,dt));
                     cx.Add(v);
                     lk += v.defpos;

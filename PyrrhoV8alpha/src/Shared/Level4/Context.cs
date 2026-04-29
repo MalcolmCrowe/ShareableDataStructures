@@ -950,7 +950,7 @@ namespace Pyrrho.Level4
                     InstanceRowSet.SRowType => _DepthTil((CTree<int,long>)o, d),
                     NestedStatement.Stms => _DepthLl((CList<long>)o, d),
                     ForwardReference.Subs => _DepthTVX((CTree<long, bool>)o, d),
-                    ConditionalStatement.Then => _DepthLl((CList<long>)o, d),
+                    ConditionalStatement.Then => Math.Max(((Executable)o).depth,d),
                     Domain.Alts => _DepthTDb((CTree<Domain, bool>)o, d),
                     RestRowSetUsing.UsingCols => _DepthLl((CList<long>)o, d),
                     RowSet.UsingOperands => _DepthTVV((CTree<long, long>)o, d),
@@ -1679,7 +1679,7 @@ namespace Pyrrho.Level4
                         case Level3.Index.TableDefPos: v = Replaced((long)v); break;
                         case Table.TableRows: v = ReplacedTlR((BTree<long, TableRow>)v); break;
                         case RowSet.Target: v = Replaced((long)v); break;
-                        case ConditionalStatement.Then: v = ReplacedLl((CList<long>)v); break;
+                        case ConditionalStatement.Then: v = ((Executable)v).Replaced(this); break;
                         case SqlTreatExpr.TreatExpr: v = Replaced((long)v); break;
                         case QueryStatement.Result: v = Replaced((long)v); break;
                         case Domain.Alts: v = ReplacedTDb((CTree<Domain, bool>)v); break;
@@ -1843,7 +1843,7 @@ namespace Pyrrho.Level4
                         case SqlFunction.Filter: v = FixTlb((CTree<long, bool>)v); break;
                         case SqlInsert.ForNode: v = Fix((long)v); break;
                         case DBObject._From: v = Fix((long)v); break;
-                        case GraphInsertStatement.GraphExps: v = FixTlG((CTree<long, GqlNode>)v); break;
+                        case GraphInsertStatement.GraphExps: v = FixBO((BList<ObTree>)v); break;
                         case Schema._Graphs: v = FixTlb((CTree<long, bool>)v); break;
                         case GraphType.GraphTypes: v = FixTlb((CTree<long, bool>)v); break;
                         case RowSet.Group: v = Fix((long)v); break;
@@ -2151,6 +2151,19 @@ namespace Pyrrho.Level4
                 var v = b.value();
                 var nv = (QlValue)v.Fix(this);
                 r += nv;
+            }
+            return r;
+        }
+
+        private object FixBO(BList<ObTree> ol)
+        {
+            var r = BList<ObTree>.Empty;
+            for (var b=ol.First();b!=null;b=b.Next())
+            {
+                var s = ObTree.Empty;
+                for (var c=b.value().First();c!=null;c=c.Next())
+                    s += (Fix(c.key()), (DBObject)c.value().Fix(this));
+                r += s;
             }
             return r;
         }
