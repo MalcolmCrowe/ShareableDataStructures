@@ -5484,7 +5484,7 @@ namespace Pyrrho.Level4
                                             throw new DBException("23000");
                                     }
                                 }
-                                else if (cx.conn.refIdsToPos)
+                      /*          else if (cx.conn.refIdsToPos)
                                 {
                                     if (cx.table.infos[cx.role.defpos] is ObInfo ti
                                        && tc.NameFor(cx) is string cn)
@@ -5500,12 +5500,12 @@ namespace Pyrrho.Level4
                            //                 var rl = long.Parse(trc[p].ToString());
                            //                 var tl = tx?.rows?.Get(CList<TypedValue>.Empty + new TInt(rl), 0);
                                         }
-                                    else
+                                    else 
                                         throw new DBException("23000");
-                                }
+                                } */
                                 else
                                     v = Table.FindOrCreateRefDomain(cx,rt).Coerce(cx,v);
-                            }
+                            } 
                             cx.CheckMetadata(tp, v);
                             vs += (tp, v);
                         }

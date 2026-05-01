@@ -4708,6 +4708,10 @@ namespace Pyrrho.Level3
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
                     f |= Flags.Bindings;
+            if (ge.Length == 1 && cx.obs[ge[0]] is GqlMatch gm
+                && gm.matchAlts.Length == 1 && cx.obs[gm.matchAlts[0]] is GqlMatchAlt ga
+                && ga.numPaths > 0)
+                m += (RowSetSection.Size, ga.numPaths);
             m += (MatchFlags, f);
             m += (MatchList, ge);
             if (ch)
@@ -5276,6 +5280,10 @@ namespace Pyrrho.Level3
                             ds += (yn.defpos, yn);
                     }
             }
+            else if (xn.name is string xs && xs != "" && cx.obs[cx.names[xs].Item2] is QlInstance qi
+                && cx.values[qi.sPos] is TRef tf && cx.db.objects[tf.elType?.defpos??-1L] is Table ft
+                && ft.tableRows[tf.value] is TableRow fr)
+                ds += (fr.defpos,fr);
             else if (pd is not null && pd.dataType is Table pe && pe.colRefs.Count > 0
                 && pd.defpos != pd.dataType.defpos && cr is TConnector ed)
             {
@@ -5307,8 +5315,8 @@ namespace Pyrrho.Level3
             }
             else if (be.matches?.Next()?.value() is long p && cx.obs[p] is GqlEdge ee
                 && cx.binding[ee.idValue] is TRow ne && ee.preCon is TConnector pc
-                && ne.values[pc.cp] is TRef tp  && tp.ToLong() is long tq 
-                && FindTableRow(cx,xn,pc.rd?.defpos??-1L,tq) is TableRow nr)
+                && ne.values[pc.cp] is TRef tp && tp.ToLong() is long tq
+                && FindTableRow(cx, xn, pc.rd?.defpos ?? -1L, tq) is TableRow nr)
                 ds = new(tq, nr);
             // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
             else if (ds.Count == 0)

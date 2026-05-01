@@ -350,6 +350,7 @@ namespace Pyrrho.Level2
             tc += (DBObject._Framing, framing);
             if (keymap != CTree<int, long>.Empty)
                 tc += (TableColumn.KeyMap, keymap);
+            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             if (tc.domain.kind == Qlx.REF && tc.domain.elType is Table rt)
                 if (TCon(rt) is TConnector nc && rt.defpos > 0)
                 {
@@ -363,6 +364,12 @@ namespace Pyrrho.Level2
                         tc += (TableColumn.KeyMap, keymap);
                     if (rt.mem[refindex - 1] is TypedValue tv && tv.ToInt() is int ac)
                         tc += (QuerySearch.Action, (PIndex.ConstraintType)ac);
+                    var tm = ti.metadata;
+                    var ts = new TSet(Domain.Connector)+nc;
+                    for (var b = (tm[Qlx.REFERENCES] as TSet)?.First(); b != null; b = b.Next())
+                        if (b.Value() is TConnector cb && (cb.q != nc.q || cb.cn != nc.cn))
+                            ts += cb;
+                    ti += (ObInfo._Metadata, tm + (Qlx.REFERENCES,ts));
                     cx.toFix += (rt.defpos, rt);
                     cx.Add(rt);
                     cx.db += rt;
@@ -373,7 +380,6 @@ namespace Pyrrho.Level2
                 tc += (TableColumn.Hide, true);
             table += (cx, tc);
             var rw = table.rowType;
-            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             if (!tc.hide)
                 ti += (ObInfo._Names, ti.names + (name, (0L,ppos)));
             if (dataType.names is Names ss && ss!=Names.Empty)

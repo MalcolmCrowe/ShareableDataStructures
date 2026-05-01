@@ -289,6 +289,7 @@ namespace Pyrrho.Level2
             var ps = CTree<long, Domain>.Empty;
             var pn = BTree<string, (long,long)>.Empty;
             var pt = CTree<int,long>.Empty;
+            var cr = CTree<long, CTree<long, bool>>.Empty;
             var pr = metastring;
             var pm = metadata;
             for (var b = under.First(); b != null; b = b.Next())
@@ -308,6 +309,8 @@ namespace Pyrrho.Level2
                             throw new DBException("PE20921");
                     }
                     ps += so.representation;
+                    for (var c = so.colRefs.First(); c != null; c = c.Next())
+                        cr += (c.key(), cr[c.key()] ?? CTree<long, bool>.Empty + c.value());
                     if (so.infos[cx.role.defpos] is ObInfo si)
                     {
                         pn += si.names ?? Names.Empty;
@@ -319,6 +322,7 @@ namespace Pyrrho.Level2
                 dataType = new UDType(defpos, new BTree<long, object>(Domain.Kind, Qlx.UNION));
             }
             dataType += (Domain.Under, un);
+            dataType += (Domain.ColRefs, cr);
             under = un;
             var st = CTree<long, bool>.Empty;
             for (var b = dataType.subtypes?.First(); b != null; b = b.Next())

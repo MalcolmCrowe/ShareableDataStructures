@@ -1786,12 +1786,18 @@ namespace Pyrrho.Level3
             var sm = cm[cc.cn] ?? CTree<Qlx, long>.Empty;
             sm += (cc.q, cc.cp);
             cm += (cc.cn, sm);
-            var ci = infos[cx.role.defpos] ?? new ObInfo(NameFor(cx), Grant.AllPrivileges);
-            ci += (ObInfo.Model, cm);
-            var et = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ci)));
-            cx.Add(et);
-            cx.db += et;
-            return et;
+            var ti = infos[cx.role.defpos] ?? new ObInfo(NameFor(cx), Grant.AllPrivileges);
+            ti += (ObInfo.Model, cm);
+            var ts = ti.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+            for (var b = ts.First(); b != null; b = b.Next())
+                if (b.Value() is TConnector bc && bc.cp == cc.cp)
+                    ts -= bc;
+            ts += cc;
+            ti += (ObInfo._Metadata, ti.metadata + (Qlx.REFERENCES, ts));
+            var r = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ti)));
+             // do not change the representation! metadata cannot change structure
+            cx.db += r;
+            return r;
         }
 
         internal class NodeInfo

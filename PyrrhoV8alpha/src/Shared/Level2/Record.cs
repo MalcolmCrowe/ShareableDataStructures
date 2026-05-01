@@ -156,30 +156,33 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             if (rdr.context.db.objects[tabledefpos] is Table tb)
             {
-                var si = tb.sindexes;
                 for (var b = tb.super.First(); b != null; b = b.Next())
                     suT += (b.key().defpos, true);
-                // (compatibility) compute the reference value if not provided (actual Null may be ok if column  optional)
-                if (tb.colRefs.Count>0L)
-                for (var b = tb.First(); b != null; b = b.Next())
-                    if (rdr.context.db.objects[b.value()] is TableColumn tc
-                        && tc.domain.kind==Qlx.REF
-                        && rdr.context.db.objects[tc.domain.elType?.defpos??-1L] is Table rt
-                        && (!fields.Contains(tc.defpos))
-                        && rt.FindPrimaryIndex(rdr.context) is Level3.Index px
-                        && tc.keyMap!=CTree<int,long>.Empty)
-                    { 
-                        var k = CList<TypedValue>.Empty;
-                        for (var c = px.keys.First(); c != null; c = c.Next())
+                if (tb.colRefs.Count > 0L) // TRef are serialised as integers currently, need reconstructing
+                    for (var b = tb.First(); b != null; b = b.Next())
+                        if (rdr.context.db.objects[b.value()] is TableColumn tc
+                            && tc.domain.kind == Qlx.REF
+                            && rdr.context.db.objects[tc.domain.elType?.defpos ?? -1L] is Table rt)
                         {
-                            var p = c.key();
-                            if (!rdr.context.db.objects.Contains(p) && fields[p] is TypedValue v)
-                                k += v;
+                            // (compatibility) compute the reference value if not provided (actual Null may be ok if column  optional)
+                           if (!fields.Contains(tc.defpos)
+                        && rt.FindPrimaryIndex(rdr.context) is Level3.Index px
+                        && tc.keyMap != CTree<int, long>.Empty)
+                            {
+                                var k = CList<TypedValue>.Empty;
+                                for (var c = px.keys.First(); c != null; c = c.Next())
+                                {
+                                    var p = c.key();
+                                    if (!rdr.context.db.objects.Contains(p) && fields[p] is TypedValue v)
+                                        k += v;
+                                }
+                                var rp = px.rows?.Get(k, 0); // maybe optional
+                                if (rp != null)
+                                    fields += (tc.defpos, new TInt(rp ?? -1L));
+                            }
+                            else if (fields[b.value()] is TInt vi)
+                                fields += (tc.defpos, new TRef(vi.ToLong() ?? -1L, rt));
                         }
-                        var rp = px.rows?.Get(k, 0); // maybe optional
-                        if (rp!=null)
-                            fields += (tc.defpos,new TInt(rp??-1L));
-                    }
             }
         }
         /// <summary>

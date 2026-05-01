@@ -12380,16 +12380,18 @@ cx.obs[high] is not QlValue hi)
             MatchExps = -487, // CList<long> GqlNode
             InclusionMode = -497, // Qlx
             MatchMode = -483, // Qlx
+            NumPaths = -495, // int
             PathId = -488,  // long
             TrailFrom = -494; // int
         internal Qlx mode => (Qlx)(mem[MatchMode] ?? Qlx.NONE);
         internal Qlx inclusion => (Qlx)(mem[InclusionMode] ?? Qlx.NONE);
+        internal int numPaths => (int)(mem[NumPaths] ?? 0); // 0 means no limit
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal CList<long> matchExps => (CList<long>)(mem[MatchExps] ?? CList<long>.Empty);
         internal int trailFrom => (int)(mem[TrailFrom] ?? 0);
-        public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, CList<long> p, long pp)
+        public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, int np, CList<long> p, long pp)
             : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp)
-                  + (InclusionMode,sh))
+                  + (InclusionMode,sh) + (NumPaths,np))
         {
             var min = 0; // minimum path length
             var hasPath = false;
