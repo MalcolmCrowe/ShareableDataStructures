@@ -11745,7 +11745,7 @@ cx.obs[high] is not QlValue hi)
             if (cx.db.objects[v.dataType.defpos] is NodeType nt) // or EdgeType
                 return nt.For(cx, ms, xn, ds);
             var r = BTree<long, TableRow>.Empty;
-            if (v == TNull.Value)
+            if (v is TTypeSpec)
             {
                 if (xn.domain.kind == Qlx.UNION)
                 {

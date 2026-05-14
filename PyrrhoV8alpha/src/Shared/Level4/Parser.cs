@@ -5419,10 +5419,12 @@ namespace Pyrrho.Level4
             {
                 if (ParseStatement(m) is not Executable b)
                     throw new DBException("42161", "statement");
-                if (b is QueryStatement && cx.result is null)
+                if (b is QueryStatement qs && cx.result is null)
+                {
                     b._Obey(cx);
+                    cx.result = b.domain;
+                }
                 s += ((Executable)cx.Add(b)).defpos;
-                cx.result = b.domain;
                 BindingAggs(s);
                 if (Match(Qlx.SEMICOLON, Qlx.NEXT))
                 {
