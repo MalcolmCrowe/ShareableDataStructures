@@ -7323,7 +7323,7 @@ namespace Pyrrho.Level3
                 case Qlx.COUNT: return Domain.Int;
                 case Qlx.CURRENT: return Domain.Bool; 
                 case Qlx.CURRENT_DATE: return Domain.Date;
-                case Qlx.CURRENT_ROLE: return Domain.Char;
+          //      case Qlx.CURRENT_ROLE: return Domain.Char;
                 case Qlx.CURRENT_TIME: return Domain.Timespan;
                 case Qlx.CURRENT_TIMESTAMP: return Domain.Timestamp;
                 case Qlx.DESCRIBE: return Domain.Char;
@@ -7651,10 +7651,10 @@ namespace Pyrrho.Level3
                         break;
                     }
                 case Qlx.CURRENT_DATE: return new TDateTime(Domain.Date, DateTime.UtcNow);
-                case Qlx.CURRENT_ROLE:
-                    if (cx.db == null || cx.db.role is not Role ro || ro.name == null)
-                        break;
-                    return new TChar(ro.name);
+           //     case Qlx.CURRENT_ROLE:
+           //         if (cx.db == null || cx.db.role is not Role ro || ro.name == null)
+           //             break;
+           //         return new TChar(ro.name);
                 case Qlx.CURRENT_TIME: return new TDateTime(Domain.Timespan, DateTime.UtcNow);
                 case Qlx.CURRENT_TIMESTAMP: return new TDateTime(Domain.Timestamp, DateTime.UtcNow);
                 case Qlx.DESCRIBE:
@@ -12123,7 +12123,7 @@ cx.obs[high] is not QlValue hi)
             (CTree<TConnector, long>)(mem[Connects] ?? CTree<TConnector, long>.Empty);
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, long i,
             CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm, BTree<long, object> m)
-            : base(nm, ch, cx, i, d, tgs, _Conn(nm, dm, cx, m), m)
+            : base(nm, ch, cx, i, d, tgs, _Conn(nm, d, dm, cx, m), m)
         {
             if (cx.parsingGQL == Context.ParsingGQL.Match && m[Before] is GqlNode bn && bn.domain.defpos < 0)
             {
@@ -12162,14 +12162,34 @@ cx.obs[high] is not QlValue hi)
         }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        protected static Table _Conn(Ident nm, Domain dm, Context cx, BTree<long, object>? m)
+        protected static Domain _Conn(Ident nm, CTree<string,QlValue> d, Domain? dm, Context cx, BTree<long, object>? m)
         {
             var pr = (TypedValue)(m?[PreCon] ?? TNull.Value);
             var po = (TypedValue)(m?[PostCon] ?? TNull.Value);
             var bf = (GqlNode?)m?[Before];
             var af = (GqlNode?)m?[After];
-            if (cx.parsingGQL == Context.ParsingGQL.Match && dm is null) // Wildcard Edge in MatchExp
-                return Domain.TableType;
+            if (cx.parsingGQL == Context.ParsingGQL.Match)
+            {
+                if (dm is null) // Wildcard Edge in MatchExp
+                    return Domain.TableType;
+                if (dm.defpos > 0L)
+                    return dm;
+                var ts = CTree<Domain, bool>.Empty;
+                if (bf?.domain is Table bt)
+                    for (var b = bt.refCols.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key()] is TableColumn bc
+                            && cx.db.objects[bc.tabledefpos] is Table ct)
+                        {
+                            for (var c = d.First(); c != null; c = c.Next())
+                                if (!ct.names.Contains(c.key()))
+                                    goto skip;
+                            ts += (ct, true);
+                        skip:;
+                        }
+                if (ts.Count == 1L && ts.First()?.key() is Table dt)
+                    return dt;
+                return new Domain(-1L, Qlx.UNION, ts);
+            }
             if (dm is not Table et)
                 et = (Table)Domain.TypeSpec.Relocate(cx.GetUid());
             var md = et.infos[et.definer]?.metadata ?? TMetadata.Empty;
@@ -12272,12 +12292,12 @@ cx.obs[high] is not QlValue hi)
             StartState = -238; // CTree<long,TGParam>
         internal CList<long> pattern => (CList<long>)(mem[Pattern]??CList<long>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
-        internal Qlx inclusionMode => (Qlx)(mem[GqlMatchAlt.InclusionMode] ?? Qlx.ANY); // SHORTEST/LONGEST
+        internal Qlx inclusionMode => (Qlx)(mem[MatchPattern.InclusionMode] ?? Qlx.ANY); // SHORTEST/LONGEST
         public GqlPath(Ident nm, Context cx)
             : base(nm.uid,BTree<long,object>.Empty+(ObInfo.Name,nm.ident)+(_Domain,Domain.PathType))
         { }
         public GqlPath(long lp, Context cx, CList<long> p, (int, int) lh, long i, long a)
-    : base(lp, _Mem(cx, p) + (Pattern, p) + (MatchQuantifier, lh) + (GqlMatchAlt.InclusionMode, cx.inclusionMode))
+    : base(lp, _Mem(cx, p) + (Pattern, p) + (MatchQuantifier, lh) + (MatchPattern.InclusionMode, cx.inclusionMode))
         { }
         protected GqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -12337,13 +12357,16 @@ cx.obs[high] is not QlValue hi)
             return sb.ToString();
         }
     }
+    /// <summary>
+    /// The MatchPatterns will share a PathPatternPrefix
+    /// </summary>
     class GqlMatch : QlValue
     {
         internal const long
-            MatchAlts = -486; // CList<long> GqlMatchAlt
-        internal CList<long> matchAlts => (CList<long>)(mem[MatchAlts] ?? CList<long>.Empty);
+            MatchPatterns = -486; // CList<long> MatchPattern
+        internal CList<long> matchPatterns => (CList<long>)(mem[MatchPatterns] ?? CList<long>.Empty);
         public GqlMatch(Context cx, CList<long>ms) 
-            : this(cx.GetUid(),new BTree<long,object>(MatchAlts,ms))
+            : this(cx.GetUid(),new BTree<long,object>(MatchPatterns,ms))
         {
         }
         protected GqlMatch(long dp, BTree<long, object> m) : base(dp, m)
@@ -12365,7 +12388,7 @@ cx.obs[high] is not QlValue hi)
         {
             var sb = new StringBuilder(base.ToString());
             var cm = " [";
-            for (var b = matchAlts.First(); b != null; b = b.Next())
+            for (var b = matchPatterns.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(Uid(b.value()));
@@ -12374,23 +12397,23 @@ cx.obs[high] is not QlValue hi)
             return sb.ToString();
         }
     }
-    class GqlMatchAlt : QlValue
+    class MatchPattern : QlValue
     {
         internal const long
             MatchExps = -487, // CList<long> GqlNode
             InclusionMode = -497, // Qlx
-            MatchMode = -483, // Qlx
+            PathPatternPrefix = -483, // Qlx
             NumPaths = -495, // int
             PathId = -488,  // long
             TrailFrom = -494; // int
-        internal Qlx mode => (Qlx)(mem[MatchMode] ?? Qlx.NONE);
+        internal Qlx mode => (Qlx)(mem[PathPatternPrefix] ?? Qlx.NONE);
         internal Qlx inclusion => (Qlx)(mem[InclusionMode] ?? Qlx.NONE);
         internal int numPaths => (int)(mem[NumPaths] ?? 0); // 0 means no limit
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal CList<long> matchExps => (CList<long>)(mem[MatchExps] ?? CList<long>.Empty);
         internal int trailFrom => (int)(mem[TrailFrom] ?? 0);
-        public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, int np, CList<long> p, long pp)
-            : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp)
+        public MatchPattern(long dp,Context cx, Qlx m, Qlx sh, int np, CList<long> p, long pp)
+            : base(dp, new BTree<long, object>(PathPatternPrefix, m) + (MatchExps, p) + (PathId,pp)
                   + (InclusionMode,sh) + (NumPaths,np))
         {
             var min = 0; // minimum path length
@@ -12411,23 +12434,23 @@ cx.obs[high] is not QlValue hi)
             if (hasPath && min <= 0)
                 throw new DBException("22G0N");
         }
-        protected GqlMatchAlt(long dp, BTree<long, object> m) : base(dp, m)
+        protected MatchPattern(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        public static GqlMatchAlt operator +(GqlMatchAlt e, (long, object) x)
+        public static MatchPattern operator +(MatchPattern e, (long, object) x)
         {
-            return (GqlMatchAlt)e.New(e.mem + x);
+            return (MatchPattern)e.New(e.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return (GqlMatchAlt)New(defpos, m);
+            return (MatchPattern)New(defpos, m);
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new GqlMatchAlt(dp, m);
+            return new MatchPattern(dp, m);
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
-            var r = (GqlMatchAlt)base._Replace(cx, was, now);
+            var r = (MatchPattern)base._Replace(cx, was, now);
             var ch = false;
             var ls = CList<long>.Empty;
             for (var b = matchExps.First(); b != null; b = b.Next())
@@ -12454,6 +12477,10 @@ cx.obs[high] is not QlValue hi)
             if (pathId>=0)
             {
                 sb.Append(' ');sb.Append(Uid(pathId));
+            }
+            if (numPaths>=0)
+            {
+                sb.Append(" numPaths "); sb.Append(numPaths);
             }
             var cm = " [";
             for (var b=matchExps.First();b!=null;b=b.Next())

@@ -218,7 +218,7 @@ namespace Pyrrho.Level4
                         ac.signal.Throw(ac);
                     cx = na.SlideDown();
                     cx.obs = na.obs;
-                }
+                } 
                 if (tok == Qlx.SEMICOLON) // tolerate a final ;
                     Next();
             }
@@ -435,7 +435,17 @@ namespace Pyrrho.Level4
                     case Qlx.REPEAT: return ParseRepeat(m);
                     case Qlx.REMOVE: goto case Qlx.DELETE; // some GQL TBD
                     case Qlx.RESIGNAL: return ParseSignal();
-                    case Qlx.YIELD: 
+                    case Qlx.YIELD:
+                        Next();
+                        var (ls,yd) = ParseSelectList(LexDp(), m);
+                        Executable es = EmptyStatement.Empty;
+                        if (cx.result is RowSet cs)
+                        {
+                            cx.result = (RowSet)cx.Add(cs + (DBObject._Domain, yd)
+                                + (RowSet.RowOrder, yd));
+                            es = (Executable)cx.Add(EmptyStatement.Empty.Relocate(cx.GetUid()));
+                        }
+                        return es;
                     case Qlx.RETURN:
                         if (cx.bindings.Count==0 && m[Procedure.ProcBody] is bool b && b == true)
                             return ParseReturn(m);
@@ -1623,11 +1633,11 @@ namespace Pyrrho.Level4
             return cs;
         }
         /// <summary>
-        /// Match: MatchMode  [id'='] MatchNode {'|'Match }.
-        /// MatchMode: [TRAIL|ACYCLIC|SIMPLE][SHORTEST|LONGEST|ALL|ANY].
+        /// PathPattern:  [id'='] [PathPatternPrefix] MatchPattern {'|' MatchPattern}.
+        /// PathPatternPrefix: [TRAIL|ACYCLIC|SIMPLE][SHORTEST|LONGEST|ALL|ANY].
         /// </summary>
         /// <returns></returns>
-        (CTree<long, TGParam>, CList<long>) ParseGqlMatchList(BTree<long, object> m)
+        (CTree<long, TGParam>, CList<long>) ParseGraphPattern(BTree<long, object> m)
         {
             // Step M10
             var svgs = CList<long>.Empty;
@@ -1653,6 +1663,8 @@ namespace Pyrrho.Level4
                     {
                         sh = tok;
                         cx.inclusionMode = sh;
+                        if (Match(Qlx.ANY))
+                            mo = tok;
                         Next();
                         if (sh != Qlx.ALL && Match(Qlx.INTEGERLITERAL))
                         {
@@ -1681,19 +1693,19 @@ namespace Pyrrho.Level4
                 if (pi!=null)
                     cx.names += pi;
                 // state M12
-                (tgs, var s) = ParseGqlMatch(dp, pi, tgs, m);
+                (tgs, var s) = ParseMatchPattern(dp, pi, tgs, m);
                 // state M13
-                alts += cx.Add(new GqlMatchAlt(dp, cx, mo, sh, nps, s, pi?.uid ?? -1L)).defpos;
+                alts += cx.Add(new MatchPattern(dp, cx, mo, sh, nps, s, pi?.uid ?? -1L)).defpos;
                 // state M14
                 while (tok == Qlx.VBAR)
                 {
                     Next();
                     // state M15
                     dp = cx.GetUid();
-                    (tgs, s) = ParseGqlMatch(dp, pi, tgs, m);
+                    (tgs, s) = ParseMatchPattern(dp, pi, tgs, m);
                     // state M16
                     var ns = BTree<string, TGParam>.Empty;
-                    alts += cx.Add(new GqlMatchAlt(dp, cx, mo, sh, nps, s, pi?.uid ?? -1L)).defpos;
+                    alts += cx.Add(new MatchPattern(dp, cx, mo, sh, nps, s, pi?.uid ?? -1L)).defpos;
                     // goto state M14
                 }
                 // state M17
@@ -1811,7 +1823,7 @@ namespace Pyrrho.Level4
         }
         // state M19
         // This will give us a pattern of SqlNodes svg and will update tgs and cx.defs (including pi)
-        (CTree<long, TGParam>, CList<long>) ParseGqlMatch(long f, Ident? pi, CTree<long, TGParam> tgs,
+        (CTree<long, TGParam>, CList<long>) ParseMatchPattern(long f, Ident? pi, CTree<long, TGParam> tgs,
             BTree<long,object> m)
         {
             // the current token is LPAREN
@@ -2014,10 +2026,10 @@ namespace Pyrrho.Level4
             return (ln == null) ? new CTree<int, GqlNode>(0, r) : ln + ((int)ln.Count, r);
         }
         /// <summary>
-        /// MatchNode: '(' MatchItem ')' { (MatchEdge|MatchPath) MatchNode } .
+        /// MatchPattern: '(' MatchItem ')' { (MatchEdge|MatchPath) MatchPattern } .
         /// MatchEdge: '-[' MatchItem ']->' | '<-[' MatchItem ']-'.
         /// MatchItem: [Value][Label][doc | WhereClause ].
-        /// MatchPath: '[' Match ']' MatchQuantifier .
+        /// MatchPath: '[' MatchPattern ']' MatchQuantifier .
         /// Label: ':' (id|Value)[Label].
         /// MatchQuanitifier : '?' | '*' | '+' | '{'int','[int]'}' .
         /// </summary>
@@ -2074,7 +2086,7 @@ namespace Pyrrho.Level4
                 if (r is not null)
                     throw new DBException("42002", b.ident);
                 // state M22
-                var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs, m);
+                var (tgp, svp) = ParseMatchPattern(f, pi, lxr.tgs, m);
                 var pe = cx.obs[svp.Last()?.value() ?? -1L] as GqlNode;
                 var ps = cx.obs[svp.First()?.value() ?? -1L] as GqlNode;
                 Mustbe(Qlx.RBRACK);
@@ -2234,7 +2246,14 @@ namespace Pyrrho.Level4
                     if (ba == Qlx.RPAREN && tok == Qlx.LPAREN)
                         ml += (GqlNode.Delimit, true);
                     if (bf != null)
-                        ml += (GqlNode.Before, bf);
+                    {
+                        if (ba == Qlx.RPAREN)
+                            if (bf.postCon is TConnector bc)
+                                dm = bc.rd;
+                            else
+                                dm = bf.domain;
+                        ml = ml + (GqlNode.Before, bf) + (SqlValueExpr.Modifier, lt);
+                    }
            //         var ld = cx.obs[cx.names[ln?.ident ?? ""].Item2]?.domain;
                     r = ba switch
                     {
@@ -2350,7 +2369,7 @@ namespace Pyrrho.Level4
             {
                 var un = CTree<Domain, bool>.Empty;
                 EdgeType? ee = null;
-                for (var b = left.alts.First(); b != null; b = b.Next())
+                for (var b = left.matchPatterns.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key().defpos] is EdgeType e)
                     {
                         ee = e;
@@ -2358,7 +2377,7 @@ namespace Pyrrho.Level4
                     }
                 if (un.Count == 1 && ee is not null)
                     left = ee;
-                else if (un.Count < left.alts.Count)
+                else if (un.Count < left.matchPatterns.Count)
                     left = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, un));
             }
             if (left is GqlLabel)
@@ -2422,7 +2441,7 @@ namespace Pyrrho.Level4
             {
                 var un = CTree<Domain, bool>.Empty;
                 UDType? ee = null;
-                for (var b = ld.alts.First(); b != null; b = b.Next())
+                for (var b = ld.matchPatterns.First(); b != null; b = b.Next())
                     if (cx._Ob(b.key().defpos) is UDType e)
                     {
                         ee = e;
@@ -2430,7 +2449,7 @@ namespace Pyrrho.Level4
                     }
                 if (un.Count == 1 && ee is not null)
                     ld = ee;
-                else if (un.Count < ld.alts.Count)
+                else if (un.Count < ld.matchPatterns.Count)
                     ld = (Domain)cx.Add(new Table(cx.GetUid(), un));
             }
             if (left is SqlTypeExpr && cx.binding[left.defpos] is TTypeSpec sp)
@@ -2464,7 +2483,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// we have just matched MATCH|WITH
         /// MatchStatement: Match {',' Match} [WhereClause] [[THEN] Statement].
-        /// Match: MatchMode MatchPattern
+        /// Match: PathPatternPrefix MatchPattern
         /// Paths accumulate from the sequence of Match for use in WhereClause
         /// </summary>
         /// <returns></returns>
@@ -2495,12 +2514,12 @@ namespace Pyrrho.Level4
             var pm = cx.parsingGQL;
             cx.parsingGQL = Context.ParsingGQL.Match;
             lxr.tgs = CTree<long, TGParam>.Empty;
-            var (tgs, svgs) = ParseGqlMatchList(m+(DBObject.Scope,lp));
+            var (tgs, svgs) = ParseGraphPattern(m+(DBObject.Scope,lp));
             var xs = CTree<long, bool>.Empty;
             for (var b = svgs.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is GqlMatch ss)
-                    for (var c = ss.matchAlts.First(); c != null; c = c.Next())
-                        if (cx.obs[c.value()] is GqlMatchAlt sa)
+                    for (var c = ss.matchPatterns.First(); c != null; c = c.Next())
+                        if (cx.obs[c.value()] is MatchPattern sa)
                             for (var dd = sa.matchExps.First(); dd != null; dd = dd.Next())
                                 if (dd.value() is long ep)
                                     xs += (ep, true);
@@ -2539,8 +2558,8 @@ namespace Pyrrho.Level4
             var ds = CTree<long, Domain>.Empty;
             for (var a = svgs.First(); a != null; a = a.Next())
                 if (cx.obs[a.value()] is GqlMatch gm)
-                    for (var b = gm.matchAlts.First(); b != null; b = b.Next())
-                        if (cx.obs[b.value()] is GqlMatchAlt ga)
+                    for (var b = gm.matchPatterns.First(); b != null; b = b.Next())
+                        if (cx.obs[b.value()] is MatchPattern ga)
                             for (var c = ga.matchExps.First(); c != null; c = c.Next())
                                 if (cx.obs[c.value()] is GqlNode gn)
                                 {
@@ -9339,8 +9358,8 @@ namespace Pyrrho.Level4
                             break;
                         }
                 if (et.FindPrimaryIndex(cx) is Level3.Index px && cx.db.objects[et.defpos] is Table ee)
-                {
-                    if (ee.tableRows[px.rows?.Get(new CList<TypedValue>(lxr.val), 0) ?? -1L] is TableRow tr)
+                { // warning: if you leave lxr.val as TChar as use it directly you get a surprise: we must new TInt(tp) instead
+                    if (ee.tableRows[px.rows?.Get(new CList<TypedValue>(new TInt(tp)), 0) ?? -1L] is TableRow tr)
                         tf = new TRef(tr.defpos, et);
                 }
                 else
