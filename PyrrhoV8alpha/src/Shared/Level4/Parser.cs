@@ -9467,7 +9467,7 @@ namespace Pyrrho.Level4
                     lp = cx.GetUid();
                 Next();
                 left = (QlValue)cx.Add(new SqlValueExpr(lp, cx, op, left, 
-                    ParseSqlValueExpression(m+(DBObject._Domain,left.domain)),
+                    ParseSqlValueExpression(m+(DBObject._Domain,Domain.For(left.domain.kind))),
                     Qlx.NO,m));
             } else if (Match(Qlx.REFERENCES) && left.domain.kind==Qlx.REF)
             {
