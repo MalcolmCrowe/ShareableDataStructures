@@ -46,6 +46,7 @@ namespace Pyrrho.Level3
             LastChange = -68, // long (formerly called Ppos)
             Owner = -59, // long
             Scope = -330, // long current lexical scope (from LexLp(), not LexDp())
+            Source = -52, // string
             Sensitive = -69; // bool
         /// <summary>
         /// During transaction execution, many DBObjects have aliases.
@@ -57,6 +58,7 @@ namespace Pyrrho.Level3
         /// The definer of the object (a Role)
         /// </summary>
         public long definer => (long)(mem[Definer] ?? -1L);
+        internal string source => (string?)mem[Source] ?? "";
         public long owner => (long)(mem[Owner] ?? -1L);
         //        internal Context compareContext => 
         internal long lastChange => (long)(mem[LastChange] ?? 0L);// compareContext?.db.loadpos ?? 0L;
@@ -359,7 +361,7 @@ namespace Pyrrho.Level3
                     case Qlx.LABELS:
                     case Qlx.CARDINALITY:
                     case Qlx.MULTIPLICITY:
-                    case Qlx.REFERENCES:
+             //       case Qlx.REFERENCES:  handled separately
                     case Qlx.MINVALUE:
                     case Qlx.MAXVALUE:
                         dmd += (b.key(), b.value());
@@ -398,7 +400,7 @@ namespace Pyrrho.Level3
                 di += (ObInfo._Metadata, di.metadata + dmd);
                 inf += (definer, di);
                 ch = true;
-            }
+            } 
             if (ch)
             {
                 var r = cx.Add(New(defpos, mem + (Infos,inf)));

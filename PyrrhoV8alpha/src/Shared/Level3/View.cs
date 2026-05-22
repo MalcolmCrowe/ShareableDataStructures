@@ -89,7 +89,7 @@ namespace Pyrrho.Level3
             var od = cx.done;
             cx.done = ObTree.Empty;
             var st = framing.valueType;
-            cx.instDFirst = (cx.parse.HasFlag(ExecuteStatus.Obey)) ? cx.nextHeap : cx.db.nextStmt;
+            cx.instDFirst = (cx.parse==ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (framing.obs.PositionAt(Transaction.Executables)?.key() ?? 0L) - 1;
             cx.instSLast = framing.obs.Last()?.key() ?? -1L;
             var ni = cx.GetUid();
@@ -124,7 +124,7 @@ namespace Pyrrho.Level3
             cx.instDFirst = -1L;
             if (cx.db != null && framing.obs.Last()?.key() is long t)
             {
-                if (cx.parse.HasFlag(ExecuteStatus.Obey))
+                if (cx.parse==ExecuteStatus.Obey)
                 {
                     if (t >= cx.nextHeap)
                         cx.nextHeap = t + 1;
@@ -458,7 +458,7 @@ namespace Pyrrho.Level3
         {
             // set up instancing parameters
             var vn = new Ident(name, cx.GetUid());
-            cx.instDFirst = (cx.parse.HasFlag(ExecuteStatus.Obey)) ? cx.nextHeap : cx.db.nextStmt;
+            cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (representation.First()?.key() ?? 0L) - 1;
             cx.instSLast = representation.Last()?.key() ?? -1L;
             // construct our instanced virtual keymap, and the instanced domain

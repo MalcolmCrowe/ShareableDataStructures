@@ -626,8 +626,8 @@ namespace Pyrrho.Level4
                         for (var b = casc.First(); b != null; b = b.Next())
                             if (b.value() is TableActivation ct)
                                 _cx = rc.Cascade(_cx,ct,null);
-                        if (parse.HasFlag(ExecuteStatus.Detach))
-                            _cx = rc.Cascade(_cx,this);
+           //             if (parse==ExecuteStatus.Detach)
+          //                  _cx = rc.Cascade(_cx,this);
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);

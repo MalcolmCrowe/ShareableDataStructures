@@ -867,7 +867,7 @@ namespace Pyrrho
                     woutput = new JsonWebOutput(db, sbuild);
                 byte[] bytes = new byte[client.Request.ContentLength64];
                 if (bytes.Length > 0)
-                    client.Request.InputStream.Read(bytes, 0, bytes.Length);
+                    client.Request.InputStream.ReadExactly(bytes);
                 var sb = Encoding.UTF8.GetString(bytes);
                 var et = client.Request.Headers["If-Match"];
                 var eu = client.Request.Headers["If-Unmodified-Since"];

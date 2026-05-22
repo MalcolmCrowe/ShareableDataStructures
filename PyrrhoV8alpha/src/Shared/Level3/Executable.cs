@@ -44,9 +44,14 @@ namespace Pyrrho.Level3
         internal string? label => (string?)mem[Label];
         internal Domain valueType => (Domain)(mem[ValueType] ?? Domain.Null);
         internal long graph => (long)(mem[UseGraph]??-1L);
+        internal string create => (string)(mem[Source] ?? "");
         internal long worker => (long)(mem[Worker] ?? -1L);
-        internal static Executable None = new();
-        Executable() : base(--_uid, BTree<long, object>.Empty) { }
+        public static Executable Empty = new EmptyStatement(0);
+        public Executable(Context cx, string cr)
+            : this(cx.GetUid(), new BTree<long, object>(Source, cr)
+                  +(Definer,cx.role.defpos)
+                  +(Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo("",Grant.AllPrivileges)))) 
+        { }
         internal Executable(long dp, BTree<long, object>? m=null)
             : base(dp, m??BTree<long,object>.Empty) { }
         /// <summary>
@@ -81,13 +86,29 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// _Obey the Executable for the given Activation.
-        /// All non-CRUD Executables should have a shortcut override.
-        /// The base class implementation is for DDL execution in stored procedures.
-        /// It parses the string and executes it in the current context
+        /// Executables that are parsed already should have an override of _Obey
+        /// and should not call this base implementation.
+        /// Otherwise, provided we have execute privileges on this,
+        /// we parse the source string and execute it with the definer's privileges
         /// </summary>
         /// <param name="cx">The context</param>
 		public virtual Context _Obey(Context cx)
         {
+            if (cx is not Activation)  // we have probably been called by base._Obey()
+                throw new DBException("25000");
+            var dr = cx.db.objects[definer] as Role ?? throw new DBException("42105");
+            if (infos[cx.role.defpos] is not ObInfo oi || !oi.priv.HasFlag(Grant.Privilege.Execute)
+                || cx.db.user==null)
+                throw new DBException("42105");
+            var pc = new Context(cx, dr, cx.db.user);
+            var db = new Parser(cx).ParseSql(create, Domain.Content);
+            pc.db = new Transaction(pc.db,DateTime.Now.Ticks,true);
+            pc.done = ObTree.Empty;
+            var r = pc.rdC;
+            var ne = (db is Transaction) ? cx.checkEdges : BTree<long, TableRow>.Empty;
+            pc = new(db, pc.conn) { rdC = r, checkEdges = ne };
+            cx = pc.SlideDown();
+            cx.db = pc.db;
             return cx;
         }
         internal static bool Calls(CList<long> ss,long defpos,Context cx)
@@ -117,7 +138,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new Executable(dp,mem+m);
+            return this;
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return this;
         }
         internal Executable Check(GQL w030)
         {
@@ -131,20 +156,19 @@ namespace Pyrrho.Level3
             throw new NotImplementedException();
         }
     }
+    internal class EmptyStatement(long dp) : Executable(dp)
+    {
+        public override Context _Obey(Context cx)
+        {
+            return cx;
+        }
+    }
     internal class RollbackStatement(long dp) : Executable(dp)
     {
         public override Context _Obey(Context cx)
         {
             cx.db.Rollback();
             throw new DBException("40000").ISO();
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            throw new NotImplementedException();
-        }
-        internal override DBObject New(long dp, BTree<long, object>m)
-        {
-            throw new NotImplementedException();
         }
     }
     internal class QueryStatement : Executable
@@ -324,15 +348,6 @@ namespace Pyrrho.Level3
                 }
             sb.Append(')');
             return sb.ToString();
-        }
-    }
-    internal class EmptyStatement : Executable
-    {
-        internal static Executable Empty = new EmptyStatement();
-        EmptyStatement():base(-1L) { }
-        internal EmptyStatement(long dp, Context cx) : base(dp, BTree<long,object>.Empty)
-        {
-            cx.result = Domain.Null;
         }
     }
     internal class PreparedStatement : Executable
@@ -1457,7 +1472,7 @@ namespace Pyrrho.Level3
         {
             if (cx.GetCalledActivation() is not Activation a) // from the top of the stack each time
                 return cx;
-            a.exec = this ?? EmptyStatement.Empty;
+            a.exec = this;
             a.val = cx.obs[ret]?.Eval(cx) ?? TNull.Value;
             if (a.val is TRow tr && domain.kind==Qlx.TYPE)
                 a.val = new TRow(domain,tr.values);

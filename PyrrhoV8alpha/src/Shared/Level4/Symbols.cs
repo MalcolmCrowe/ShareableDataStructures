@@ -356,7 +356,7 @@ namespace Pyrrho.Level4
             }
             if ((vo is not null && cx.Known(vo)) || cx.role.dbobjects.Contains(s))
                 return tok;
-            if (cx.parse.HasFlag(ExecuteStatus.Obey) && cx.db is not null
+            if (cx.parse == ExecuteStatus.Obey && cx.db is not null
                 && cx.role is not null && cx.db.prefixes != CTree<string, long>.Empty
                 && cx._Ob(cx.db.prefixes[s]) is UDType dt && val is not null
                 && dt.name is not null)
@@ -381,7 +381,7 @@ namespace Pyrrho.Level4
         }
         Qlx MaybeSuffix()
         {
-            if (cx.parse.HasFlag(ExecuteStatus.Obey))
+            if (cx.parse == ExecuteStatus.Obey)
             {
                 var oldtok = tok;
                 var oldval = val;

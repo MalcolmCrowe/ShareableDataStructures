@@ -11639,16 +11639,17 @@ cx.obs[high] is not QlValue hi)
             m ??= BTree<long, object>.Empty;
             if (i > 0)
             {
-                if ((cx.parse.HasFlag(ExecuteStatus.Compile) || (i >= Transaction.Analysing && i < Transaction.Executables))
+                if ((cx.parse==ExecuteStatus.Compile || (i >= Transaction.Analysing && i < Transaction.Executables))
                     && cx.names[nm.ident].Item2 is long p)
                     i = p;
                 m += (IdValue, i);
             }
             if (d is not null)
                 m += (DocValue, d);
+            cx.names += nm;
             var ng = CTree<long, TGParam>.Empty;
             for (var b = tgs.First(); b != null; b = b.Next())
-                if (cx.parse.HasFlag(ExecuteStatus.Compile) || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
+                if (cx.parse==ExecuteStatus.Compile || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
                 {
                     if (b.value() is TGParam tg && cx.names[tg.value].Item2 is long p && p!=-1L)
    //                     && !(cx.obs[p] is FormalParameter)) // there may be others to avoid
@@ -11808,7 +11809,7 @@ cx.obs[high] is not QlValue hi)
             nd = (GqlNode)cx.Add(nd);
             ls ??= CTree<string, QlValue>.Empty;
             TNode? tn = null;
-            if (nt.defpos > 0 && !cx.parse.HasFlag(ExecuteStatus.GraphType))
+            if (nt.defpos > 0)
             {
                 var vp = cx.GetUid();
                 TableRowSet ts = new(cx.GetUid(), cx, nt.defpos, ap);

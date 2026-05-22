@@ -633,16 +633,17 @@ namespace Pyrrho.Level3
                         return ix;
             return null;
         }
-        internal Index[]? FindIndex(Database db, CTree<int, long> key)
+        internal Index[]? FindIndex(Database db, CTree<int, long> key,CTree<long,Domain>?kRep=null)
         {
+            kRep ??= representation;
             var r = BList<Index>.Empty;
             for (var b = indexes?.First(); b != null; b = b.Next())
             {
                 var ca = key.First();
                 var c = b.key().First();
                 for (; ca != null && c != null; ca = ca.Next(), c = c.Next())
-                    if (((DBObject?)db.objects[ca.value()])?.domain.kind !=
-                        ((DBObject?)db.objects[c.value()])?.domain.kind)
+                    if (kRep[ca.value()]?.domain.kind !=
+                        representation[c.value()]?.domain.kind)
                         goto skip;
                 if (ca == null && c == null)
                     for (var d = b.value().First(); d != null; d = d.Next())

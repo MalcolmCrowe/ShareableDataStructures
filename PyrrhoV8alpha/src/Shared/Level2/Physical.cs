@@ -24,7 +24,7 @@ namespace Pyrrho.Level2
     /// IMMUTABLE and SHAREABLE used in Record/Update
     /// Committed if pos.LT.Transaction.TransPos
     /// </summary>
-    internal abstract class Physical
+    internal class Physical
     {
         /// <summary>
         /// Physical Record Types. These types are recorded in the database files so should not be changed
@@ -101,11 +101,17 @@ namespace Pyrrho.Level2
         /// On commit, dependent Physicals must be committed first
         /// </summary>
         /// <returns>An uncommitted Physical ppos or null if there are none</returns>
-        public abstract long Dependent(Writer wr, Transaction tr);
+        public virtual long Dependent(Writer wr, Transaction tr)
+        {
+            return -1L;
+        }
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract DBObject? Install(Context cx);
+        internal virtual DBObject? Install(Context cx)
+        {
+            return cx.db.objects[ppos] as DBObject;
+        }
         internal virtual void OnLoad(Reader rdr)
         { }
         /// <summary>
@@ -145,7 +151,10 @@ namespace Pyrrho.Level2
             Install(wr.cx);
             return this;
         }
-        protected abstract Physical Relocate(Writer wr);
+        protected virtual Physical Relocate(Writer wr)
+        {
+            return this;
+        }
         /// <summary>
         /// Serialise ourselves to the datafile. Called by Commit,
         /// which has already written the first byte of the log entry.

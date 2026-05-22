@@ -363,6 +363,7 @@ namespace Pyrrho.Level1
                         break;
                     case Qlx.EDGETYPE:
                     case Qlx.NODETYPE:
+                    case Qlx.TABLE:
                     case Qlx.TYPE:
                         if (tv.dataType is UDType u && cx.db.objects[u.defpos] is UDType ut)// may be different!
                         {

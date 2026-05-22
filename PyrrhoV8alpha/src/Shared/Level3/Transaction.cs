@@ -125,7 +125,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject? Add(Context cx, Physical ph)
         {
-            if (cx.parse.HasFlag(ExecuteStatus.Parse) || cx.parse.HasFlag(ExecuteStatus.Prepare))
+            if (cx.parse==ExecuteStatus.Parse || cx.parse==ExecuteStatus.Prepare)
                 return null;
             cx.db += (Physicals, physicals + (ph.ppos, ph));
             if (ph.ppos == cx.db.nextPos)
@@ -411,7 +411,7 @@ namespace Pyrrho.Level3
         }
         internal Context Execute(Executable e, Context cx)
         {
-            if (!cx.parse.HasFlag(ExecuteStatus.Obey))
+            if (cx.parse!=ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Http)
                 return cx;
             for (var b = cx.undefined.First(); b != null; b = b.Next())
             {
@@ -471,7 +471,7 @@ namespace Pyrrho.Level3
             string query, string? mime, string sdata)
         {
             var db = this;
-            cx.parse |= ExecuteStatus.Http;
+            cx.parse = ExecuteStatus.Http;
             int j, ln;
             if (sk != 0L)
             {

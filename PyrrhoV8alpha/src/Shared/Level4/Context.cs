@@ -184,8 +184,8 @@ namespace Pyrrho.Level4
             cursors = cx.cursors;
             val = cx.val;
             parent = cx.parent; // for triggers
-            if (cx.parse.HasFlag(ExecuteStatus.Detach))
-                parse = cx.parse;
+      //      if (cx.parse==ExecuteStatus.Detach)
+      //          parse = cx.parse;
             rdC = cx.rdC;
             rdS = cx.rdS;
             toFix = cx.toFix;
@@ -309,7 +309,7 @@ namespace Pyrrho.Level4
                 if (_Ob(ix.dp) is DBObject ob)
                 {
                     if (ix.sd < sD && (ob is SqlReview||
-                        (ob.GetType().Name=="QlValue" && (!parse.HasFlag(ExecuteStatus.Graph))
+                        (ob.GetType().Name=="QlValue" && parse!=ExecuteStatus.Graph)
                             &&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
                         return (null, n);
                     (r, cn) = ob._Lookup(lp, this, n, n.sub, rr);
@@ -425,7 +425,6 @@ namespace Pyrrho.Level4
             {
                 case ExecuteStatus.Parse:
                 case ExecuteStatus.Compile:
-                case ExecuteStatus.Compile | ExecuteStatus.Graph:
                     {
                         var r = db.nextStmt;
                         db += (Database.NextStmt, r + 1);
@@ -434,16 +433,19 @@ namespace Pyrrho.Level4
                 default: return db.nextPos;
             }
         }
-  /*      internal Iix GetIid()
+        internal long NewObject()
         {
-            var u = GetUid();
-            return Ix(u);
-        } */
+            if (db is not Transaction)
+                return -1L;
+            var r = db.nextPos;
+            db += (Database.NextPos, r + 1);
+            return r;
+        }
         internal long GetUid()
         {
             if (db == null)
                 return -1L;
-            if (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))
+            if (parse==ExecuteStatus.Parse || parse==ExecuteStatus.Compile)
             {
                 var r = db.nextStmt;
                 db += (Database.NextStmt, r + 1);
@@ -457,7 +459,7 @@ namespace Pyrrho.Level4
             long r;
             if (db == null)
                 return -1L;
-            if (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))
+            if (parse==ExecuteStatus.Parse || parse==ExecuteStatus.Compile)
             {
                 r = db.nextStmt;
                 db += (Database.NextStmt, r + n);
@@ -474,7 +476,7 @@ namespace Pyrrho.Level4
         {
             if (db == null)
                 return -1L;
-            return (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))?
+            return (parse==ExecuteStatus.Parse || parse==ExecuteStatus.Compile)?
                 db.nextStmt - 1:  nextHeap - 1;
         }
         internal int _DepthV(long? p, int d)
@@ -962,8 +964,8 @@ namespace Pyrrho.Level4
                     QuantifiedPredicate.Vals => _DepthLl((CList<long>)o, d),
                     MatchStatement.MatchList => _DepthLl((CList<long>)o, d),
                     MatchStatement.Truncating => _DepthTlPiD((BTree<long, (int, Domain)>)o, d),
-                    GqlMatch.MatchAlts => _DepthLl((CList<long>)o, d),
-                    GqlMatchAlt.MatchExps => _DepthLl((CList<long>)o, d),
+                    GqlMatch.MatchPatterns => _DepthLl((CList<long>)o, d),
+                    MatchPattern.MatchExps => _DepthLl((CList<long>)o, d),
                     _ => Math.Max(d, 1)
                 };
             return d;
@@ -1032,7 +1034,7 @@ namespace Pyrrho.Level4
                 done += (was.defpos, now);
             // scan by depth to perform the replacement
             var ldpos = db.length;
-            var excframing = parse.HasFlag(ExecuteStatus.Compile) &&
+            var excframing = parse==ExecuteStatus.Compile &&
                 (was.defpos < Transaction.Executables || was.defpos >= Transaction.HeapStart);
             for (var b = depths.First(); b != null; b = b.Next())
                 if (b.value() is ObTree bv)
@@ -1747,8 +1749,7 @@ namespace Pyrrho.Level4
                 return dp;
             // See notes in SourceIntro 3.4.2
             var r = dp;
-            if (parse.HasFlag(ExecuteStatus.Graph) || parse.HasFlag(ExecuteStatus.GraphType)
-                || parse.HasFlag(ExecuteStatus.Obey))
+            if (parse==ExecuteStatus.Obey)
             {
                 if (instDFirst > 0 && dp > instSFirst
                     && dp <= instSLast)
@@ -1884,9 +1885,9 @@ namespace Pyrrho.Level4
                         case QuantifiedPredicate.Low: v = Fix((long)v); break;
                         case WindowSpecification._Low: v = Fix((long)v); break;
                         case TransitionTableRowSet._Map: v = FixTll((CTree<long, long>)v); break;
-                        case GqlMatch.MatchAlts: v = FixLl((CList<long>)v); break;
+                        case GqlMatch.MatchPatterns: v = FixLl((CList<long>)v); break;
                         case RowSet._Matches: v = FixTlV((CTree<long, TypedValue>)v); break;
-                        case GqlMatchAlt.MatchExps: v = FixLl((CList<long>)v); break;
+                        case MatchPattern.MatchExps: v = FixLl((CList<long>)v); break;
                         case RowSet.Matching: v = FixTTllb((CTree<long, CTree<long, bool>>)v); break;
                         case MatchStatement.MatchList: v = FixLl((CList<long>)v); break;
                         case Grouping.Members: v = Fix((CTree<long, int>)v); break;

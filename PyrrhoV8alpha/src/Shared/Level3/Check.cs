@@ -20,16 +20,11 @@ namespace Pyrrho.Level3
     internal class Check : Domain
     {
         internal const long
-            Condition = -51, // long QlValue
-            Source = -52; // string
+            Condition = -51; // long QlValue
         /// <summary>
         /// The object to which the check applies
         /// </summary>
         internal long checkobjpos => (long)(mem[RowSet.Target]??-1L);
-        /// <summary>
-        /// The source SQL for the check constraint
-        /// </summary>
-        internal string source => (string?)mem[Source]??"";
         public new string? name => (string?)mem[ObInfo.Name]; // constraints cannot be renamed
         internal long search => (long)(mem[Condition]??-1L);
         /// <summary>

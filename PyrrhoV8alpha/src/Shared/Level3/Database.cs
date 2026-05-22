@@ -95,9 +95,7 @@ namespace Pyrrho.Level3
             return ToString();
         }
     }
-    [Flags]
-    public enum ExecuteStatus 
-    { Parse=1, Obey=2, Graph=4, GraphType=8, Prepare=16, Compile=32, Commit=64, Http=128, Detach=256 }
+    public enum ExecuteStatus { Parse, Obey, Prepare, Compile, Commit, Http }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
