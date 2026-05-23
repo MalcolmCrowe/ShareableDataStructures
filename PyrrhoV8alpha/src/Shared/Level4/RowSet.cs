@@ -5517,33 +5517,36 @@ namespace Pyrrho.Level4
                 for (var b = t.tableCols.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is TableColumn tc)
                     {
-                        if (check)
-                            switch (tc.generation)
-                            {
-                                case Generation.Default:
-                                    {
-                                        if (vs[tc.defpos] is TypedValue vt && vt != TNull.Value)
-                                            break;
-                                        cx.values += tc.Frame(vs);
-                                        cx.Add(tc.framing);
-                                        var v = cx.obs[tc.colDefault]?.Eval(cx) ?? TNull.Value;
-                                        vs += (tc.defpos, v);
-                                        cx.values += (tc.defpos, v);
+                        //         if (check)
+                        switch (tc.generation)
+                        {
+                            case Generation.Default:
+                                {
+                                    if (vs[tc.defpos] is TypedValue vt && vt != TNull.Value)
                                         break;
-                                    }
-                                case Generation.Expression:
-                                    {
-                                        if (vs[tc.defpos] is TypedValue vt && vt != TNull.Value)
-                                            throw new DBException("22G0X", tc.NameFor(cx));
-                                        cx.values += tc.Frame(vs);
-                                        cx.Add(tc.framing);
-                                        var v = cx.obs[tc.colDefault]?.Eval(cx) ?? TNull.Value;
-                                        trc += (cx, tc.defpos, v);
-                                        vs += (tc.defpos, v);
-                                        cx.values += (tc.defpos, v);
-                                        break;
-                                    }
-                            }
+                                    cx.values += tc.Frame(vs);
+                                    cx.Add(tc.framing);
+                                    var v = cx.obs[tc.colDefault]?.Eval(cx) ?? TNull.Value;
+                                    if (v is TInt && v.ToLong() is long vp
+                                        && tc.domain.elType is Domain vd)
+                                        v = new TRef(vp, vd);
+                                    vs += (tc.defpos, v);
+                                    cx.values += (tc.defpos, v);
+                                    break;
+                                }
+                            case Generation.Expression:
+                                {
+                                    if (vs[tc.defpos] is TypedValue vt && vt != TNull.Value)
+                                        throw new DBException("22G0X", tc.NameFor(cx));
+                                    cx.values += tc.Frame(vs);
+                                    cx.Add(tc.framing);
+                                    var v = cx.obs[tc.colDefault]?.Eval(cx) ?? TNull.Value;
+                                    trc += (cx, tc.defpos, v);
+                                    vs += (tc.defpos, v);
+                                    cx.values += (tc.defpos, v);
+                                    break;
+                                }
+                        }
                         if ((!tc.optional) && vs[tc.defpos] == TNull.Value)
               //              && tc.domain.kind== Qlx.REF && (tc.domain.elType is null || tc.domain.elType.defpos<0))
                             throw new DBException("22004", tc.NameFor(cx));
