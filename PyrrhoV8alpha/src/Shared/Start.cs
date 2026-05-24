@@ -1480,6 +1480,10 @@ namespace Pyrrho
 #endif
             if (httpport > 0 || httpsport > 0)
                 new Thread(new ThreadStart(new HttpService(hostname, httpport, httpsport).Run)).Start();
+            if (System.Runtime.GCSettings.IsServerGC)
+                Console.WriteLine("GC is running");
+            else
+                Console.WriteLine("GC is not running");
             Run();
 		}
         static void FixPath()
@@ -1529,7 +1533,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2026 Malcolm Crowe and University of the West of Scotland",
-            "8.0alpha","(23 May 2026)", "https://pyrrhodb.com"
+            "8.0alpha","(24 May 2026)", "https://pyrrhodb.com"
         ];
 	}
 }
