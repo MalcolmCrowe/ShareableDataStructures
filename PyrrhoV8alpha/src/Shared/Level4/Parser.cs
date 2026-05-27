@@ -1971,6 +1971,8 @@ namespace Pyrrho.Level4
                     svg += rvg;
                     if (nw == Qlx.ARROWR) // a reference to rn gets added to r
                     {
+                        if (rn is GqlReference gg && cx.obs[gg.refersTo] is GqlNode go)
+                            rn = go;
                         if (rn.domain is not Table rt || rt.defpos < 0) throw new DBException("42000");
                         var rd = Table.FindOrCreateRefDomain(cx, rt);
                         dc += (rt.name, new SqlLiteral(cx.GetUid(), new TRef(rn.defpos, rd), rd));
@@ -1979,9 +1981,11 @@ namespace Pyrrho.Level4
                         svg += (r.defpos,r);
                     } else // a reference to r gets added to rn
                     {
+                        if (r is GqlReference gr && cx.obs[gr.refersTo] is GqlNode gn)
+                            r = gn;
                         if (r.domain is not Table ot || ot.defpos < 0) throw new DBException("42000");
                         var dr = Table.FindOrCreateRefDomain(cx, ot);
-                        rn += (GqlNode.DocValue, rn.docValue+(ot.name, new SqlLiteral(cx.GetUid(), new TRef(r.defpos,dr), dr)));
+                        rn += (GqlNode.DocValue, rn.docValue+(ot.name, r));
                     }
                     cx.Add(rn);
                     svg += (rn.defpos,rn);
@@ -4429,12 +4433,7 @@ namespace Pyrrho.Level4
                     ct.culture.Name, "", ct, cx.db.nextPos, cx));
                 if (rd is null) throw new PEException("PE33611");
                 if (rd.defpos == np)
-                {
                     cx.Install(rd);
-                    cx.db += rd;
-                    cx.db += (Database.RefTypes, cx.db.refTypes + (ct, rd.defpos));
-                    cx.Add(rd);
-                }
                 var pc = new PColumn3(et, sc, rd, "", tm + (Qlx.REFERENCING, new TInt(cd.defpos)), nst, cx.db.nextPos, cx);
                 cc = new TConnector(tk, sc, cd, pc.defpos, false, ts, tm);
                 et = et.Add(cx, cc);
@@ -11492,10 +11491,10 @@ namespace Pyrrho.Level4
                 return (k, (QlValue)cx.Add(new SqlLiteral(k.uid, ParseDataType())));
             Ident q = new(lxr.val.ToString(), LexDp()); // capture instance reference
             QlValue? r = null;
-            if (tok==Qlx.Id && cx.obs[cx.names[q.ident].Item2] is GqlNode n && n.domain.defpos > 0)
+            if (tok==Qlx.Id && cx.obs[cx.names[q.ident].Item2] is GqlNode n 
+                && n.domain.defpos > 0)
             {
-                var rd = Table.FindOrCreateRefDomain(cx, n.domain);
-                r = new SqlLiteral(cx.GetUid(), new TRef(n.defpos, rd), rd);
+                r = n;
                 Next();
             }
             if (tok == Qlx.Id && !cx.Known(q.ident) && q.uid >= Transaction.Analysing)

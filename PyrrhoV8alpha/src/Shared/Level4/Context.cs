@@ -766,6 +766,8 @@ namespace Pyrrho.Level4
         /// <param name="ob"></param>
         internal void Install(DBObject ob)
         {
+            if (ob is Domain d && d.kind == Qlx.REF && d.elType is Domain rd)
+                db += (Database.RefTypes, db.refTypes + (rd, d.defpos));
             db += ob;
             Add(ob);
             if (ob.mem.Contains(DBObject._Framing))

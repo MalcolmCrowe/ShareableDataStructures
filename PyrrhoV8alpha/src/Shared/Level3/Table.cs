@@ -1225,12 +1225,7 @@ namespace Pyrrho.Level3
                 rd, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
             if (dm is null) throw new PEException("PE33611");
             if (dm.defpos == np)
-            {
                 cx.Install(dm);
-                cx.db += dm;
-                cx.db += (Database.RefTypes, cx.db.refTypes + (rd, dm.defpos));
-                cx.Add(dm);
-            }
             return dm;
         }
 

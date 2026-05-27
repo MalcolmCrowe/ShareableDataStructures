@@ -11777,6 +11777,7 @@ cx.obs[high] is not QlValue hi)
         internal GqlNode Create(Context cx, Table  dt, long ap, CTree<string, QlValue> ls,
             bool allowExtras = true)
         {
+            var ob = cx.binding;
             if (dt.kind == Qlx.AMPERSAND)
             {
                 var r1 = this;
@@ -11870,6 +11871,7 @@ cx.obs[high] is not QlValue hi)
             cx.Add(nd);
             cx.defs = defs;
             cx.names += nt.names??Names.Empty;
+            cx.binding = ob;
             return nd; 
         }
         //                && (ls[n9] ?? ls[n9.ToUpper()] ?? ls[n9.ToLower()]

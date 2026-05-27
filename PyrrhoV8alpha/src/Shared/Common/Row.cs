@@ -359,6 +359,8 @@ namespace Pyrrho.Common
         {
 //            if (dataType.kind != Qlx.REF)  
 //                throw new PEException("01234");
+//            if (p>=Transaction.Analysing&&p<Transaction.Executables)
+   //             throw new PEException("12345");
             elType = typ;
         }
         internal override TypedValue Fix(Context cx)
