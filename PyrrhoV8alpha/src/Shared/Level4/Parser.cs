@@ -3024,9 +3024,8 @@ namespace Pyrrho.Level4
             {
                 var d = ParseStandardDataType() ??
                     throw new DBException("42161", "StandardType", lxr.val.ToString()).Mix();
-                if (d.kind == Qlx.Null)
-                    throw new DBException("42000", tok, " following AS");
-                dt = new UDType(d.defpos, d.mem);
+                if (d.kind != Qlx.Null)
+                    dt = new UDType(d.defpos, d.mem);
             }
             if (cx._Ob(supers.First()?.key().defpos ?? -1L) is UDType ut)
             {

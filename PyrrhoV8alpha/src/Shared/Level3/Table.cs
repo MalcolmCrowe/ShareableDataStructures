@@ -1561,6 +1561,8 @@ namespace Pyrrho.Level3
                 if (!(ni.names.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
                 {
                     var dm = (b.value() is SqlLiteral sl) ? sl.domain : b.value().domain;
+                    if (b.value() is GqlNode gn)
+                        dm = FindOrCreateRefDomain(cx, gn.domain);
                     var nc = new PColumn3(r, b.key(), dm,
                         ni.metadata.ToString(), ni.metadata, cx.db.nextStmt, cx.db.nextPos, cx, true);
                     r = (Table?)cx.Add(nc)

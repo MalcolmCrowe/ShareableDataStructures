@@ -27,7 +27,7 @@ namespace Pyrrho
             dict.Add("22000", "Data exception");
             dict.Add("22001", "String data, right truncation");
             dict.Add("22003", "Numeric value out of range");
-            dict.Add("22004", "Null value not allowed");
+            dict.Add("22004", "Null value not allowed: {0}");
             dict.Add("22007", "Invalid datetime format: {0}");
             dict.Add("22008", "Datetime field overflow: {0}");
             dict.Add("22011", "Substring error");
