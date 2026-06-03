@@ -11687,10 +11687,27 @@ cx.obs[high] is not QlValue hi)
                 r = pc.rd??Domain.TypeSpec;
             return r;
         }
-        internal virtual Table _Type(Context cx, Table dt, long ap, bool allowExtras = true,
+        internal virtual Table _Type(Context cx, Domain dt, long ap, bool allowExtras = true,
             CTree<TypedValue, bool>? cr = null)
         {
-            return dt;
+            if (dt is Table u)
+                return u;
+            string nm = "";
+            for (var c = dt.alts.First(); c != null; c = c.Next())
+            {
+                if (cx.db.objects[c.key().defpos] is Table t)
+                {
+                    for (var d = docValue.First(); d != null; d = d.Next())
+                    {
+                        nm = d.key();
+                        if (!t.names.Contains(nm) && !allowExtras)
+                            goto skip;
+                    }
+                    return t;
+                }
+            skip:;
+            }
+            throw new DBException("42112", nm);
         }
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
@@ -11814,8 +11831,8 @@ cx.obs[high] is not QlValue hi)
             {
                 var vp = cx.GetUid();
                 TableRowSet ts = new(cx.GetUid(), cx, nt.defpos, ap);
-                var ll = BList<(QlValue,TableColumn)>.Empty; // expressions and target keymap
-                var iC = CTree<int,long>.Empty; // keymap for the list of values for the SqlInsert
+                var ll = BList<(QlValue,TableColumn)>.Empty; // expressions and target cols
+                var iC = CTree<int,long>.Empty; // cols for the list of values for the SqlInsert
                 var tb = ts.First();
                 for (var bb = ts.rowType.First(); bb != null && tb != null; bb = bb.Next(), tb = tb.Next())
                     if (bb.value() is long bq && cx.NameFor(bq) is string n9
@@ -11828,9 +11845,9 @@ cx.obs[high] is not QlValue hi)
                         ll += (sv,co);
                         iC += ((int)iC.Count, tb.value());
                     }
-                // ll generally has fewer keymap than dt
+                // ll generally has fewer cols than dt
                 // carefully construct what would happen with ordinary SQL INSERT VALUES
-                // we want dm to be constructed as having a subset of fm's keymap using fm's iSMap
+                // we want dm to be constructed as having a subset of fm's cols using fm's iSMap
                 var np = cx.db.nextPos;
                 var dr = CTree<int,long>.Empty;
                 var ds = CTree<long, Domain>.Empty;
@@ -12229,7 +12246,7 @@ cx.obs[high] is not QlValue hi)
         /// <param name="ap"></param>
         /// <param name="allowExtras"></param>
         /// <returns></returns>
-        internal override Table _Type(Context cx, Table dt, long ap, bool allowExtras = true,
+        internal override Table _Type(Context cx, Domain dt, long ap, bool allowExtras = true,
             CTree<TypedValue,bool>? cr = null)
         {
             var et = base._Type(cx, dt, ap, allowExtras) ?? throw new DBException("42000");

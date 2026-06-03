@@ -1973,20 +1973,21 @@ namespace Pyrrho.Level4
                     {
                         if (rn is GqlReference gg && cx.obs[gg.refersTo] is GqlNode go)
                             rn = go;
-                        if (rn.domain is not Table rt || rt.defpos < 0) throw new DBException("42000");
-                        var rd = Table.FindOrCreateRefDomain(cx, rt);
-                        dc += (rt.name, new SqlLiteral(cx.GetUid(), new TRef(rn.defpos, rd), rd));
-                        r += (GqlNode.DocValue, dc);
+                        var rd = Table.FindOrCreateRefDomain(cx, rn.domain);
+                        r += (GqlNode.After, rn);
+                        r += (GqlNode.PostCon, new TConnector(nw, rn.name ?? "", rn.domain));
+                        svg += (r.defpos, r);
                         cx.Add(r);
-                        svg += (r.defpos,r);
-                    } else // a reference to r gets added to rn
+                    }
+                    else // a reference to r gets added to rn
                     {
                         if (r is GqlReference gr && cx.obs[gr.refersTo] is GqlNode gn)
                             r = gn;
-                        if (r.domain is not Table ot || ot.defpos < 0) throw new DBException("42000");
-                        var dr = Table.FindOrCreateRefDomain(cx, ot);
-                        rn += (GqlNode.DocValue, rn.docValue+(ot.name, r));
-                    }
+                        var dr = Table.FindOrCreateRefDomain(cx, r.domain);
+                        rn += (GqlNode.DocValue, rn.docValue + (r.domain.name, r));
+                        rn += (GqlNode.Before, r);
+                        rn += (GqlNode.PreCon, new TConnector(nw, r.name ?? "", r.domain));
+                    } 
                     cx.Add(rn);
                     svg += (rn.defpos,rn);
                     if (braceseen && Match(Qlx.COMMA))

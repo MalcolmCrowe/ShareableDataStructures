@@ -298,6 +298,63 @@ namespace PyrrhoCmd
                 file = null;
             }
         }
+    static string prevline = "";
+    static string? ReadLine1()
+        {
+            string str = string.Empty;
+            int pos = 0;
+            var left = Console.CursorLeft;
+            var top = Console.CursorTop;
+            while (true)
+            {
+                if (Console.KeyAvailable)
+                {
+                    var rg = (pos < str.Length) ? str[pos..] : "";
+                    var le = (pos>0 && pos <= str.Length) ? str[0..pos] : "";
+                    var a = Console.ReadKey(true);
+                    if (a.Key == ConsoleKey.Enter)
+                        break;
+                    if (a.Key == ConsoleKey.UpArrow)
+                    {
+                        str = le + prevline + rg;
+                        Console.Write(prevline + rg);
+                        pos += prevline.Length;
+                    }
+                    else if (a.Key == ConsoleKey.Backspace && le!="")
+                    {
+                        str = le[0..(pos-1)] + rg;
+                        pos--;
+                        Console.SetCursorPosition(left + pos, top);
+                        Console.Write(rg + " ");
+                    }
+                    else if (a.Key == ConsoleKey.Delete && rg!="")
+                    {
+                        rg = rg[1..];
+                        str = le + rg;
+                        pos--;
+                        Console.Write(rg + " ");
+                    }
+                    else if (a.Key == ConsoleKey.LeftArrow && pos > 0)
+                        pos--;
+                    else if (a.Key == ConsoleKey.RightArrow && pos < str.Length)
+                        pos++;
+                    else if (a.Key == ConsoleKey.Home)
+                        pos = 0;
+                    else if (a.Key == ConsoleKey.End)
+                        pos = str.Length - 1;
+                    else if (a.Key != ConsoleKey.Tab)
+                    {
+                        str = le + a.KeyChar + rg;
+                        Console.Write(a.KeyChar + rg);
+                        pos++;
+                    }
+                    Console.SetCursorPosition(left + pos, top);
+                }
+            }
+            Console.SetCursorPosition(0, top+1);
+            prevline = str;
+            return str;
+        }
     static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
         {
  //           Console.InputEncoding = Encoding.Unicode;
@@ -333,7 +390,10 @@ namespace PyrrhoCmd
                         Console.Write("QL-T>");
                     else
                         Console.Write("QL> ");
-                    str = Console.ReadLine();
+                    if (Environment.OSVersion.Platform == PlatformID.Unix)
+                        str = ReadLine1();
+                    else
+                        str = Console.ReadLine();
                 }
                 if (str == null)
                     return null;
