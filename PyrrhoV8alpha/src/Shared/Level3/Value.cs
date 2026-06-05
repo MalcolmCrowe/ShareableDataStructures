@@ -11877,6 +11877,8 @@ cx.obs[high] is not QlValue hi)
                 if (nd.name != null)
                     cx.Add(nd.name, ap, nd);
                 tn = cx.values[np] as TNode; //?? throw new DBException("42105").Add(Qlx.INSERT_STATEMENT);
+                if (tn!=null)
+                    cx.binding+=(nd.defpos, tn);
             }
             if (tn is not null)
             {
@@ -11888,7 +11890,7 @@ cx.obs[high] is not QlValue hi)
             cx.Add(nd);
             cx.defs = defs;
             cx.names += nt.names??Names.Empty;
-            cx.binding = ob;
+            cx.binding += ob;
             return nd; 
         }
         //                && (ls[n9] ?? ls[n9.ToUpper()] ?? ls[n9.ToLower()]
