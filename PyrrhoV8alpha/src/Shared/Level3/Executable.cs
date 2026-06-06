@@ -4242,109 +4242,151 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// GraphInsertStatement contains a CTree of GqlNode in lexical sequence.
-        /// Some of these GqlNodes may be GqlReferences 
-        ///     - referring to existing nodes (from a previous Match), or
-        ///     - referring to a node being built by this transaction (maybe from a previous Insert)
-        /// GqlNodes with a docValue or labels are always new.
-        ///     Later references to them may add connectors
-        /// It is possible that the GraphInsertStatement might add a connection to an existing node
-        /// In _Obey() we construct docValues for all the nodes including reference value information.
+        /// In _Obey() we ensure that cx.values has a corresponding sequence of TNode.
+        /// We create whatever nodee, edges, nodetypes, edgetypes are needed.
+        /// 
         /// </summary>
         /// <param name="cx">the context</param>
         /// <returns>the same context</returns>
         /// <exception cref="DBException"></exception>
         public override Context _Obey(Context cx)
         {
-            var ne = CTree<long, GqlNode>.Empty;  // Nodes to build
             if (cx.next is Context px)
                 cx.names += px.names;
+            var td = ObTree.Empty;
             for (var b = graphExps.First(); b != null; b = b.Next())
                 if (b.value() is ObTree ge)
+                    td += ge;
+            while (td.Count > 0)
+            {
+                var on = cx.newNodes; // starting state
+                TNode? nb = null; // before node if defined
+                GqlNode? gb = null; // before node
+                for (var bb = td.First(); bb != null; bb = bb.Next())
                 {
-                    GqlNode? gb = null; // previous GqlNode
-                    GqlNode? gu = null; // what gb refers to
-                    TNode? nb = null;   // TNode of previous GqlNode 
-                    var rn = CTree<long, long>.Empty; // GqlNode to Record
-                    for (var c = cx.newNodes.First(); c != null; c = c.Next())
-                        if (c.value().First() is ABookmark<long, bool> m && m.key() is long mn)
-                            for (var mb = m.Next(); mb != null; mb = mb.Next())
-                                rn += (mb.key(), mn);
-                    for (var bb = ge.First(); bb != null; bb = bb.Next())
-                        if (bb.value() is GqlNode gc) // current GqlNode
+                    var gc = bb.value() as GqlNode ?? throw new PEException("PE78010");
+                    TNode? nc = null;
+                    if (cx.values[gc.defpos] is TNode dc)
+                    {
+                        nc = dc;
+                        td -= gc.defpos;
+                    }
+                    else if (gc is GqlReference gr && cx.values[gr.refersTo] is TNode nr)
+                    {
+                        nc = nr;
+                        td -= gr.defpos;
+                    }
+                    else
+                    {
+                        var vs = CTree<long, TypedValue>.Empty;
+                        var ok = true;
+                        if (gc.preCon is TConnector cr && nb != null && cr.rd is not null)
+                            vs += (cr.cp, new TRef(nb.defpos, cr.rd));
+                        else ok = false;
+                        if (gc.postCon is TConnector co && bb?.Next()?.value() is GqlNode gn
+                            && co.rd is not null && cx.values[gn.defpos] is TNode na)
+                            vs += (co.cp, new TRef(na.defpos, co.rd));
+                        else ok = false;
+                        for (var c = gc.domain.First(); c != null; c = c.Next())
+                            if (cx.obs[c.value()] is QlValue q && q.domain.kind == Qlx.REF
+                                && !vs.Contains(c.value()) && q.Eval(cx) is TNode qn
+                                && q.domain.elType is Table dm)
+                                vs += (c.value(), new TRef(qn.defpos, dm));
+                            else ok = false;
+                        /*                                                for (var bp = tr.physicals.First(); bp != null && !done; bp = bp.Next())
+                                                                            if (bp.value() is Record rr && rr.defpos == te.defpos)
+                                                                            {
+                                                                                rr.fields += vs;
+                                                                                done = true;
+                                                                                if (cx.checkEdges[rr.defpos] is TableRow ce)
+                                                                                    cx.checkEdges += (rr.defpos, new TableRow(rr.defpos, ce.vals + vs));
+                                                                            }
+                                                                        if (!done)
+                                                                        {
+                                                                            var u = new Update(te.defpos, er.domain.defpos, vs, cx.db.nextPos, cx);
+                                                                            cx.Add(u);
+                                                                        }
+                                                                    }
+                                                                    else // we are building a new edge
+                                                                    {*/
+                        var et = gc.domain as Table;
+                        if (cx.FindTable(gc.name ?? "") is Domain ew)
                         {
-                            GqlNode gt = ((gc is GqlReference gr) ? (GqlNode?)cx.obs[gr.refersTo] : gc) ?? gc; // target of current GqlNode
-                            TNode? nc = gt.Eval(cx) as TNode;
-                            var vs = nc?.tableRow.vals ?? CTree<long, TypedValue>.Empty;
-                            if (gc.preCon is TConnector cr && nb != null && cr.rd is not null)
-                                vs += (cr.cp, new TRef(nb.defpos, cr.rd));
-                            Table et = gt._Type(cx, gc.domain, 0L, false);
-                            var ls = gt.docValue;
-                            if (gc.preCon is TConnector rc)
-                                if (rc.cp > 0)
-                                {
-                                    var s = cx.NameFor(rc.cp);
-                                    if (s == null || s == "")
-                                        s = rc.cn;
-                                    ls += (s,
-                                        new SqlLiteral(cx.GetUid(), Table.Connect(cx, nb, rc, rc, gt, rn)));
-                                }
-                                else if (nc != null)
-                                    (_, ls) = et.Connect(cx, nb, nc, gc, gt.preCon, ls);
-                            gt += (_Domain, et);
-                            gt += (Scope, defpos);
-                            gt += (GqlNode.DocValue, ls);
-                            cx.obs += (gt.defpos, gt);
-                            if (nc == null)
+                            if (ew is Table ev)
+                                et = ev;
+                            else if (ew.kind == Qlx.UNION)
                             {
-                                gt.Create(cx, et, gc.scope, ls);
-                                nc = cx.values[gt.defpos] as TNode;
-                            }
-                            if (nc != null)
-                            {
-                                rn += (gt.defpos, nc.defpos);
-                                for (var e = gt.domain.colRefs.First(); e != null; e = e.Next())
-                                    for (var f = e.value().First(); f != null; f = f.Next())
-                                        if ((nc.tableRow.vals[f.key()] ?? TNull.Value) == TNull.Value)
-                                            cx.checkEdges += (nc.defpos, nc.tableRow);
-                                if (gb != null && gb.postCon is TConnector oc && oc.rd is not null && nb != null
-                                    && gu!=null)                               
-                                {// we are adding a reference to nc to an existing node nb
-                                    var ns = nb.tableRow.vals;
-                                    var tb = (Table)gb.domain;
-                                    ns += (oc.cp, new TRef(nc.defpos, oc.rd));
-                                    var tr = cx.db as Transaction ?? throw new PEException("PE03061");
-                                    var done = false;
-                                    for (var bp = cx.checkEdges.First(); bp != null && !done; bp = bp.Next())
-                                        if (tr.physicals[bp.key()] is Record rr && rr.node == gu.defpos)
-                                        {
-                                            rr.fields += ns;
-                                            tb = (Table)(rr.Install(cx)??throw new PEException("PE73023"));
-                                            cx.checkEdges += (rr.defpos, new TableRow(rr.tabledefpos, rr.fields));
-                                            done = true;
-                                        }
-                                    if (!done)
+                                for (var c = ew.alts.First(); c != null; c = c.Next())
+                                    if (cx._Ob(c.key().defpos) is Table ex)
                                     {
-                                        var u = new Update(nb.defpos, gb.domain.defpos, ns, cx.db.nextPos, cx);
-                                        cx.Add(u);
+                                        et = ex;
+                                        goto found;
                                     }
-                                    if (tb.tableRows[nb.defpos] is TableRow nr)
-                                        cx.binding += (gb.defpos, new TNode(cx, nr));
-                                }
+                                throw new DBException("22G0W", gc.domain.name);
                             }
-                            gb = gc;
-                            gu = gt;
-                            nb = nc ?? gt.Eval(cx) as TNode;
-                            if (atSchemaLevel)
-                                gc?.InsertSchema(cx);
+                            else
+                                et = ew as Table ?? throw new PEException("PE20283");
+                        found:;
                         }
-                    for (var g = ne.First(); g != null; g = g.Next())
-                        if (g.value() is GqlNode gc
-                            && gc.domain is Table et)
-                            gc.Create(cx, et, gc.scope, gc.docValue);
-                    ne = CTree<long, GqlNode>.Empty;
+                        if (cx.obs[gc.domain.defpos] is Table ut)
+                            et = ut;
+                        else for (var cc = gc.domain.alts.First(); cc != null; cc = cc.Next())
+                            if (cc.key() is Table t
+                                && cx._Ob(t.defpos) is Table tt && tt.colRefs.Count > 1L)
+                            {
+                                et = tt;
+                                break;
+                            }
+                        et ??= gc._Type(cx, Domain.TableType, 0L, false);
+                        var ls = gc.docValue;
+                        var ng = gc.Create(cx, (Table)gc.domain, 0L, ls);
+                        cx.Add(ng);
+                        nc = cx.values[ng.defpos] as TNode;
+                        if (nc != null)
+                            td -= gc.defpos;
+                    }
+                    /*                                  if (er.preCon is TConnector rc && rc.cp > 0)
+                                                      {
+                                                          var s = cx.NameFor(rc.cp);
+                                                          if (s == null || s == "")
+                                                              s = rc.cn;
+                                                          ls += (s,
+                                                              new SqlLiteral(cx.GetUid(), Table.Connect(cx, bn, rc, rc, ed, rn)));
+                                                      }
+                                                      else
+                                                          (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
+                                                      if (er.postCon is TConnector oc && oc.cp > 0)
+                                                      {
+                                                          var s = cx.NameFor(oc.cp);
+                                                          if (s == null || s == "")
+                                                              s = oc.cn;
+                                                          ls += (s,
+                                                              new SqlLiteral(cx.GetUid(), Table.Connect(cx, nn, oc, oc, ed, rn)));
+                                                      }
+                                                      else
+                                                          (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
+                                                      ed += (_Domain, et);
+                                                      ed += (Scope, defpos);
+                                                      ed += (GqlNode.DocValue, ls);
+                                                      cx.obs += (ed.defpos, ed);
+                                                      ne += (ed.defpos, ed);
+                                                  } 
+                    bv = g;
+                    bn = g.Eval(cx) as TNode;
                 }
-            return cx;
+                else
+                {
+                    bv = g;
+                    bn = g.Eval(cx) as TNode; */
 
+                    /* if (atSchemaLevel)
+                         gc?.InsertSchema(cx); */
+                }
+                if (cx.newNodes == on) // no changes
+                    break;
+                on = cx.newNodes;
+            }
+            return cx;
         }
         internal CTree<long,bool> GraphTypes(Context cx)
         {
