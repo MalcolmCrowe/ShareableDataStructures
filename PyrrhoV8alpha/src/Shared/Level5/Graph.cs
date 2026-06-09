@@ -1302,7 +1302,7 @@ namespace Pyrrho.Level5
                             {
                                 if (ed.kind == Qlx.UNION)
                                 {
-                                    var ev = cx.Add(new Table(ep, ed.alts));
+                                    var ev = cx.Add(new Table(ep, ed.matchPatterns));
                                     ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, ev.defpos));
                                 }
                             }
@@ -1877,7 +1877,8 @@ namespace Pyrrho.Level5
         }
         internal override TConnector Fix(Context cx)
         {
-            var r = new TConnector(q, cn, (Domain)rd.Fix(cx), cx.Fix(cp), fk, cs, 
+            var d = (Domain)(cx.db.objects[rd.defpos] ?? throw new PEException("PE60061"));
+            var r = new TConnector(q, cn, (Domain)d.Fix(cx), cx.Fix(cp), fk, cs, 
                 (TMetadata)(cm?.Fix(cx)??TMetadata.Empty));
             if (r.rd is Table t && !t.refCols.Contains(cp))
                 cx.db += t + (Table.RefCols, t.refCols + (cp, true));
@@ -1931,6 +1932,20 @@ namespace Pyrrho.Level5
             if (fk) sb.Append(" fk ");
             if (cm!=TMetadata.Empty)
             { sb.Append(' '); sb.Append(cm); }
+            return sb.ToString();
+        }
+        internal override string ToString(Context cx)
+        {
+            var sb = new StringBuilder();
+            sb.Append("Name:");  sb.Append(cx.NameFor(cp));
+            sb.Append(", Orientation:");sb.Append(q);
+            if (cn != "" && cn!=cx.NameFor(cp))
+            { sb.Append(",Arrow:"); sb.Append(cn); }
+            if (fk) sb.Append(", Key:true");
+            sb.Append(",For:"); sb.Append(cx.NameFor(rd.defpos));
+            if (cm != TMetadata.Empty)
+            { sb.Append(",Metadata:"); sb.Append(cm); }
+            sb.Append('}');
             return sb.ToString();
         }
     }

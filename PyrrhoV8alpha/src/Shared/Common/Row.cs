@@ -193,10 +193,6 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal virtual string ToString(CList<long> cs, Context cx)
-        {
-            return ToString();
-        }
         public virtual int CompareTo(object? obj)
         {
             return dataType.Compare(this,obj as TypedValue??TNull.Value);
@@ -498,7 +494,7 @@ namespace Pyrrho.Common
         {
             return value??"null";
         }
-        internal override string ToString(CList<long> cs,Context cx)
+        internal override string ToString(Context cx)
         {
             return "'" + value + "'";
         }
@@ -1272,6 +1268,16 @@ namespace Pyrrho.Common
             sb.Append('}');
             return sb.ToString();
         }
+
+        internal void JsonSchema(Context cx, StringBuilder sb)
+        {
+            for (var b = md.First(); b != null; b = b.Next())
+                if (b.key() != Qlx.NODETYPE)
+                {
+                    sb.Append(','); sb.Append(b.key()); sb.Append(':');
+                    sb.Append(b.value().ToString(cx));
+                }
+        }
     }
      /// <summary>
     /// All TypedValues have a domain; TRow also has a BList of uids to give the keymap ordering
@@ -1762,6 +1768,18 @@ namespace Pyrrho.Common
                 sb.Append(b.key());
             }
             sb.Append(')');
+            return sb.ToString();
+        }
+        internal override string ToString(Context cx)
+        {
+            var sb = new StringBuilder("[");
+            var cm = "";
+            for (var b = tree.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.key().ToString(cx));
+            }
+            sb.Append(']');
             return sb.ToString();
         }
     }

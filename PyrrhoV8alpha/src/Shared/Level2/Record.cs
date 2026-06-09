@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
                     && !Committed(wr, rd.defpos))
                     return rd.defpos;
                 if (b.value() is TRef tp && !Committed(wr, tp.value))
-                    return tp.dataType.defpos;
+                    return tp.value;
             }
             return -1;
         }

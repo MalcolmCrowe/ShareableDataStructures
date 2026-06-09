@@ -5992,7 +5992,7 @@ namespace Pyrrho.Level4
                 if (e.value() is Table t && _cx.db.objects[t.defpos] is Table tb)
                 {
                     var sb = new StringBuilder();
-                    sb = tb.JsonTable(_cx, sb);
+                    tb.JsonTable(_cx, sb);
                     return new TRow(rs, new TChar(tb.NameFor(_cx)), new TChar(sb.ToString()));
                 }
                 throw new PEException("PE98762");

@@ -330,7 +330,7 @@ namespace Pyrrho.Level2
                 return null;
             if (cx.db.objects[table.defpos] is Table t && t.dbg>table.dbg)
                 table = t;
-            if (dataType.defpos > 0)
+            if (dataType.defpos > 0 && !cx.db.objects.Contains(dataType.defpos))
                 cx.Install(dataType);
             var tc = new TableColumn(table, this, dataType, cx);
             tc += (DBObject._Framing, tc.framing + framing);

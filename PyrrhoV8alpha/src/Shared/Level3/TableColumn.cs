@@ -400,6 +400,7 @@ namespace Pyrrho.Level3
         {
             sb.Append(NameFor(cx)); sb.Append(':');// sb.Append("{Name:'"); sb.Append(NameFor(cx)); sb.Append('\'');
             domain.FieldJson(cx, sb);
+            infos[cx.role.defpos]?.metadata.JsonSchema(cx, sb);
             sb.Append('}');
         }
     }

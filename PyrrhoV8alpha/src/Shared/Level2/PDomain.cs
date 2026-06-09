@@ -260,7 +260,8 @@ namespace Pyrrho.Level2
                 if (di.metadata.Contains(Qlx.GRAPH) == true)
                     ro += (Role.Graphs, ro.graphs + (domain.name, defpos));
             }
-            cx.db = cx.db + ro + dt;
+            cx.Install(dt);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dt;

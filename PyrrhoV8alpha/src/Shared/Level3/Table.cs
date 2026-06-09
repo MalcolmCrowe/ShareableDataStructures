@@ -920,7 +920,7 @@ namespace Pyrrho.Level3
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
-        internal StringBuilder JsonTable(Context cx, StringBuilder sb)
+        internal void JsonTable(Context cx, StringBuilder sb)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind == Qlx.Null || cx.db.user is not User ud)
@@ -958,8 +958,8 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = ",";
                 sb.Append("Display:"); sb.Append(display); 
             }
+            infos[cx.role.defpos]?.metadata.JsonSchema(cx, sb);
             sb.Append("}");
-            return sb;
         }
         /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
@@ -1303,7 +1303,7 @@ namespace Pyrrho.Level3
             }
             return (r, (TypedValue?)os ?? TNull.Value);
         }
-        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlEdge ed, TypedValue cc,
+        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlNode ed, TypedValue cc,
                 CTree<string, QlValue> ls, bool allowChange = false)
         {
             if (cc is not TConnector nc)
@@ -1378,7 +1378,7 @@ namespace Pyrrho.Level3
             }
             return (r, ls);
         }
-        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed,
+        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlNode ed,
             CTree<long, long>? rn = null)
         {
             if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
@@ -1394,7 +1394,7 @@ namespace Pyrrho.Level3
                         Connect(cx, m, m.dataType as Table, nc, ec, ed, rn) ?? TNull.Value
                         : TNull.Value);
         }
-        static TypedValue? Connect(Context cx, TNode n, Table? nt, TConnector nc, TConnector ec, GqlEdge ed,
+        static TypedValue? Connect(Context cx, TNode n, Table? nt, TConnector nc, TConnector ec, GqlNode ed,
             CTree<long, long>? rn = null)
         {
             if (nt is null)
@@ -1427,9 +1427,9 @@ namespace Pyrrho.Level3
             throw new PEException("PE40721");
         }
         /// <summary>
-        /// We have a new node type cs and have been given keymap ls
-        /// New keymap specified are added or inserted.
-        /// We will construct Physicals for new keymap required
+        /// We have a new node type cs and have been given cols ls
+        /// New cols specified are added or inserted.
+        /// We will construct Physicals for new cols required
         /// </summary>
         /// <param name="x">The GqlNode or GqlEdge if any to apply this to</param>
         /// <param name="ll">The properties from an inline document, or default values</param>

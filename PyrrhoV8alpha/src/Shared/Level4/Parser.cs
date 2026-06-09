@@ -2239,9 +2239,9 @@ namespace Pyrrho.Level4
                     if (bf != null)
                     {
                         if (ba == Qlx.RPAREN)
-                            if (bf.postCon is TConnector bc)
+                            if (bf.postCon is TConnector bc && (dm is null || bc.rd.EqualOrStrongSubtypeOf(dm)))
                                 dm = bc.rd;
-                            else
+                            else if (dm is null || bf.domain.EqualOrStrongSubtypeOf(dm))
                                 dm = bf.domain;
                         ml = ml + (GqlNode.Before, bf) + (SqlValueExpr.Modifier, lt);
                     }

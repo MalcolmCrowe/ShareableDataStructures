@@ -584,7 +584,7 @@ namespace Pyrrho.Level3
                         var v = Eval(cx)??TNull.Value;
                         if (v == TNull.Value)
                             return "";
-                        var s = v.ToString(cs, cx);
+                        var s = v.ToString(cx);
                         if (an != "")
                             s += " as " + an;
                         return s;
@@ -594,7 +594,7 @@ namespace Pyrrho.Level3
                     if (ns[defpos] is string so)
                         return so;
                     if (!cs.Has(defpos))
-                        return Eval(cx)?.ToString(cs, cx)??"";
+                        return Eval(cx)?.ToString(cx)??"";
                     break;
             }
             return name??"";
