@@ -202,6 +202,11 @@ namespace Pyrrho.Common
             var dm = (Domain)dataType.ShallowReplace(cx,was,now);
             return (dm.dbg != dataType.dbg) ? dm.Coerce(cx,this) : this;
         }
+
+        internal virtual TChar ValueJson(Context cx)
+        {
+            return new TChar(ToString(cx));
+        }
     }
     internal class TNull : TypedValue
     {
@@ -1482,10 +1487,8 @@ namespace Pyrrho.Common
             var str = new StringBuilder();
             var cm = '(';
             for (var b = values.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is TableColumn tc && tc.name is string nm)
+                if (cx.NameFor(b.key()) is string nm && nm!="")
                 {
-                    if (tc.hide)
-                        continue;
                     str.Append(cm); cm = ',';
                     str.Append(nm); str.Append('=');
                     str.Append(b.value().ToString(cx));

@@ -495,13 +495,14 @@ namespace Pyrrho.Level4
                 }
             throw new DBException("42000");
         }
+
         bool StartStatement()
         { 
             return Match(Qlx.ALTER, Qlx.AT, Qlx.BEGIN, Qlx.BINDING, Qlx.BREAK, Qlx.CALL, 
                 Qlx.CASE, Qlx.CREATE, Qlx.CLOSE, Qlx.COMMIT, Qlx.CREATE, Qlx.DECLARE, 
                 Qlx.DELETE, Qlx.DETACH,Qlx.DROP, Qlx.EXCEPT,
                 Qlx.FETCH, Qlx.FILTER, Qlx.FINISH, Qlx.FOR,
-                Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.INTERSECT, Qlx.ITERATE, 
+                Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.INTERSECT, Qlx.ITERATE,
                 Qlx.LBRACE, Qlx.LEAVE, Qlx.LET,  Qlx.LIMIT, Qlx.LOOP, Qlx.MATCH, Qlx.NODETACH,
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
                 Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SELECT,
@@ -2251,7 +2252,7 @@ namespace Pyrrho.Level4
                         // for GqlNode, use available type information from the previous node 
                         Qlx.RPAREN => new GqlNode(cx, b, BList<Ident>.Empty, id, dc, st, dm, ml),
                         // and for GqlEdge look at available connector information
-                        Qlx.ARROW or Qlx.RARROWBASE or Qlx.TILDE or Qlx.RBRACKTILDE
+                        Qlx.RBRACK or Qlx.ARROW or Qlx.RARROWBASE or Qlx.TILDE or Qlx.RBRACKTILDE
                                 => new GqlEdge(b, BList<Ident>.Empty, cx, id, dc, st, dm, ml),
                         _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
                     };
@@ -5461,6 +5462,7 @@ namespace Pyrrho.Level4
                     && (b.value().Item1 < ap || p > Transaction.HeapStart))
                     cx.anames += (b.key(), b.value());
             var ls = Executable.Empty;
+            if (Match(Qlx.JSON)) throw new DBException("42000");
             while (StartStatement() && !Match(Qlx.UNTIL))
             {
                 if (ParseStatement(m) is not Executable b)
@@ -7070,9 +7072,9 @@ namespace Pyrrho.Level4
         bool StartStdFunctionRefs()
         {
             return Match(Qlx.COLLECT, Qlx.CURRENT, Qlx.DESCRIBE, Qlx.ELEMENT, Qlx.ELEMENTID, Qlx.EVERY,
-    Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.FUSION, Qlx.GROUPING, Qlx.HTTP, Qlx.ID,
+    Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.FUSION, Qlx.GROUPING, Qlx.HTTP, Qlx.ID, Qlx.JSON,
     Qlx.LABELS, Qlx.LAST_VALUE, Qlx.LAST_DATA, Qlx.PARTITION, Qlx.UNNEST,
-    Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.REF, Qlx.ROW_NUMBER, Qlx.SOME,
+    Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.REF, Qlx.ROW_NUMBER, Qlx.SOME, 
     Qlx.SPECIFICTYPE, Qlx.SUBSTRING, Qlx.COLLECT, Qlx.INTERSECTION, Qlx.ROWS,
 
 #if OLAP
@@ -10219,6 +10221,16 @@ namespace Pyrrho.Level4
                         Mustbe(Qlx.CHARLITERAL);
                         Domain di = ParseIntervalType();
                         return (QlValue)cx.Add(new SqlDateTimeLiteral(lp, cx, di, o.ToString()));
+                    }
+                case Qlx.JSON:
+                    {
+                        Next();
+                        Mustbe(Qlx.LPAREN);
+                        var v = ParseSqlValue(new BTree<long, object>(DBObject._Domain, Domain.Content));
+                        Mustbe(Qlx.RPAREN);
+                        var sb = new StringBuilder();
+                        v.ValueJson(cx, sb);
+                        return (QlValue)cx.Add(new SqlLiteral(cx.GetUid(),new TChar(sb.ToString())));
                     }
                 case Qlx.LPAREN:// subquery
                     {

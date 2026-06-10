@@ -322,7 +322,7 @@ namespace Pyrrho.Common
         VBAR = 294, // | 
         VPLUS = 295, // |+| GQL multiset alternation operator
         //=========================NON-RESERVED WORDS================
-        A = 296, // first non-reserved word
+        A = 296, 
         TABLE = 297, // must be 297 
         ABSENT = 298,
         ABSOLUTE = 299,
