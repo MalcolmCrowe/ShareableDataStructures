@@ -38,7 +38,7 @@ namespace Pyrrho.Common
         {
             content = c; names = n;
         }
-        internal TDocument(Context cx,TRow r, string? id = null) :this()
+        internal TDocument(Context cx,TRow r, string? id = null) :base(Domain.Document)
         {
             var c = CList<(string, TypedValue)>.Empty;
             var n = CTree<string, int>.Empty;
@@ -48,10 +48,11 @@ namespace Pyrrho.Common
                 n += (_id, 0);
             }
             for (var b = r.dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is QlValue v && v.name is not null)
+                if (b.value() is long p && cx.obs[p] is QlValue v)
                 {
-                    n += (v.name, (int)n.Count);
-                    c += (v.name, r[p]);
+                    var nm = v.name ?? "Col";
+                    n += (nm, (int)n.Count);
+                    c += (nm, r[p]);
                 }
             content = c;
             names = n;
@@ -1015,8 +1016,9 @@ namespace Pyrrho.Common
         internal TDocArray(Context cx, RowSet rs) :base(Domain.DocArray)
         {
             var fo = cx.funcs;
+            content = BList<TypedValue>.Empty;
             for (var a = rs.First(cx); a != null; a = a.Next(cx))
-                Add(new TDocument(cx,a));
+                content += new TDocument(cx,a);
             cx.funcs = fo;
         } 
         internal TDocArray(Domain dt, BList<TypedValue>t) : base(dt)
@@ -1053,6 +1055,10 @@ namespace Pyrrho.Common
             off += nbytes;
         }
         */
+        public static TDocArray operator +(TDocArray a, TypedValue c)
+        {
+            return new TDocArray(a.content + c);
+        }
         internal TypedValue this[int i]
         {
             get { return content[i]??TNull.Value; }
@@ -1066,7 +1072,7 @@ namespace Pyrrho.Common
                 var r = new TDocArray();
                 for(var e=content.First();e!= null;e=e.Next())
                     if (e.value() is TDocument d && d.Contains(n))
-                            r = r.Add(d[n]);
+                            r = r + d[n];
                 if (r.Count == 1) // yuk
                     return r.content[0]??TNull.Value;
                 return r;
@@ -1088,7 +1094,7 @@ namespace Pyrrho.Common
                     continue;
                 if (c == ']' && da.content.Count == 0)
                     return i;
-                da = da.Add(TDocument.GetValue("" + da.Count, s, n, ref i).Item2);
+                da = da+TDocument.GetValue("" + da.Count, s, n, ref i).Item2;
                 if (i>=n)
                     break;
                 c = s[i++];
@@ -1100,10 +1106,6 @@ namespace Pyrrho.Common
                     throw new DBException("22000", "Expected , at " + (i - 1)).Pyrrho();
             }
             throw new DBException("22000", "Incomplete syntax at " + (i - 1)).Pyrrho();
-        }
-        internal TDocArray Add(TypedValue c)
-        {
-            return new TDocArray(new BList<TypedValue>(content, c));
         }
         public override string ToString()
         {

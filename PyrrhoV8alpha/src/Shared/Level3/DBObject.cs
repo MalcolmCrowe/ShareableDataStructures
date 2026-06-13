@@ -567,6 +567,8 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
+     /*   internal virtual void ValueJson(Context cx,StringBuilder sb)
+        {  } */
         internal TypedValue Eval(Context cx)
         {
             if (cx.obs[from] is RowSet r && r.ambient.Contains(defpos) &&

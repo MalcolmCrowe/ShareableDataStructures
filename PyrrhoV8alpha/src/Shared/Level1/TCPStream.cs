@@ -1003,46 +1003,57 @@ namespace Pyrrho.Level1
             Write(Responses.Schema);
 #endif
             var dt = result.rowType;
-            int m = result.display;
-            if (m == 0)
-                m = result.Length;
-            if (result.Length == 1 && cx.obs[result.First()?.value() ?? -1L] is SqlCall sc
-                && cx.obs[sc.queryResult] is ProcRowSet ps)
+            if (cx.conn.json)
             {
-                result = ps;
-                dt = ps.rowType;
-                m = result.Length;
-            }
-            PutInt((m>0)?m:1);
-            if (m > result.Length)
-            {
-                Console.WriteLine("Unreasonable rowType length " + result.Length + " < " + m);
-                throw new PEException("PE247");
-            }
-            PutString("Data");
-            int[] flags = new int[m];
-            result.Schema(cx, flags);
-            var j = 0;
-            if (m == 0)
-            {
-                PutString("POSITION");
-                PutString("INTEGER");
                 PutInt(1);
+                PutString("Data");
+                PutString("RESULT");
+                PutString("DOCARRAY");
+                PutInt(771);
             }
             else
-                for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
-                    if (b.value() is long p)
-                    {
-                        if (result.representation[p] is not Domain dn)
-                            throw new PEException("PE24602");
-                        var i = b.key();
-                        PutString(Domain.NameFor(cx,b.value(),i));
-                        if (dn.kind!=Qlx.TABLE && dn.kind != Qlx.TYPE && dn.kind != Qlx.NODETYPE && dn.kind != Qlx.EDGETYPE)
-                            PutString(dn.kind.ToString());
-                        else
-                            PutString(dn.name);
-                        PutInt(flags[j]);
-                    }
+            {
+                int m = result.display;
+                if (m == 0)
+                    m = result.Length;
+                if (result.Length == 1 && cx.obs[result.First()?.value() ?? -1L] is SqlCall sc
+                    && cx.obs[sc.queryResult] is ProcRowSet ps)
+                {
+                    result = ps;
+                    dt = ps.rowType;
+                    m = result.Length;
+                }
+                PutInt((m > 0) ? m : 1);
+                if (m > result.Length)
+                {
+                    Console.WriteLine("Unreasonable rowType length " + result.Length + " < " + m);
+                    throw new PEException("PE247");
+                }
+                PutString("Data");
+                int[] flags = new int[m];
+                result.Schema(cx, flags);
+                var j = 0;
+                if (m == 0)
+                {
+                    PutString("POSITION");
+                    PutString("INTEGER");
+                    PutInt(1);
+                }
+                else
+                    for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
+                        if (b.value() is long p)
+                        {
+                            if (result.representation[p] is not Domain dn)
+                                throw new PEException("PE24602");
+                            var i = b.key();
+                            PutString(Domain.NameFor(cx, b.value(), i));
+                            if (dn.kind != Qlx.TABLE && dn.kind != Qlx.TYPE && dn.kind != Qlx.NODETYPE && dn.kind != Qlx.EDGETYPE)
+                                PutString(dn.kind.ToString());
+                            else
+                                PutString(dn.name);
+                            PutInt(flags[j]);
+                        }
+            }
             Flush();
         }
         /// <summary>

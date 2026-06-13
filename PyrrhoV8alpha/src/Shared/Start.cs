@@ -297,7 +297,10 @@ namespace Pyrrho
                         case Protocol.ReaderData:
                             if (recovering)
                                 continue;
-                            ReaderData();
+                            if (cx?.conn.json == true)
+                                JsonData();
+                            else
+                                ReaderData();
                             tcp.Flush();
                             break;
                         case Protocol.TypeInfo:
@@ -1084,6 +1087,27 @@ namespace Pyrrho
             client.Close();
         }
         /// <summary>
+        /// Convert the result rowset into a DocArray and send it to the client
+        /// as a single cell in Json format
+        /// </summary>
+        internal void JsonData()
+        {
+            if (cx == null || cx.result is not RowSet rs || rb==null)
+            {
+                tcp.Write(Responses.NoData);
+                return;
+            }
+            tcp.Write(Responses.ReaderData);
+            tcp.ncells = 1; // we send the whole thing as a single cell (probably broken into pieces)
+            var domains = new BTree<int, Domain>(0,Domain.Document);
+            nextCell = new TDocArray(cx, rs);
+            var bbuf = TCPStream.BBuf.Empty + (cx, Domain.DocArray, nextCell);
+            tcp.wcount = 3;
+            tcp.PutInt(1);
+            tcp.Write(bbuf, 0, bbuf.m.Length);
+            cx.result = null;
+        }
+        /// <summary>
         /// Send a block of data as part of a stream of cells.
         /// We send as many cells as will fit in a 2048-byte block, 
         /// we will prefix the cells by 4 bytes saying how many cells are in the block.
@@ -1533,7 +1557,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2026 Malcolm Crowe and University of the West of Scotland",
-            "8.0alpha","(10 June 2026)", "https://pyrrhodb.com"
+            "8.0alpha","(13 June 2026)", "https://pyrrhodb.com"
         ];
 	}
 }

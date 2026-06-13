@@ -328,7 +328,10 @@ namespace Pyrrho.Level5
                if (!ms.flags.HasFlag(MatchStatement.Flags.Schema))
                {
                    var cl = xn.EvalProps(cx, th);
-                   if (th.FindPrimaryIndex(cx) is Level3.Index px
+                for (var b = th.subtypes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is Domain sd)
+                        ds += sd.For(cx, ms, xn, ds);
+                if (th.FindPrimaryIndex(cx) is Level3.Index px
                        && px.MakeKey(cl) is CList<TypedValue> pk)
                        return (tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)?
                            ds + (tr0.defpos, tr0):ds;

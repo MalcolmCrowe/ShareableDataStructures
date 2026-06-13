@@ -216,10 +216,10 @@ namespace Pyrrho.Level3
             cx.Add(this);
         }
         /// <summary>
-        /// before we get here, try to exclude alts that are equal to or subtypes of other alts 
+        /// before we get here, try to exclude matchPatterns that are equal to or subtypes of other matchPatterns 
         /// </summary>
         /// <param name="dp"></param>
-        /// <param name="u">A list of alt domains</param>
+        /// <param name="u">A list of pattern domains</param>
         internal Domain(long dp, CTree<Domain, bool> u, long role=-502)
             : this(dp, _Mem(role,u) + (Kind, Qlx.UNION) + (Alts, u))
         { }
@@ -3891,9 +3891,10 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     return;
             }
         }
-        internal StringBuilder FieldJson(Context cx, StringBuilder sb)
+        internal virtual void FieldJson(Context cx, StringBuilder sb)
         {
             sb.Append("{Domain:"); sb.Append(kind);
+            var cm = "";
             switch (Equivalent(kind))
             {
                 case Qlx.INTEGER:
@@ -3917,8 +3918,16 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     if (elType is Table e && cx.db.objects[e.defpos] is Table ee)
                     { sb.Append(",ToType:'"); sb.Append(ee.NameFor(cx)); sb.Append('\''); }
                     break;
+                case Qlx.UNION:
+                    sb.Append(",Alts:[");
+                    for (var b=alts.First(); b!=null;b=b.Next())
+                    {
+                        sb.Append(cm); cm = ",";
+                        sb.Append(b.key().NameFor(cx));
+                    }
+                    sb.Append(']');
+                    break;
             }
-            return sb;
         }
         /// <summary>
         /// Validator

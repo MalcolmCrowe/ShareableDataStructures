@@ -505,7 +505,7 @@ namespace Pyrrho.Level4
                 Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.INTERSECT, Qlx.ITERATE,
                 Qlx.LBRACE, Qlx.LEAVE, Qlx.LET,  Qlx.LIMIT, Qlx.LOOP, Qlx.MATCH, Qlx.NODETACH,
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
-                Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SELECT,
+                Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SCHEMA, Qlx.SELECT,
                 Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.UNION, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
                 Qlx.VALUES, Qlx.WHEN, Qlx.WHERE, Qlx.WHILE, Qlx.WITH, Qlx.YIELD) || Match(Qlx.Id);
         }
@@ -4988,7 +4988,7 @@ namespace Pyrrho.Level4
             if (tok == Qlx.LPAREN)
                 return ParseMultipleAssignment();
             if (Match(Qlx.AUTHORIZATION, Qlx.ROLE, Qlx.TIMEOUT, Qlx.TABLE, Qlx.DOMAIN, Qlx.TYPE,
-                Qlx.PROCEDURE, Qlx.FUNCTION, Qlx.TRIGGER, Qlx.METHOD, Qlx.REFERENCING,
+                Qlx.PROCEDURE, Qlx.FUNCTION, Qlx.TRIGGER, Qlx.METHOD, Qlx.REFERENCING, Qlx.JSON, Qlx.SQL,
                 Qlx.STATIC, Qlx.INSTANCE, Qlx.OVERRIDING, Qlx.CONSTRUCTOR))
             {
                 if (Match(Qlx.AUTHORIZATION))
@@ -5019,6 +5019,18 @@ namespace Pyrrho.Level4
                 else if (Match(Qlx.REFERENCING))
                 {
                     cx.conn.refIdsToPos = true;
+                    Next();
+                    return Executable.Empty;
+                }
+                else if (Match(Qlx.JSON))
+                {
+                    cx.conn.json = true;
+                    Next();
+                    return Executable.Empty;
+                }
+                else if (Match(Qlx.SQL))
+                {
+                    cx.conn.json = false;
                     Next();
                     return Executable.Empty;
                 }
@@ -10222,7 +10234,7 @@ namespace Pyrrho.Level4
                         Domain di = ParseIntervalType();
                         return (QlValue)cx.Add(new SqlDateTimeLiteral(lp, cx, di, o.ToString()));
                     }
-                case Qlx.JSON:
+          /*      case Qlx.JSON:
                     {
                         Next();
                         Mustbe(Qlx.LPAREN);
@@ -10231,7 +10243,7 @@ namespace Pyrrho.Level4
                         var sb = new StringBuilder();
                         v.ValueJson(cx, sb);
                         return (QlValue)cx.Add(new SqlLiteral(cx.GetUid(),new TChar(sb.ToString())));
-                    }
+                    } */
                 case Qlx.LPAREN:// subquery
                     {
                         Next();

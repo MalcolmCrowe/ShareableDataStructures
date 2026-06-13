@@ -387,6 +387,10 @@ namespace Pyrrho.Level3
                 return cx.values[p] ?? TNull.Value;
             return _Default();
         }
+     /*   internal override void ValueJson(Context cx, StringBuilder sb)
+        {
+            sb.Append(Eval(cx).ValueJson(cx));
+        } */
         internal override void Set(Context cx, TypedValue v)
         {
             base.Set(cx, v);
@@ -7103,7 +7107,7 @@ namespace Pyrrho.Level3
                 r += (Filter, w);
             var nv = cx.Fix(val);
             if (val != nv)
-                r += (QlValue.Val, nv);
+                r += (Val, nv);
             var ni = cx.Fix(windowId);
             if (windowId != ni)
                 r += (WindowId, ni);
@@ -7335,6 +7339,7 @@ namespace Pyrrho.Level3
                 case Qlx.FUSION: return Domain.Collection;
                 case Qlx.IDENTITY: return Domain.Identity;
                 case Qlx.INTERSECTION: return Domain.Collection;
+                case Qlx.JSON: return Domain.Char;
                 case Qlx.SECURITY: return Domain._Level;
                 case Qlx.LN: return Domain.Real;
                 case Qlx.LOCALTIME: return Domain.Timespan;
@@ -7773,6 +7778,12 @@ namespace Pyrrho.Level3
                 case Qlx.INTERSECTION:
                     if (fc == null || fc.mset == null) break;
                     return domain.Coerce(cx, fc.mset);
+         /*       case Qlx.JSON:
+                    {
+                        var sb = new StringBuilder();
+                        (cx.obs[val] ?? SqlNull.Value).ValueJson(cx,sb);
+                        return new TChar(sb.ToString());
+                    } */
                 case Qlx.LABELS:
                     {
                         TypedValue? a = cx.obs[val]?.Eval(cx);

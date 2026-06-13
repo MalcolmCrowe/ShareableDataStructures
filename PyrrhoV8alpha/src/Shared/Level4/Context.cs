@@ -3257,7 +3257,7 @@ namespace Pyrrho.Level4
         internal long nextPrep => _nextPrep;
         internal readonly TCPStream? _tcp = null;
         internal readonly bool caseSensitive = false;
-        internal bool refIdsToPos = false;
+        internal bool refIdsToPos = false, json = false;
         internal DateTime awake = DateTime.Now;
         internal readonly byte[] awakeBuf = [0, 1, (byte)Responses.Continue]; 
         /// <summary>

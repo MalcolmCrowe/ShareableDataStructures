@@ -1894,13 +1894,21 @@ namespace Pyrrho.Level4
         internal static TrivialRowSet Static = new();
         TrivialRowSet():this(--_uid,new BTree<long, object>(Singleton, TRow.Empty)) { }
         internal TrivialRowSet(Context cx, long ap, Domain dm)
-            : this(ap, cx.GetUid(), cx, new TRow(dm)) { }
+            : this(ap, cx.GetUid(), cx, _Row(cx,dm)) { }
         internal TrivialRowSet(long ap, long dp, Context cx, TRow r, string? a = null)
             : base(ap, dp, cx, _Mem(dp, cx, r.dataType, a) + (Singleton, r))
         {
             cx.Add(this);
         }
         protected TrivialRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static TRow _Row(Context cx,Domain dm)
+        {
+            var vs = CTree<long, TypedValue>.Empty;
+            for (var b = dm.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is QlValue q && q.Eval(cx) is TypedValue v)
+                    vs += (b.value(), v);
+            return new TRow(dm,vs);
+        }
         static BTree<long, object> _Mem(long dp, Context cx, Domain dm, string? a)
         {
             var ns = Names.Empty;

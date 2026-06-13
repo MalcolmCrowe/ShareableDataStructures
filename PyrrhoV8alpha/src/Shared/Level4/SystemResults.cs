@@ -5992,7 +5992,7 @@ namespace Pyrrho.Level4
                 if (e.value() is Table t && _cx.db.objects[t.defpos] is Table tb)
                 {
                     var sb = new StringBuilder();
-                    tb.JsonTable(_cx, sb);
+                    tb.SchemaJson(_cx, sb);
                     return new TRow(rs, new TChar(tb.NameFor(_cx)), new TChar(sb.ToString()));
                 }
                 throw new PEException("PE98762");
@@ -6917,7 +6917,7 @@ namespace Pyrrho.Level4
                     new TChar(Uid(ob.defpos)),
                     new TChar(bmk.key()),
                     new TChar(ob.GetType().Name),
-                    new TChar(Uid(ob.definer)));
+                    new TInt(ob.definer));
             }
             protected override Cursor? _Previous(Context cx)
             {
