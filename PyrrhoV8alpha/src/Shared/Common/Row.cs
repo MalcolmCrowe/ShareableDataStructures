@@ -1249,7 +1249,8 @@ namespace Pyrrho.Common
         }
         public static TMetadata operator-(TMetadata m, Qlx q)
         {
-            return new(m.md - q);
+            var me = m.md - q;
+            return me.Count==0L? Empty:new(me);
         }
         public TypedValue this[Qlx x] => md[x]??TNull.Value;
         public new ABookmark<Qlx,TypedValue>?  First() => md.First();
@@ -1263,25 +1264,50 @@ namespace Pyrrho.Common
             if (md == CTree<Qlx, TypedValue>.Empty)
                 return "";
             var sb = new StringBuilder();
-            var cm = '{';
+            var cm = "";
             for (var b=md.First();b is not null;b=b.Next())
             {
-                sb.Append(cm); cm = ',';
+                sb.Append(cm); cm = ",";
                 sb.Append(b.key()); sb.Append(':');
-                sb.Append(b.value());
+                sb.Append(b.value().ToString());
             }
-            sb.Append('}');
             return sb.ToString();
         }
 
         internal void JsonSchema(Context cx, StringBuilder sb)
         {
+            var cm = ",";
+            var mu = false;
+            var low = "0";
+            var high = "*";
             for (var b = md.First(); b != null; b = b.Next())
-                if (b.key() != Qlx.NODETYPE)
+            {
+                var m = b.key();
+                if (m != Qlx.NODETYPE)
                 {
-                    sb.Append(','); sb.Append(b.key()); sb.Append(':');
-                    sb.Append(b.value().ToString(cx));
+                    if (m == Qlx.MINVALUE)
+                    {
+                        mu = true;
+                        low = b.value().ToString(cx);
+                    }
+                    else if (m == Qlx.MAXVALUE)
+                    {
+                        mu = true;
+                        high = b.value().ToString();
+                    }
+                    else
+                    {
+                        sb.Append(cm); cm = ",";
+                        sb.Append(m); sb.Append(':');
+                        sb.Append(b.value());
+                    }
                 }
+            }
+            if (mu)
+            {
+                sb.Append(",Multiplicity:'"); sb.Append(low);
+                sb.Append(".."); sb.Append(high); sb.Append("'");
+            }
         }
     }
      /// <summary>

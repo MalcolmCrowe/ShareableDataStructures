@@ -920,7 +920,7 @@ namespace Pyrrho.Level3
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
-        internal void JsonTable(Context cx, StringBuilder sb)
+        internal void SchemaJson(Context cx, StringBuilder sb)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind == Qlx.Null || cx.db.user is not User ud)
@@ -1563,8 +1563,9 @@ namespace Pyrrho.Level3
                     var dm = (b.value() is SqlLiteral sl) ? sl.domain : b.value().domain;
                     if (b.value() is GqlNode gn)
                         dm = FindOrCreateRefDomain(cx, gn.domain);
-                    var nc = new PColumn3(r, b.key(), dm,
-                        ni.metadata.ToString(), ni.metadata, cx.db.nextStmt, cx.db.nextPos, cx, true);
+                    var cm = ni.metadata - Qlx.REFERENCES;
+                    var cs = cm.ToString();
+                    var nc = new PColumn3(r, b.key(), dm, cs, cm, cx.db.nextStmt, cx.db.nextPos, cx, true);
                     r = (Table?)cx.Add(nc)
                         ?? throw new DBException("42105");
                     ni = r.infos[definer] ?? throw new PEException("PE03131");

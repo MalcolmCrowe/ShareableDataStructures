@@ -1430,16 +1430,19 @@ namespace Pyrrho.Level4
                         cx.Add(dom);
                         Next();
                     }
-                    var tr = cx.db as Transaction ?? throw new DBException("2F003");
                     StartMetadata(Qlx.COLUMN);
-                    var dm = m + (TableColumn._Table, xp.defpos) +
-                        (DBObject._Domain, dom) + (DBObject.Defpos, tr.nextPos);
-                    var (s, tm) = ParseMetadata(Qlx.COLUMN, dm);
+                    var tr = cx.db as Transaction ?? throw new DBException("2F003");
                     if (dom == null)
                         throw new DBException("42120", colname.ident);
+                    var dm = m + (TableColumn._Table, xp.defpos) +
+                        (DBObject._Domain, dom) + (DBObject.Defpos, tr.nextPos);
+                    var tc = (TableColumn)cx.Add(new TableColumn(cx.NewObject(), dm));
+                    xp += (Domain.Representation, xp.representation + (tc.defpos, dom));
+                    var (s, tm) = ParseMetadata(Qlx.COLUMN, dm);
                     var pc = new PColumn3(xp, colname.ident, dom, s, md, nst, tr.nextPos, cx);
                     xp = (Table)(cx.Add(pc) ?? throw new DBException("42105"));
-                    var tc = (TableColumn)(cx._Ob(pc.defpos) ?? throw new PEException("PE50100"));
+                    tc = (TableColumn)(cx._Ob(pc.defpos) ?? throw new PEException("PE50100"));
+                    tr = cx.db as Transaction ?? throw new DBException("2F003"); 
                     (s, tm) = ParseMetadata(Qlx.TABLE, dm+(DBObject.Defpos, tc.defpos));
                     ms += s; md += tm;
                     xp = (Table?)cx.obs[xp.defpos] ?? xp;
@@ -3595,6 +3598,7 @@ namespace Pyrrho.Level4
                         Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND, Qlx.LINE, Qlx.POINTS, 
                         Qlx.ETAG, Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.JSON, Qlx.CSV,
                         Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.OPTIONAL, Qlx.CARDINALITY,
+                        Qlx.MINVALUE, Qlx.MAXVALUE,
                         Qlx.CONNECTING, Qlx.NODETYPE, Qlx.ACTION, Qlx.REFERENCING, Qlx.NAME);
                     return !Match(Qlx.EOF, Qlx.RPAREN, Qlx.COMMA, Qlx.RBRACK, Qlx.RBRACE);
                 default: return Match(Qlx.CHARLITERAL);
@@ -3636,6 +3640,20 @@ namespace Pyrrho.Level4
                         ds = drop ? new TChar("") : o;
                         Next();
                         break;
+                    case Qlx.MINVALUE:
+                    case Qlx.MAXVALUE:
+                        {
+                            var k = tok;
+                            Next();
+                            if (Match(Qlx.EQL, Qlx.COLON))
+                                Next();
+                            var v = lxr.val;
+                            if (Match(Qlx.TIMES))
+                                v = new TInt(0);
+                            Mustbe(Qlx.TIMES,Qlx.INTEGERLITERAL);
+                            md += (k, v);
+                            break;
+                        }
                     case Qlx.INVERTS:
                     case Qlx.REFERENCING:
                         {
@@ -3881,6 +3899,8 @@ namespace Pyrrho.Level4
                             {
                                 Next();
                                 lw = lxr.val;
+                                if (lw == TNull.Value)
+                                    lw = new TChar("*");
                                 Mustbe(Qlx.INTEGERLITERAL, Qlx.TIMES, Qlx.NULL);
                                 md += (Qlx.MAXVALUE, lw);
                             }
@@ -4442,6 +4462,11 @@ namespace Pyrrho.Level4
                 et = (Table)(cx.Add(pc) ?? throw new DBException("42105"));
                 et += (DBObject._Framing, et.framing + new Framing(cx, nst));
                 cx.Add(et);
+                var tc = (TableColumn)(cx.db.objects[pc.defpos]??throw new PEException("PE67812"));
+                var ci = tc.infos[cx.role.defpos] ?? new ObInfo(tc.NameFor(cx));
+                ci += (ObInfo._Metadata, ci.metadata + tm);
+                cx.Add(tc + (DBObject.Infos,et.infos+(cx.role.defpos,ci)));
+                cx.db += tc;
                 cx.db += et;
                 /*        var nc = cx.obs[pc.defpos] as TableColumn ?? throw new DBException("42105");
                         nc += (TableColumn.Connectors, nc.cs + (cd,cc)); 

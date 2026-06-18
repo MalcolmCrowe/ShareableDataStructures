@@ -1947,7 +1947,7 @@ namespace Pyrrho.Level5
             if (fk) sb.Append(", Key:true");
             sb.Append(",For:"); sb.Append(cx.NameFor(rd.defpos));
             if (cm != TMetadata.Empty)
-            { sb.Append(",Metadata:"); sb.Append(cm); }
+            { sb.Append(','); sb.Append(cm); }
             sb.Append('}');
             return sb.ToString();
         }

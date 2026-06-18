@@ -219,8 +219,12 @@ namespace Pyrrho.Level2
             var psr = new Parser(rdr.context, details);
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
-            metadata = psr.ParseMetadata(Qlx.ANY,
-                BTree<long, object>.Empty + (DBObject.Defpos, defpos)).Item2;
+            metadata = psr.ParseMetadata(Qlx.ANY, m).Item2;
+            while (psr.tok==Qlx.COMMA)
+            {
+                psr.Next();
+                metadata += psr.ParseMetadata(Qlx.ANY, m).Item2;
+            }
             var fr = new Framing(psr.cx, nst);
             psr.cx.parse = op;
             if (psr.cx.db.objects[ob.defpos] is DBObject nb)

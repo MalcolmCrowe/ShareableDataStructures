@@ -174,7 +174,7 @@ namespace Pyrrho.Level3
                             tc += (QuerySearch.Action, PIndex.ReferentialAction(refAction, a));
                             break;
                         }
-                    case Qlx.REFERENCES: throw new PEException("PE61712");
+                    case Qlx.REFERENCES: break; // Table metadata
                     case Qlx.DEFAULT:
                         {
                             if (md[Qlx.GENERATED] is TInt it && it.ToInt()==(int)Generation.Expression)
@@ -223,14 +223,14 @@ namespace Pyrrho.Level3
                             RefMd(cx, tc, b);
                             break;
                         } */
-                    case Qlx.MINVALUE:
+/*                    case Qlx.MINVALUE:
                     case Qlx.MAXVALUE:
                         {
                             tc = (TableColumn)tc.Add(cx,TMetadata.Empty + (b.key(), b.value())).Item2;
                             om += (Qlx.MULTIPLICITY, new TSet(Domain.Ref) 
                                 + new TRef(defpos, tc.domain.super.First()?.key()??Domain.Null));
                             break;
-                        }
+                        } */
                 }
             if (om != oi.metadata)
             {
