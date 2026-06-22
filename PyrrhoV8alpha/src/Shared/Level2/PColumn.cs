@@ -190,7 +190,7 @@ namespace Pyrrho.Level2
         /// For EdgeType information
         /// </summary>
         /// <returns></returns>
-        public TConnector? TCon(Domain dt)
+        public TConnector? TCon(Domain dt,Boolean fk)
         {
             var tm = optional ? (TMetadata.Empty + (Qlx.OPTIONAL, TBool.True)) : null;
             if (arrow != 0)
@@ -207,7 +207,7 @@ namespace Pyrrho.Level2
                     s = name;
                 return new TConnector(q, s, dt, ppos, false, "",tm);
             }
-                return new TConnector(Qlx.TO, name, dt, ppos, true, "", tm);
+            return new TConnector(Qlx.TO, name, dt, ppos, fk, "", tm);
         }
         public void FromTCon(TConnector tc)
         {
@@ -349,16 +349,18 @@ namespace Pyrrho.Level2
             tc += (TableColumn._Generation, generation);
             tc += (TableColumn.ColumnDefault, coldefault);
             tc += (DBObject._Framing, framing);
-            if (keymap == CTree<int, long>.Empty)
+            var nf = keymap == CTree<int, long>.Empty;
+            if (nf)
                 tc -= TableColumn.KeyMap;
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             if (tc.domain.kind == Qlx.REF && tc.domain.elType is Table rt)
-                if (TCon(rt) is TConnector nc && rt.defpos > 0)
+                if (TCon(rt,!nf) is TConnector nc && rt.defpos > 0)
                 {
                     table = table.Add(cx, nc);
                     rt = cx.db.objects[rt.defpos] as Table ?? rt;
                     var u = table.colRefs[rt.defpos] ?? CTree<long, bool>.Empty;
                     table += (Domain.ColRefs, table.colRefs + (rt.defpos, u + (tc.defpos, true)));
+                    ti = table.infos[cx.role.defpos] ?? throw new PEException("47189");
                     rt += (Table.RefCols, rt.refCols + (tc.defpos, true));
                     keymap = rt.mem[refindex] as CTree<int, long> ?? CTree<int, long>.Empty;
                     if (keymap == CTree<int, long>.Empty)
@@ -367,12 +369,6 @@ namespace Pyrrho.Level2
                         tc += (TableColumn.KeyMap, keymap);
                     if (rt.mem[refindex - 1] is TypedValue tv && tv.ToInt() is int ac)
                         tc += (QuerySearch.Action, (PIndex.ConstraintType)ac);
-                    var tm = ti.metadata;
-                    var ts = new TSet(Domain.Connector)+nc;
-                    for (var b = (tm[Qlx.REFERENCES] as TSet)?.First(); b != null; b = b.Next())
-                        if (b.Value() is TConnector cb && (cb.q != nc.q || cb.cn != nc.cn))
-                            ts += cb;
-                    ti += (ObInfo._Metadata, tm + (Qlx.REFERENCES,ts));
                     cx.toFix += (rt.defpos, rt);
                     cx.Add(rt);
                     cx.db += rt;

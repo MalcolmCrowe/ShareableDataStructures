@@ -1117,7 +1117,9 @@ namespace Pyrrho.Level3
             var q = ab;
             switch (ab)
             {
+                case Qlx.ARROWR:
                 case Qlx.ARROWBASE: q = Qlx.FROM; break;
+                case Qlx.ARROWL:
                 case Qlx.RARROW: q = Qlx.TO; break;
                 case Qlx.ARROWBASETILDE:
                 case Qlx.TILDE:
@@ -1796,6 +1798,7 @@ namespace Pyrrho.Level3
                     ts -= bc;
             ts += cc;
             ti += (ObInfo._Metadata, ti.metadata + (Qlx.REFERENCES, ts));
+            ti += (ObInfo.Model, cm);
             var r = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ti)));
              // do not change the representation! metadata cannot change structure
             cx.db += r;

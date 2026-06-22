@@ -1845,7 +1845,6 @@ namespace Pyrrho.Level5
     /// The tableRow at this position is for the most specific type of the record (which may be a join or union)
     /// and is entered in the tableRows trees for the tables of this most specific type, and all their supertypes.
     /// Connector information for expressions is role-dependent and constructed during parsing.
-    /// Each TableColumn has a CTree(Domain,TConnector).
     /// The database gives it for the definer's role, and in ObInfo the metadata for other roles.
     /// Indexes are not compulsory: records and references can constructed in a single transaction
     /// (or searched later!). If they are used it is important to reference the type that owns the index.

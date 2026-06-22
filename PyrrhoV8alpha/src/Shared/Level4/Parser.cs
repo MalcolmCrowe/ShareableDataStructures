@@ -2036,7 +2036,7 @@ namespace Pyrrho.Level4
         {
             // state M21
             var st = CTree<long, TGParam>.Empty; // for match
-            var ab = tok; // LPAREN, ARROWBASE, RARROW, LBRACK
+            var ab = tok; // LPAREN, ARROWBASE, RARROW, LBRACK, TILDE, ARROWBASETILDE, ARROWL, ARROWR
             lxr.tga = f;
             var ei = new Ident(this);
      //       lxr.tgt = Names.Empty;
@@ -2048,7 +2048,11 @@ namespace Pyrrho.Level4
             TypedValue po = TNull.Value;
             Qlx ba = Qlx.NO;
             var cn = (lxr.val!=TNull.Value)?lxr.val.ToString():"";
-            var tk = Mustbe(Qlx.LPAREN, Qlx.TILDE, Qlx.ARROWBASETILDE, Qlx.RBRACKTILDE, Qlx.ARROWBASE, 
+            if (Match(Qlx.ARROWR, Qlx.ARROWL))
+            {
+                Next();
+                Mustbe(Qlx.LPAREN);
+            } else Mustbe(Qlx.LPAREN, Qlx.TILDE, Qlx.ARROWBASETILDE, Qlx.RBRACKTILDE, Qlx.ARROWBASE, 
                 Qlx.RARROW, Qlx.LBRACK);
             GqlNode? r = null;
             GqlNode? an = null;
@@ -2218,6 +2222,8 @@ namespace Pyrrho.Level4
                     if ((ed is null || ed.defpos < 0)
                     && cx._Ob(cx.obs[cx.names[ln.ident].Item2]?.domain.target ?? -1L) is Table tt)
                         ed = tt;
+                    if (ab == Qlx.ARROWL)
+                        ed = bf?.domain as Table;
                     if (ed?.colRefs.Count > 0L)
                         pr = ed.PreConnect(cx, ab, bf?.domain ?? Domain.TableType, cn);
                     lt = ab;
@@ -2275,7 +2281,8 @@ namespace Pyrrho.Level4
             }
             cx.Add(r);
             // state M32
-            if (Match(Qlx.LPAREN, Qlx.ARROWBASETILDE, Qlx.TILDE, Qlx.ARROWBASE, Qlx.RARROW, Qlx.LBRACK))
+            if (Match(Qlx.LPAREN, Qlx.ARROWBASETILDE, Qlx.TILDE, Qlx.ARROWBASE, Qlx.RARROW, Qlx.LBRACK,
+                Qlx.ARROWR, Qlx.ARROWL))
                 (an, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, lt, m, b, r);
             // state M33
             if (r is null)
