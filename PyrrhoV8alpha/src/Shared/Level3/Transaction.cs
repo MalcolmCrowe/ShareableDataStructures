@@ -203,13 +203,13 @@ namespace Pyrrho.Level3
                         if (c.Value() is TConnector tc && tc.cm is TMetadata tm)
                         {
                             var v = nr.vals[tc.cp];
-                            if (v == null || v == TNull.Value)
-                            {
+                            if (v == null || v == TNull.Value) continue;
+                  /*          {
                                 if (tm[Qlx.OPTIONAL] == TBool.True) continue;
                                 if (tm[Qlx.MIN]?.ToInt() == 0) continue;
                                 throw new DBException("22G21", tc.cn);
-                            }
-                    /*        if (tc.rd.kind == Qlx.SET)
+                            } */
+                            if (tc.rd.kind == Qlx.SET)
                             {
                                 var minc = tm[Qlx.MIN]?.ToInt();
                                 var maxc = tm[Qlx.MAX]?.ToInt();
@@ -221,7 +221,7 @@ namespace Pyrrho.Level3
                                     if (maxc != null && maxc < ct)
                                         throw new DBException("22209", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
                                 }
-                            } */
+                            } 
                         }
                 }
             // check multiplicity constraints

@@ -7,7 +7,6 @@
     },
     "configProperties": {
       "System.GC.Server": true,
-      "System.GC.ConserveMemory":  8,
       "System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization": false
     }
   }

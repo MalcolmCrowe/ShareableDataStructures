@@ -1619,7 +1619,7 @@ namespace Pyrrho.Level4
             // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
             var ge = ParseInsertGraphList(sch);
-            var st = EmptyStatement.Empty;
+            var st = Executable.Empty;
             var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
             return cs;
         }
@@ -1936,7 +1936,7 @@ namespace Pyrrho.Level4
             var ahead = ObTree.Empty;
             if (Match(Qlx.RPAREN))
                 Next();
-            else if ((ln is not null || ab == Qlx.LBRACK))
+            else if (ln is not null || ab == Qlx.LBRACK)
             {
                 cn = (lxr.val != TNull.Value) ? lxr.val.ToString() : "";
                 var ba = Mustbe(Qlx.ARROW, Qlx.RARROWBASE, Qlx.ARROWTILDE, Qlx.RBRACKTILDE);
@@ -1950,6 +1950,52 @@ namespace Pyrrho.Level4
             }
             else
                 Mustbe(Qlx.RPAREN, Qlx.RBRACK, Qlx.RBRACKTILDE, Qlx.ARROWBASETILDE);
+            if (ln != null && ab == Qlx.ARROWR && ac is TConnector pc)
+            {
+                // for edge arrows construct reference columns if not found
+                var found = false;
+                for (var c = ln.domain.colRefs.First(); c != null; c = c.Next())
+                {
+                    if (cx.db.objects[c.key()] is TableColumn cc
+                    && cc.domain.elType?.defpos == pc.rd.elType?.defpos)
+                        found = true;
+                }
+                if (!found)
+                {
+                    var np = cx.db.nextPos;
+                    var nn = pc.cn; // et.NameFor(cx);
+                    var lt = ln.domain as Table ?? throw new PEException("PE49341");
+                    if (dm is null) throw new PEException("PE49342");
+                    cx.Add(new PColumn3(lt, nn, dm,
+                        pc.cm?.ToString() ?? "", pc.cm ?? TMetadata.Empty,
+                        cx.db.nextStmt, cx.db.nextPos, cx));
+                    if (cx.obs[cx.names[pc.cn].Item2] is SqlReview sr)
+                        cx.names += (pc.cn, (np, np));
+                }
+            }
+            if (ln != null && ab == Qlx.ARROWL && ac is TConnector qc)
+            {
+                // for edge arrows construct reference columns if not found
+                if (dm is null) throw new PEException("PE49343");
+                var found = false;
+                for (var c = dm.colRefs.First(); c != null; c = c.Next())
+                {
+                    if (cx.db.objects[c.key()] is TableColumn cc
+                    && cc.domain.elType?.defpos == qc.rd.elType?.defpos)
+                        found = true;
+                }
+                if (!found)
+                {
+                    var np = cx.db.nextPos;
+                    var nn = qc.cn; // et.NameFor(cx);
+                    var rt = dm as Table ?? throw new PEException("PE49344");
+                    cx.Add(new PColumn3(rt, nn, ln.domain,
+                        qc.cm?.ToString() ?? "", qc.cm ?? TMetadata.Empty,
+                        cx.db.nextStmt, cx.db.nextPos, cx));
+                    if (cx.obs[cx.names[qc.cn].Item2] is SqlReview sr)
+                        cx.names += (qc.cn, (np, np));
+                }
+            }
             if (cx.obs[id] is GqlNode r)
                 r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm), m);
             else
@@ -1964,6 +2010,7 @@ namespace Pyrrho.Level4
             svg += (r.defpos,r); // r is new node: maybe there is an arrow to attach something?
             if (Match(Qlx.ARROWL, Qlx.ARROWR))
             {
+                var xn = lxr.val?.ToString();
                 var nw = tok;
                 Next();
                 var braceseen = (Match(Qlx.LBRACE)); // might be several to attach
@@ -1978,19 +2025,62 @@ namespace Pyrrho.Level4
                         if (rn is GqlReference gg && cx.obs[gg.refersTo] is GqlNode go)
                             rn = go;
                         var rd = Table.FindOrCreateRefDomain(cx, rn.domain);
+                        var found = false;
+                        var nn = xn ?? rn.domain.NameFor(cx);
+                        for (var c = r.domain.colRefs.First(); c != null; c = c.Next())
+                        {
+                            if (cx.db.objects[c.key()] is TableColumn cc
+                            && cc.domain.elType?.defpos == rd.elType?.defpos)
+                            {
+                                found = true;
+                                ac = new TConnector(nw, nn, rd, cc.defpos);
+                            }
+                        }
+                        if (!found)
+                        {
+                            var np = cx.db.nextPos;
+                            cx.Add(new PColumn3((Table)r.domain, nn, rd,
+                                "", TMetadata.Empty,
+                                cx.db.nextStmt, np, cx));
+                            if (cx.obs[cx.names[nn].Item2] is SqlReview sr)
+                                cx.names += (nn, (np, np));
+                            ac = new TConnector(nw, nn, rd, np);
+                        }
+                        r += (GqlNode.PostCon, ac);
+                        cx.obs += (r.defpos, r);
                         r += (GqlNode.After, rn);
-                        r += (GqlNode.PostCon, new TConnector(nw, rn.name ?? "", rn.domain));
                         svg += (r.defpos, r);
                         cx.Add(r);
                     }
                     else // a reference to r gets added to rn
                     {
-                        if (r is GqlReference gr && cx.obs[gr.refersTo] is GqlNode gn)
-                            r = gn;
+                        if (rn is GqlReference gr && cx.obs[gr.refersTo] is GqlNode gn)
+                            rn = gn;
                         var dr = Table.FindOrCreateRefDomain(cx, r.domain);
+                        var found = false;
+                        var nn = xn ?? r.domain.NameFor(cx);
+                        for (var c = rn.domain.colRefs.First(); c != null; c = c.Next())
+                        {
+                            if (cx.db.objects[c.key()] is TableColumn cc
+                            && cc.domain.elType?.defpos == dr.elType?.defpos)
+                            {
+                                found = true;
+                                ac = new TConnector(nw, nn, dr, cc.defpos);
+                            }
+                        }
+                        if (!found)
+                        {
+                            var np = cx.db.nextPos;
+                            cx.Add(new PColumn3((Table)rn.domain, nn, dr,
+                                "", TMetadata.Empty,
+                                cx.db.nextStmt, np, cx));
+                            if (cx.obs[cx.names[nn].Item2] is SqlReview sr)
+                                cx.names += (nn, (np, np));
+                            ac = new TConnector(nw, nn, dr, np);
+                        }
                         rn += (GqlNode.DocValue, rn.docValue + (r.domain.name, r));
                         rn += (GqlNode.Before, r);
-                        rn += (GqlNode.PreCon, new TConnector(nw, r.name ?? "", r.domain));
+                        rn += (GqlNode.PreCon, ac);
                     } 
                     cx.Add(rn);
                     svg += (rn.defpos,rn);
@@ -4998,6 +5088,10 @@ namespace Pyrrho.Level4
             // OOPS: and a simple assignment for backwards compatibility
             else if (Identify(sc, il, Domain.Content) is DBObject vb)
             {
+                if (vb is GqlNode gn)
+                {
+                    return (Executable)cx.Add(ParseTriple(gn));
+                }
                 if (vb is QlInstance vc && cx._Ob(vc.sPos) is TableColumn tc)
                     vb = tc;
                 Mustbe(Qlx.EQL);
@@ -5007,12 +5101,56 @@ namespace Pyrrho.Level4
             }
             return Executable.Empty;
         }
+        Executable ParseTriple(GqlNode gn)
+        {
+            var lp = LexLp();
+            var (pi,pl) = ParseIdentChain();
+            if (Match(Qlx.Id))
+            {
+                var va = ParseSqlValue(BTree<long, object>.Empty);
+                if (cx.db.objects[cx.role.edgeTypes[pi.ident]] is Table et)
+                  return (Executable)cx.Add(new GraphInsertStatement(lp,false,
+                      new BList<ObTree>(ObTree.Empty+(gn.defpos,gn)+(et.defpos,et)+(va.defpos,va)),Executable.Empty));
+                else
+                {
+                    var ps = FindProps(pi.ident,BTree<long,TableColumn>.Empty,gn.domain,va.domain);
+                    if (ps.Count > 1)
+                        throw new DBException("42003");
+                    if (ps.First()?.value() is TableColumn c)
+                        return (Executable)cx.Add(new AssignmentStatement(cx.GetUid(), 
+                            new SqlField(pi,cx,c.seq,gn.defpos,c.domain,c.defpos),va));
+                    if (Identify(pi, pl, Domain.Content) is DBObject po && po is GqlEdge ge)
+                    {
+                        var (oi, ol) = ParseIdentChain();
+                        if (Match(Qlx.Id) && Identify(oi, ol, Domain.Content) is GqlNode go)
+                        {
+                            var tl = ObTree.Empty;
+                            tl += (gn.defpos, gn);
+                            tl += (ge.defpos, ge);
+                            tl += (go.defpos, go);
+                            if (Match(Qlx.COMMA))
+                                Next();
+                            return (Executable)cx.Add(new GraphInsertStatement(lp, false, new BList<ObTree>(tl), Executable.Empty));
+                        }
+                    }
+                }
+            }
+            throw new DBException("42000");
+        }
+
+        private BTree<long,TableColumn> FindProps(string ident, BTree<long,TableColumn> ps, params Domain[] domains)
+        {
+            foreach (var d in domains)
+                ps += d.FindProps(cx,ident);
+            return ps;
+        }
+
         /// <summary>
-		/// Assignment = 	SET Target '='  TypedValue { ',' Target '='  TypedValue }
-		/// 	|	SET '(' Target { ',' Target } ')' '='  TypedValue .
+        /// Assignment = 	SET Target '='  TypedValue { ',' Target '='  TypedValue }
+        /// 	|	SET '(' Target { ',' Target } ')' '='  TypedValue .
         ///  SET Target TO 
         /// </summary>
-		Executable ParseAssignment()
+        Executable ParseAssignment()
         {
             var lp = LexDp();
             var m = BTree<long, object>.Empty;
@@ -9114,7 +9252,7 @@ namespace Pyrrho.Level4
             Next();
             if (Match(Qlx.INTO))
                 Next();
-            else return ParseInsertGraph();
+            else return (Executable)cx.Add(ParseInsertGraph());
             Ident ic = new(this);
             //  cx.IncSD(ic);
             var on = cx.names;
@@ -9740,6 +9878,8 @@ namespace Pyrrho.Level4
             var wfok = m[NestedStatement.WfOK] ?? false;
             var fp = (long)(m[DBObject._From] ?? -1L);
             var left = ParseSqlValueItem(m);
+            if (Match(Qlx.EOF))
+                return left;
             bool invert = false;
             var lp = LexDp();
             while (tok == Qlx.DOTTOKEN || tok == Qlx.LBRACK)
@@ -10090,6 +10230,8 @@ namespace Pyrrho.Level4
             if (Match(Qlx.Id, Qlx.FIRST, Qlx.NEXT, Qlx.LAST, Qlx.CHECK, Qlx.TYPE_URI)) // Id or pseudo ident
             {
                 QlValue vr = ParseVarOrColumn(m);
+                if (Match(Qlx.EOF))
+                    return vr;
                 if (tok == Qlx.DOUBLECOLON)
                 {
                     Next();
@@ -11207,10 +11349,8 @@ namespace Pyrrho.Level4
                     Next();
                     break;
                 default:
-                    {
-                        var fc = (CallStatement)ParseProcedureCall(m);
-                        return (SqlProcedureCall)(cx.obs[fc.call] ?? throw new DBException("42000", "Call"));
-                    }
+                    return (SqlProcedureCall)(cx.obs[((CallStatement)ParseProcedureCall(m)).call] 
+                        ?? throw new DBException("42000", "Call"));
             }
             return (QlValue)cx.Add(new SqlFunction(LexLp(), lp, cx, kind, val, op1, op2, mod));
         }

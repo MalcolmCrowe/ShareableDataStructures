@@ -625,6 +625,14 @@ namespace Pyrrho.Level3
         {
             return this;
         }
+        internal override BTree<long, TableColumn> FindProps(Context cx, string ident)
+        {
+            var r = base.FindProps(cx, ident);
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value()] is TableColumn c && c.NameFor(cx) == ident)
+                    r += (c.defpos, c);
+            return r;
+        }
         internal virtual Index? FindPrimaryIndex(Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
@@ -1305,7 +1313,7 @@ namespace Pyrrho.Level3
             }
             return (r, (TypedValue?)os ?? TNull.Value);
         }
-        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlNode ed, TypedValue cc,
+        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode? a, GqlNode ed, TypedValue cc,
                 CTree<string, QlValue> ls, bool allowChange = false)
         {
             if (cc is not TConnector nc)
@@ -1359,7 +1367,7 @@ namespace Pyrrho.Level3
                 TNode? nn = null;
                 Qlx q = Qlx.Null;
                 long bt = (b == null) ? -1L : b.dataType.defpos;
-                long at = a.dataType.defpos;
+                long at = (a == null) ? -1L : a.dataType.defpos;
                 if (b != null) switch (nc.q)
                     {
                         case Qlx.ARROWBASE: q = Qlx.FROM; nn = b; break;

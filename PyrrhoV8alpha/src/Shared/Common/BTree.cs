@@ -105,6 +105,8 @@ namespace Pyrrho.Common
             for (var b = ks.First(); b != null; b = b.Next())
                 if (b.value() is K k)
                     tree -= k;
+            if (tree.Count == 0L)
+                return Empty;
             return tree;
         }
         public static BTree<K,V> New(params (K, V)[] m)

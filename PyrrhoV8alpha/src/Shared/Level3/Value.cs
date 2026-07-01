@@ -11783,7 +11783,7 @@ cx.obs[high] is not QlValue hi)
                             r += at.For(cx, ms, xn, ds);
                     return r;
                 }
-                var dm = cx.db.objects[domain.defpos] as Domain ?? throw new PEException("PE81811");
+                var dm = cx.db.objects[domain.defpos] as Domain ?? throw new DBException("42107",cx.NameFor(domain.defpos)??"");
                 if (dm.defpos > 0)
                     return dm.For(cx, ms, xn, ds);
                 for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())

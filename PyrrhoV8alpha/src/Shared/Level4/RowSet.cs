@@ -3194,7 +3194,7 @@ namespace Pyrrho.Level4
             }
             if (mm[SIMap] is CTree<long,long>)
             {
-                var xs = (CTree<Domain,CTree<long,bool>>)(mem[Table.Indexes]??CTree<Domain, CTree<long, bool>>.Empty);
+                var xs = (CTree<CTree<int, long>, CTree<long, bool>>)(mem[Table.Indexes]?? CTree<CTree<int, long>, CTree<long, bool>>.Empty);
                 var pk = Row;
                 var tb = cx._Ob(target) as Table ?? throw new PEException("PE30801");
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
@@ -3213,7 +3213,7 @@ namespace Pyrrho.Level4
                             pk = (Domain)cx.Add(pk);
                     }
                     if (nk.Length != 0)
-                        xs += (nk, b.value());
+                        xs += (nk.rowType, b.value());
                 }
                 if (xs.Count != 0L)
                     mm += (Table.Indexes, xs);

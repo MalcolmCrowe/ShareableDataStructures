@@ -190,7 +190,7 @@ namespace Pyrrho.Level2
         /// For EdgeType information
         /// </summary>
         /// <returns></returns>
-        public TConnector? TCon(Domain dt,Boolean fk)
+        public TConnector? TCon(Domain dt,bool fk)
         {
             var tm = optional ? (TMetadata.Empty + (Qlx.OPTIONAL, TBool.True)) : null;
             if (arrow != 0)

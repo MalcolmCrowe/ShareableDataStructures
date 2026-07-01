@@ -4906,11 +4906,12 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                             } 
             return r;
         }
-        internal int Refs()
+        internal virtual BTree<long, TableColumn> FindProps(Context cx,string ident)
         {
-            var r = 0;
-            for (var b = colRefs.First(); b != null; b = b.Next())
-                r += (int)b.value().Count;
+            var r = BTree<long,TableColumn>.Empty;
+            for (var b = alts.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key().defpos] is Domain d)
+                    r += d.FindProps(cx, ident);
             return r;
         }
     }
@@ -5615,6 +5616,14 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 if (cx._Ob(b.key()) is UDType t && t.tableRows.Contains(tr.defpos))
                     return t.Specific(cx, tr);
             return this;
+        }
+        internal override BTree<long, TableColumn> FindProps(Context cx,string ident)
+        {
+            var r = base.FindProps(cx,ident);
+            for (var b = subtypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Domain d)
+                    r += d.FindProps(cx, ident);
+            return r;
         }
         /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition,

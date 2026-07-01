@@ -220,6 +220,7 @@ namespace Pyrrho
             dict.Add("42000", "Syntax error at {0}");
             dict.Add("42001", "Invalid syntax");
             dict.Add("42002", "Invalid reference");
+            dict.Add("42003", "Ambiguous");
             dict.Add("42004", "Use of visually confusable identifiers");
             dict.Add("42006", "Number of edge labels below supported minimum");
             dict.Add("42007", "Number of edge labels exceeds supported maximum");
