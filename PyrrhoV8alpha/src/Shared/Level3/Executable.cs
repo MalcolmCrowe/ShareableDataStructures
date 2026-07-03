@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Reflection.Metadata;
 using System.Runtime.Intrinsics.Arm;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -4294,6 +4295,7 @@ namespace Pyrrho.Level3
                                 Table et = gt._Type(cx, gc.domain, 0L, false);
                                 var ls = gt.docValue;
                                 if (gt.preCon is TConnector rc && !preconDone) // maybe this code can be removed?
+                                {
                                     if (rc.cp > 0)
                                     {
                                         var s = cx.NameFor(rc.cp);
@@ -4304,6 +4306,14 @@ namespace Pyrrho.Level3
                                     }
                                     else if (nc != null)
                                         (_, ls) = et.Connect(cx, nb, nc, gc, gt.preCon, ls);
+                                }
+                                else if (gt.before!=null && nb!=null && gt.domain.infos[cx.role.defpos] is ObInfo oi)
+                                    for (var mb = oi.model.First(); mb != null; mb = mb.Next())
+                                        for (var lb = mb.value().First(); lb != null; lb = lb.Next())
+                                            if (cx.db.objects[lb.value()] is TableColumn tc
+                                                && tc.domain.elType is Domain lt
+                                                && nb.dataType.EqualOrStrongSubtypeOf(lt))
+                                                ls += (tc.NameFor(cx), new SqlLiteral(cx.GetUid(),new TRef(nb.defpos,nb.dataType)));
                                 gt += (_Domain, et);
                                 gt += (Scope, defpos);
                                 gt += (GqlNode.DocValue, ls);
@@ -4320,30 +4330,45 @@ namespace Pyrrho.Level3
                                         for (var f = e.value().First(); f != null; f = f.Next())
                                             if ((nc.tableRow.vals[f.key()] ?? TNull.Value) == TNull.Value)
                                                 cx.checkEdges += (nc.defpos, nc.tableRow);
-                                    if (gb != null && gb.postCon is TConnector oc && oc.rd is not null && nb != null
-                                        && gu != null)
-                                    {// we are adding a reference to nc to an existing node nb
-                                        var ns = nb.tableRow.vals;
-                                        var tb = (Table)gb.domain;
-                                        ns += (oc.cp, new TRef(nc.defpos, oc.rd));
-                                        var tr = cx.db as Transaction ?? throw new PEException("PE03061");
-                                        var done = false;
-                                        for (var bp = cx.checkEdges.First(); bp != null && !done; bp = bp.Next())
-                                            if (tr.physicals[bp.key()] is Record rr && rr.node == gu.defpos)
+                                    if (gb != null && gb.postCon is TConnector oc)
+                                    {
+                                        if (oc.rd is not null && nb != null && gu != null)
+                                        {// we are adding a reference to nc to an existing node nb
+                                            var ns = nb.tableRow.vals;
+                                            var tb = (Table)gb.domain;
+                                            ns += (oc.cp, new TRef(nc.defpos, oc.rd));
+                                            var tr = cx.db as Transaction ?? throw new PEException("PE03061");
+                                            var done = false;
+                                            for (var bp = cx.checkEdges.First(); bp != null && !done; bp = bp.Next())
+                                                if (tr.physicals[bp.key()] is Record rr && rr.node == gu.defpos)
+                                                {
+                                                    rr.fields += ns;
+                                                    tb = (Table)(rr.Install(cx) ?? throw new PEException("PE73023"));
+                                                    cx.checkEdges += (rr.defpos, new TableRow(rr.tabledefpos, rr.fields));
+                                                    done = true;
+                                                }
+                                            if (!done)
                                             {
-                                                rr.fields += ns;
-                                                tb = (Table)(rr.Install(cx) ?? throw new PEException("PE73023"));
-                                                cx.checkEdges += (rr.defpos, new TableRow(rr.tabledefpos, rr.fields));
-                                                done = true;
+                                                var u = new Update(nb.defpos, gb.domain.defpos, ns, cx.db.nextPos, cx);
+                                                cx.Add(u);
                                             }
-                                        if (!done)
-                                        {
-                                            var u = new Update(nb.defpos, gb.domain.defpos, ns, cx.db.nextPos, cx);
-                                            cx.Add(u);
+                                            if (tb.tableRows[nb.defpos] is TableRow nr)
+                                                cx.binding += (gb.defpos, new TNode(cx, nr));
                                         }
-                                        if (tb.tableRows[nb.defpos] is TableRow nr)
-                                            cx.binding += (gb.defpos, new TNode(cx, nr));
                                     }
+                                    else if (gb?.after != null && nc != null && nb!=null
+                                        && gb.domain.infos[cx.role.defpos] is ObInfo oi)
+                                        for (var mb = oi.model.First(); mb != null; mb = mb.Next())
+                                            for (var lb = mb.value().First(); lb != null; lb = lb.Next())
+                                                if (cx.db.objects[lb.value()] is TableColumn tc
+                                                    && tc.domain.elType is Domain lt
+                                                && nc.dataType.EqualOrStrongSubtypeOf(lt)
+                                                && cx.db is Transaction tr
+                                                && tr.physicals[nb.defpos] is Record r)
+                                                {
+                                                    r.fields += (tc.defpos, new TRef(nc.defpos, nc.dataType));
+                                                    cx.db = tr + (nb.defpos, r);
+                                                }
                                 }
                                 gb = gc;
                                 gu = gt;

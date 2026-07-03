@@ -5108,17 +5108,27 @@ namespace Pyrrho.Level4
             if (Match(Qlx.Id))
             {
                 var va = ParseSqlValue(BTree<long, object>.Empty);
-                if (cx.db.objects[cx.role.edgeTypes[pi.ident]] is Table et)
-                  return (Executable)cx.Add(new GraphInsertStatement(lp,false,
-                      new BList<ObTree>(ObTree.Empty+(gn.defpos,gn)+(et.defpos,et)+(va.defpos,va)),Executable.Empty));
+                if ((cx.db.objects[cx.role.edgeTypes[pi.ident]] as Table
+                    ?? cx.db.objects[cx.role.nodeTypes[pi.ident]] as Table) is Table et)
+                {
+                    var gi = ObTree.Empty;
+                    gi += (lp-1,gn);
+                    var i = new Ident(this);
+                    gi += (lp,new GqlNode(cx,i,new BList<Ident>(i),-1L, 
+                        CTree<string, QlValue>.Empty, CTree<long,TGParam>.Empty,et,
+                        BTree<long,object>.Empty+(GqlNode.Before,gn)+(GqlNode.After,va)));
+                    gi += (lp+1, va);
+                    return (Executable)cx.Add(new GraphInsertStatement(lp, false,
+                        new BList<ObTree>(gi), Executable.Empty));
+                }
                 else
                 {
-                    var ps = FindProps(pi.ident,BTree<long,TableColumn>.Empty,gn.domain,va.domain);
+                    var ps = FindProps(pi.ident, BTree<long, TableColumn>.Empty, gn.domain, va.domain);
                     if (ps.Count > 1)
                         throw new DBException("42003");
                     if (ps.First()?.value() is TableColumn c)
-                        return (Executable)cx.Add(new AssignmentStatement(cx.GetUid(), 
-                            new SqlField(pi,cx,c.seq,gn.defpos,c.domain,c.defpos),va));
+                        return (Executable)cx.Add(new AssignmentStatement(cx.GetUid(),
+                            new SqlField(pi, cx, c.seq, gn.defpos, c.domain, c.defpos), va));
                     if (Identify(pi, pl, Domain.Content) is DBObject po && po is GqlEdge ge)
                     {
                         var (oi, ol) = ParseIdentChain();
