@@ -5273,9 +5273,9 @@ namespace Pyrrho.Level3
                 // additions to the path binding happen in PathStep.Next()
                 // here we just ensure that the required arrays have been initialised
                 cr = (cx.obs[ma.Next()?.value() ?? -1L] as GqlEdge)?.preCon ?? throw new DBException("42000");
-                return PathFirstNode(cx, new PathFirstStep(be.patt, sp, 0, cr, gp, 
-                    new PathLastStep(be.patt, sp, cr, pd, be.matches?.Next(), 0, 
-                    new ExpStep(be.patt, be.matches?.Next(), be.matchPatterns, be.next,be._e),be._e),be._e), pd);
+                return PathFirstNode(cx, new PathFirstStep(be.patt, sp, 0, cr, gp,
+                    new PathLastStep(be.patt, sp, cr, pd, be.matches?.Next(), 0,
+                    new ExpStep(be.patt, be.matches?.Next(), be.matchPatterns, be.next, be._e), be._e), be._e), pd);
             }
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
@@ -5284,6 +5284,12 @@ namespace Pyrrho.Level3
             else if (cr is TConnector po && pd?.tableRow.vals[po.cp]?.ToLong() is long pp
                 && cx.db.objects[po.rd.defpos] is Table tb && tb.tableRows[pp] is TableRow pr)
                 ds += (pp, pr);
+            else if (cr is TConnector pb && pd?.dataType is Table bt)
+            {
+                for (var pa = bt.sindexes[pd.defpos]?[pb.cp]?.First(); pa != null; pa = pa.Next())
+                    if (cx.db.objects[xn.domain.defpos] is Table ct && ct.tableRows[pa.key()] is TableRow rr)
+                        ds += (rr.defpos, rr);
+            }
             else if (xn is GqlReference gr)
             {
                 if (cx.binding[gr.refersTo] is TNode tr)
@@ -5310,9 +5316,9 @@ namespace Pyrrho.Level3
                     }
             }
             else if (xn.name is string xs && xs != "" && cx.obs[cx.names[xs].Item2] is QlInstance qi
-                && cx.values[qi.sPos] is TRef tf && cx.db.objects[tf.elType?.defpos??-1L] is Table ft
+                && cx.values[qi.sPos] is TRef tf && cx.db.objects[tf.elType?.defpos ?? -1L] is Table ft
                 && ft.tableRows[tf.value] is TableRow fr)
-                ds += (fr.defpos,fr);
+                ds += (fr.defpos, fr);
             else if (pd is not null && pd.dataType is Table pe && pe.colRefs.Count > 0
                 && pd.defpos != pd.dataType.defpos && cr is TConnector ed)
             {
