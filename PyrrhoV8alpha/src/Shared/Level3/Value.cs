@@ -3,8 +3,6 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Globalization;
-using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.Arm;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -1904,8 +1902,14 @@ namespace Pyrrho.Level3
                 tt.dataType.names[name ?? ""].Item2 is long p
                 && tt.tableRow.vals[p] is TypedValue nv)
                 return nv;
+            if ((cx.values[target] ?? cx.binding[target]) is TRef tr 
+                && cx.db.objects[tr.elType.defpos] is Table rt 
+                && tr.ToLong() is long rp
+                && rt.names[name ?? ""].Item2 is long cp
+                && rt.tableRows[rp]?.vals[cp] is TypedValue rv)
+                return rv;
             var tv = cx.values[from];
-            if (tv is TRow tr) return tr.values[target]??tr.values[defpos]??TNull.Value;
+            if (tv is TRow rw) return rw.values[target]??rw.values[defpos]??TNull.Value;
             if (tv is TNode tn && tn.dataType.infos[cx.role.defpos] is ObInfo ni
                 && ni.names[name??"?"].Item2 is long dp)
                 return tn.tableRow.vals[dp] ?? TNull.Value;
@@ -2777,6 +2781,12 @@ namespace Pyrrho.Level3
                             if (cx.obs[right] is SqlField sf 
                                 && tn.dataType.names[sf.name ?? "?"].Item2 is long dp)
                                 return tn.tableRow.vals[dp] ?? TNull.Value;
+                        }
+                        if (a is TRef tr && cx.db.objects[tr.elType.defpos] is Table rt
+                            && rt.tableRows[tr.ToLong()??-1L] is TableRow r)
+                        {
+                            if (cx.obs[right] is QlInstance sn)
+                                return r.vals[sn.sPos] ?? TNull.Value;
                         }
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)

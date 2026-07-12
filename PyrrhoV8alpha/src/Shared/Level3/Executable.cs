@@ -1135,7 +1135,8 @@ namespace Pyrrho.Level3
                         cx.db.nextPos, cx));
                     cx.val = v1;
                 }
-                else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
+                else if (vb is SqlField sf 
+                    && ((cx._Ob(sf.from)?.Eval(cx) as TNode) ?? cx.values[sf.target] ?? cx.binding[sf.target]) is TNode nf
                     && nf.dataType is Table tf
                     && cx._Ob(tf.names[sf.name ?? ""].Item2) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)

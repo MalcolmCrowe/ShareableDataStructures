@@ -196,7 +196,7 @@ namespace Pyrrho.Level4
      //           return ParseJSONCall(sql);
             // Normal SQL client command
             lxr = new Lexer(cx, sql, cx.db.lexeroffset);
-            Executable e = EmptyStatement.Empty;
+            var e = Executable.Empty;
             tok = lxr.tok;
             while (StartStatement())
             {
@@ -403,7 +403,7 @@ namespace Pyrrho.Level4
                     case Qlx.LIMIT: goto case Qlx.ORDER;
                     case Qlx.LOOP: return ParseLoopStatement(m);
                     case Qlx.LPAREN: goto case Qlx.BEGIN;
-                    case Qlx.MATCH: return ParseMatchStatement(m);
+                    case Qlx.MATCH: return ParseMatchStatement(m + (DBObject.Scope,lp));
                     case Qlx.NODETACH: goto case Qlx.DELETE;
                     case Qlx.OFFSET: goto case Qlx.ORDER;
                     case Qlx.OPEN: return ParseOpenStatement();
@@ -5657,7 +5657,7 @@ namespace Pyrrho.Level4
             if (Match(Qlx.JSON)) throw new DBException("42000");
             while (StartStatement() && !Match(Qlx.UNTIL))
             {
-                if (ParseStatement(m) is not Executable b)
+                if (ParseStatement(m + (DBObject.Scope,lp)) is not Executable b)
                     throw new DBException("42161", "statement");
                 if (b is QueryStatement qs && cx.result is null)
                 {
@@ -5756,7 +5756,8 @@ namespace Pyrrho.Level4
         {
             var ap = LexLp();
             var xp = m[DBObject._Domain] as Domain ?? Domain.Content;
-            var tb = cx.obs[(long)(m[DBObject._From] ?? -1L)]; 
+            var tb = cx.obs[(long)(m[DBObject._From] ?? -1L)];
+            var f = (long)(m[DBObject.Scope] ?? -1L);
             Match(Qlx.SYSTEM_TIME, Qlx.SECURITY);
             if (tok == Qlx.SECURITY)
             {
@@ -5848,7 +5849,7 @@ namespace Pyrrho.Level4
                     return (QlValue)cx.Add(new SqlMethodCall(lp, cx, ic.sub?.ident ?? "", ps, vr));
                 }
             }
-            var ob = Identify(ic, il, xp);
+            var ob = Identify(ic, il, xp, f);
             if (ob is not QlValue)
             {
                 var np = (long)(m[DBObject._From] ?? -1L);
@@ -5883,7 +5884,7 @@ namespace Pyrrho.Level4
         /// <param name="xp">The ambient or expected type with SqlFunction.Mod to distinguish the above cases</param>
         /// <returns>The new object</returns>
         /// <exception cref="PEException"></exception>
-        DBObject Identify(Ident ic, BList<Ident> il, Domain xp)
+        DBObject Identify(Ident ic, BList<Ident> il, Domain xp, long f=-1L)
         {
             if (cx.user == null)
                 throw new DBException("42105").Add(Qlx.USER);
@@ -5891,7 +5892,7 @@ namespace Pyrrho.Level4
             // we look up the identifier chain ic
             // and perform 6.1.2 (2) if we find anything
             var len = ic.Length;
-            var (pa, sub) = cx.Lookup(ic);
+            var (pa, sub) = cx.Lookup(ic, f);
             // pa is the object that was found, or null
             if (pa is not null && sub is null)
                 return pa;
@@ -5900,13 +5901,13 @@ namespace Pyrrho.Level4
                 && cx._Ob(tc.tabledefpos) is Table nt && sub != null)
             {
                 cx.AddDefs(ic.lp,nt);
-                var sb = Identify(sub, il - 0, xp);
+                var sb = Identify(sub, il - 0, xp, f);
                 sb += (DBObject._From, pa.defpos);
                 return sb;
             }
             if (pa is QlValue pp && pp.domain.kind == Qlx.PATH && sub is not null)
             {
-                var pf = (GqlNode)Identify(sub, BList<Ident>.Empty, Domain.Content);
+                var pf = (GqlNode)Identify(sub, BList<Ident>.Empty, Domain.Content, f);
                 return new SqlValueExpr(sub, cx, Qlx.PATH, pp, pf, Qlx.NO);
             }
             if (pa is QlValue sv && sv.domain.infos[cx.role.defpos] is ObInfo si && ic.sub is not null
@@ -5920,6 +5921,16 @@ namespace Pyrrho.Level4
             {
                 var dm = tt.representation[tt.names[sub.ident].Item2] ?? Domain.Content;
                 var co = new SqlField(sub, cx, -1, sv1.defpos, dm, sv1.defpos);
+                return cx.Add(co);
+            }
+            if (pa is QlValue sr && sr.domain.kind==Qlx.REF 
+                && cx.db.objects[sr.domain.elType.defpos] is Domain rd
+                && sub != null
+                && rd.infos[cx.role.defpos] is ObInfo ri && ri.names.Contains(sub.ident))
+            {
+                var tg = ri.names[sub.ident].Item2;
+                var dm = rd.representation[tg] ?? Domain.Content;
+                var co = new SqlField(sub, cx, -1, f, dm, sr.defpos);
                 return cx.Add(co);
             }
             if (cx.bindings.Contains(ic.uid)) // a binding or local variable
@@ -7924,7 +7935,8 @@ namespace Pyrrho.Level4
             var xp = (Domain)(m[DBObject._Domain] ?? Domain.Null);
             var lp = LexDp();
             RowSet left, right;
-            m += (DBObject.Scope, LexLp());
+            if (!m.Contains(DBObject.Scope))
+                m += (DBObject.Scope, LexLp());
             left = ParseRowSetTerm(m);
             while (Match(Qlx.UNION, Qlx.EXCEPT))
             {
@@ -8181,6 +8193,8 @@ namespace Pyrrho.Level4
         {
             var xp = m[DBObject._Domain] as Domain ?? Domain.Content;
             var id = new Ident(this);
+            if (!m.Contains(DBObject.Scope))
+                m += (DBObject.Scope, id.lp);
             var d = false;
             Domain dm;
             var os = (CTree<long, bool>)(m[RowSet._Operands] ?? CTree<long, bool>.Empty);
@@ -8192,7 +8206,7 @@ namespace Pyrrho.Level4
                     cx.names += nn;
                 var lp = LexDp();
                 d = ParseDistinctClause();
-                (var ps,dm) = ParseSelectList(id.uid, m + (DBObject.Scope, id.lp));
+                (var ps,dm) = ParseSelectList(id.uid, m);
                 os += ps;
                 cx.Add(dm);
                 cx.names += on;
@@ -8238,6 +8252,8 @@ namespace Pyrrho.Level4
             var ns = m[View.NameList] as BList<string>;
             var c = ns?.First();
             m -= ObInfo._Names;
+            if (!m.Contains(DBObject.Scope))
+                m += (DBObject.Scope, dp);
             var vs = BList<DBObject>.Empty;
             v = ParseSelectItem(dp, dm, b, c, m);
             os += v.Operands(cx);

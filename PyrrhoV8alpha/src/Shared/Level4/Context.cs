@@ -1,3 +1,4 @@
+using System.Data.SqlTypes;
 using System.Net;
 using System.Runtime.InteropServices.Marshalling;
 using System.Text;
@@ -198,14 +199,14 @@ namespace Pyrrho.Level4
         {
             db = db + (Database.Role, r) + (Database.User, u);
         }
-        internal (DBObject?,Ident?) Lookup(Ident n)
+        internal (DBObject?,Ident?) Lookup(Ident n, long f = -1L)
         {
             var p = names[n.ToString()];
-            if (p.Item2!=0L && _Ob(p.Item2) is DBObject ob)
+            if (p.Item2>0L && _Ob(p.Item2) is DBObject ob)
                 return (ob, null);
-            var (o, s) = Lookup(names, n);
-            if (o is null && defs[Lookup(n.ident)?.defpos ?? -1L] is Names f && n.sub is not null)
-                (o, s) = Lookup(f, n.sub);
+            var (o, s) = Lookup(names, n, f);
+            if (o is null && defs[Lookup(n.ident)?.defpos ?? -1L] is Names ns && n.sub is not null)
+                (o, s) = Lookup(ns, n.sub);
             return (o,s);  
         }
         internal DBObject? Lookup(string n)
@@ -232,10 +233,43 @@ namespace Pyrrho.Level4
                 var ns = defs[ob.defpos]??ob.names;
                 if (ob is GqlNode g)
                 {
-                    if (n.sub?.ToString() is string nm
-                    && g.domain is Domain gd && gd.names[nm].Item2 is long np
-                    && gd.representation[np] is Domain dt)
-                        return (Add(new SqlField(n.uid, nm, -1, g.defpos, dt, np)), null);
+                    if (n.sub?.ident is string nm && g.domain is Domain gd)
+                    {
+                        if (gd.kind == Qlx.UNION)
+                        {
+                            Domain d = Domain.Content;
+                            QlValue q = SqlNull.Value; 
+                            for (var a = gd.alts.First();a!=null;a=a.Next())
+                                if (a.key().infos[role.defpos] is ObInfo ai && ai.names[nm].Item2 is long ap 
+                                    && a.key().representation[ap] is Domain at)
+                                {
+                                    if (d.kind == Qlx.CONTENT)
+                                        d = at;
+                                    else if (at.kind != d.kind)
+                                        throw new DBException("22G03", at.kind);
+                                    q = (QlValue)Add(new SqlField(n.uid, nm, -1, f, at, g.defpos));
+                                    if (at.kind == Qlx.REF && at.elType is Domain rd
+                                                   && rd.infos[role.defpos] is ObInfo ri
+                                                   && n.sub.sub is Ident ss
+                                                   && Lookup(ri.names, ss, f).Item1 is QlValue ao)
+                                        q = (QlValue)(Add(new SqlValueExpr(ss, this, Qlx.DOTTOKEN, q, ao, Qlx.NO)));
+                                    break;
+                                }
+                            return (q, null);
+                        } 
+                        if (gd.names[nm].Item2 is long np  && gd.representation[np] is Domain dt)
+                        {
+                            var af = (QlValue)Add(new SqlField(n.uid, nm, -1, g.defpos, dt, np));
+                            if (n.sub.sub is Ident sn)
+                            {
+                                var ss = ((Domain?)db.objects[dt.defpos])?.infos[role.defpos]?.names;
+                                if (ss?[sn.ident].Item2 is long sp)
+                                    af = (QlValue)Add(new SqlValueExpr(sn.uid-1,this,Qlx.DOTTOKEN,af,
+                                        new QlValue(sn,BList<Ident>.Empty,this,dt),Qlx.NO));
+                            }
+                            return (af, null);
+                        }
+                    }
                     if (n.sub?.ident == "REF")
                         return (Add(new SqlFunction(n.lp, n.uid, this, Qlx.REF, g, null, null, Qlx.NO)), null);
                 }
