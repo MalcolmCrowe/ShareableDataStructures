@@ -203,12 +203,12 @@ namespace Pyrrho.Level3
                         if (c.Value() is TConnector tc && tc.cm is TMetadata tm)
                         {
                             var v = nr.vals[tc.cp];
-                            if (v == null || v == TNull.Value) continue;
-                  /*          {
+                            if (v == null || v == TNull.Value) 
+                            {
                                 if (tm[Qlx.OPTIONAL] == TBool.True) continue;
                                 if (tm[Qlx.MIN]?.ToInt() == 0) continue;
                                 throw new DBException("22G21", tc.cn);
-                            } */
+                            } 
                             if (tc.rd.kind == Qlx.SET)
                             {
                                 var minc = tm[Qlx.MIN]?.ToInt();
