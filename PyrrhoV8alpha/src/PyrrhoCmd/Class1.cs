@@ -1,10 +1,9 @@
 using System.Text;
 using System.Net;
 using System.Collections;
+using System.Collections.Generic;
 using System.Globalization;
 using Pyrrho;
-using System.ComponentModel.Design;
-using System.ComponentModel.DataAnnotations;
 
 namespace PyrrhoCmd
 {
@@ -298,14 +297,13 @@ namespace PyrrhoCmd
                 file = null;
             }
         }
-    static string prevline = "";
+    static List<string> history = new List<string>();
     static string? ReadLine1()
         {
             string str = string.Empty;
             int pos = 0;
             var left = Console.CursorLeft;
             var top = Console.CursorTop;
-
             while (true)
             {
                 if (Console.KeyAvailable)
@@ -317,9 +315,24 @@ namespace PyrrhoCmd
                         break;
                     if (a.Key == ConsoleKey.UpArrow)
                     {
-                        str = le + prevline + rg;
-                        Console.Write(prevline + rg);
-                        pos += prevline.Length;
+                        var hpos = history.Count;
+                        do
+                        {
+                            Console.SetCursorPosition(left, top);
+                            Console.Write(new string(' ',str.Length));
+                            Console.SetCursorPosition(left, top);
+                            str = history[hpos-1];
+                            rg = "";
+                            le = str;
+                            pos = str.Length;
+                            Console.Write(str);
+                            Console.SetCursorPosition(left + pos, top);
+                            a = Console.ReadKey(true);
+                            pos = str.Length;
+                            if (a.Key == ConsoleKey.UpArrow)
+                                hpos--;
+                            else break;
+                        } while (true);
                     }
                     else if (a.Key == ConsoleKey.Backspace && le!="")
                     {
@@ -353,7 +366,7 @@ namespace PyrrhoCmd
                 }
             }
             Console.SetCursorPosition(0, top+1);
-            prevline = str;
+            history.Add(str);
             return str;
         }
     static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
