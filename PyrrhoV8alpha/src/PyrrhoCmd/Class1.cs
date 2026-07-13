@@ -305,6 +305,7 @@ namespace PyrrhoCmd
             int pos = 0;
             var left = Console.CursorLeft;
             var top = Console.CursorTop;
+
             while (true)
             {
                 if (Console.KeyAvailable)
@@ -435,7 +436,10 @@ namespace PyrrhoCmd
                         else
                         {
                             Console.Write("> ");
-                            line = Console.ReadLine();
+                            if (Environment.OSVersion.Platform == PlatformID.Unix)
+                                str = ReadLine1();
+                            else
+                                str = Console.ReadLine();
                         }
                         RemoveTrailingComment(ref line);
                         if (line == null)
