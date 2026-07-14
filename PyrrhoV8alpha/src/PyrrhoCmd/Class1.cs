@@ -4,6 +4,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using Pyrrho;
+using System.Reflection.Emit;
 
 namespace PyrrhoCmd
 {
@@ -316,12 +317,12 @@ namespace PyrrhoCmd
                     if (a.Key == ConsoleKey.UpArrow)
                     {
                         var hpos = history.Count;
-                        do
+                        while (hpos>0)
                         {
                             Console.SetCursorPosition(left, top);
-                            Console.Write(new string(' ',str.Length));
+                            Console.Write(new string(' ', str.Length));
                             Console.SetCursorPosition(left, top);
-                            str = history[hpos-1];
+                            str = history[hpos - 1];
                             rg = "";
                             le = str;
                             pos = str.Length;
@@ -331,16 +332,21 @@ namespace PyrrhoCmd
                             pos = str.Length;
                             if (a.Key == ConsoleKey.UpArrow)
                                 hpos--;
+                            else if (a.Key == ConsoleKey.DownArrow && hpos < history.Count - 1)
+                                hpos++;
                             else break;
-                        } while (true);
+                        }
                     }
-                    else if (a.Key == ConsoleKey.Backspace && le!="")
-                    {
-                        str = le[0..(pos-1)] + rg;
-                        pos--;
-                        Console.SetCursorPosition(left + pos, top);
-                        Console.Write(rg + " ");
-                    }
+                    else if (a.Key == ConsoleKey.Backspace)
+                        if (le == "")
+                            pos = 0;
+                        else
+                        {
+                            str = le[0..(pos - 1)] + rg;
+                            pos--;
+                            Console.SetCursorPosition(left + pos, top);
+                            Console.Write(rg + " ");
+                        }
                     else if (a.Key == ConsoleKey.Delete && rg!="")
                     {
                         rg = rg[1..];
@@ -355,7 +361,7 @@ namespace PyrrhoCmd
                     else if (a.Key == ConsoleKey.Home)
                         pos = 0;
                     else if (a.Key == ConsoleKey.End)
-                        pos = str.Length - 1;
+                        pos = str.Length;
                     else if (a.Key != ConsoleKey.Tab)
                     {
                         str = le + a.KeyChar + rg;
@@ -401,7 +407,7 @@ namespace PyrrhoCmd
                         return null;
                     }
                     if (transaction != null)
-                        Console.Write("QL-T>");
+                        Console.Write("QL-T> ");
                     else
                         Console.Write("QL> ");
                     if (Environment.OSVersion.Platform == PlatformID.Unix)
@@ -418,7 +424,7 @@ namespace PyrrhoCmd
                 if (str.Length >= 4 && str.ToUpper().StartsWith("QUIT"))
                     return null;
                 // support file input
-                if (str[0] == '@')
+                if (str?.Length>0 && str[0] == '@')
                 {
                     try
                     {
@@ -432,12 +438,12 @@ namespace PyrrhoCmd
                     return null;
                 }
                 // support multiline SQL statements for people who don't like wraparound
-                if (str[0] == '[')
+                if (str?.Length>0 && str[0] == '[')
                 {
                     for (;; )
                     {
                         bk = 0;
-                        for (var i = 0; i < str.Length; i++)
+                        for (var i = 0; i < str?.Length; i++)
                             if (str[i] == '[')
                                 bk++;
                             else if (str[i] == ']')
@@ -450,17 +456,18 @@ namespace PyrrhoCmd
                         {
                             Console.Write("> ");
                             if (Environment.OSVersion.Platform == PlatformID.Unix)
-                                str = ReadLine1();
+                                line = ReadLine1();
                             else
-                                str = Console.ReadLine();
+                                line = Console.ReadLine();
                         }
-                        RemoveTrailingComment(ref line);
-                        if (line == null)
+                        if (line!=null)
+                            RemoveTrailingComment(ref line);
+                    /*    if (line == null)
                         {
                             str += "]";
                             break;
-                        }
-                        if (line.Length > 0)
+                        }*/
+                        if (line?.Length > 0)
                         {
                             line = line.Trim();
                             if (str[str.Length - 1] == '\'' && line[0] == '\'')
@@ -469,7 +476,8 @@ namespace PyrrhoCmd
                                 str += " " + line;
                         }
                     }
-                    str = str.Substring(1, str.Length - 2);
+                    if (str?.Length>2)
+                        str = str.Substring(1, str.Length - 2);
                 }
                 else
                     RemoveTrailingComment(ref line);
