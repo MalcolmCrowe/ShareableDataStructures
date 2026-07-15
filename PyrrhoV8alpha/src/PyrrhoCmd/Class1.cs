@@ -373,7 +373,7 @@ namespace PyrrhoCmd
             }
             Console.SetCursorPosition(0, top+1);
             history.Add(str);
-            return str;
+            return str+"\n";
         }
     static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
         {
