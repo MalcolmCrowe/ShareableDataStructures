@@ -1423,6 +1423,17 @@ namespace Pyrrho.Level3
                 return n;
             throw new DBException("22G0V");
         }
+        // return true if tc can connect bf to this with the given arrow (ab,ae)
+        internal bool Connects(GqlNode bf, Qlx ab, TypedValue ae, TConnector tc)
+        {
+            if (bf.domain.defpos > 0 && !bf.domain.EqualOrStrongSubtypeOf(tc.rd))
+                return false;
+            if (tc.cn != "" && ae!=TNull.Value && ae.ToString() is string an && an != "" && an != tc.cn)
+                return false;
+            return (ab == Qlx.ARROWBASE && tc.q == Qlx.FROM)
+                || (ab == Qlx.RARROW && tc.q == Qlx.TO)
+                || ((ab == Qlx.TILDE || ab == Qlx.ARROWBASETILDE) && tc.q == Qlx.WITH);
+        }
         internal (Table, TConnector) BuildNodeTypeConnector(Context cx, TConnector tc)
         {
             if (infos[definer]?.metadata[Qlx.REFERENCES] is TSet ts && ts.Contains(tc))
@@ -1812,7 +1823,6 @@ namespace Pyrrho.Level3
             cx.db += r;
             return r;
         }
-
         internal class NodeInfo
         {
             internal readonly int type;

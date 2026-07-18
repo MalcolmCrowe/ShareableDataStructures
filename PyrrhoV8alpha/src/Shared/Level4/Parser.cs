@@ -2127,6 +2127,7 @@ namespace Pyrrho.Level4
             // state M21
             var st = CTree<long, TGParam>.Empty; // for match
             var ab = tok; // LPAREN, ARROWBASE, RARROW, LBRACK, TILDE, ARROWBASETILDE, ARROWL, ARROWR
+            var ae = lxr.val;
             lxr.tga = f;
             var ei = new Ident(this);
      //       lxr.tgt = Names.Empty;
@@ -2223,13 +2224,13 @@ namespace Pyrrho.Level4
                     Next();
                     var s = cx.names[b.ident].Item2;
                     if (s == 0L) throw new DBException("42000");
-                    dm = ParseLabelClause((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType,false,b.ident) 
+                    dm = ParseLabelClause((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType, false, b.ident)
                         ?? Domain.TableType;
                     cx.bindings += (b.uid, dm);
                     var di = dm.infos[cx.role.defpos];
                     TGParam.Type pg = (dm.kind == Qlx.ARRAY) ? TGParam.Type.Path
-                            : (di!=null && di.metadata.Contains(Qlx.NODETYPE)) ? TGParam.Type.Node
-                            : (di!=null && di.metadata.Contains(Qlx.EDGETYPE)) ? TGParam.Type.Edge
+                            : (di != null && di.metadata.Contains(Qlx.NODETYPE)) ? TGParam.Type.Node
+                            : (di != null && di.metadata.Contains(Qlx.EDGETYPE)) ? TGParam.Type.Edge
                             : (dm.defpos < 0) ? TGParam.Type.Maybe
                             : TGParam.Type.Type;
                     if (lxr.tgs[lp] is TGParam ig && dm is not null)
@@ -2242,6 +2243,11 @@ namespace Pyrrho.Level4
                         }
                         lxr.tgs += (lp, new TGParam(ig.uid, ig.value, nd, pg, f));
                     }
+                }
+                else if (cx.obs[cx.names[b.ident].Item2] is GqlNode br)
+                {
+                    r = new GqlReference(b.uid,br,(Table)br.domain);
+                    dm = r.domain;
                 }
                 // state M29
                 var dc = CTree<string,QlValue>.Empty;
@@ -2284,6 +2290,31 @@ namespace Pyrrho.Level4
                             dm = al.First()?.key();
                         else
                             dm = new Domain(-1L, al, cx.role.defpos);
+                }
+                if (dc.Count==0L && bf!=null && ab!=Qlx.LBRACK && dm==Domain.TableType) // limit dm by arrow (ab,ae)?
+                {
+                    al = CTree<Domain, bool>.Empty;
+                    var bl = CTree<Domain, bool>.Empty;
+                    for (var c = cx.role.edgeTypes?.First() ?? cx.role.nodeTypes?.First() ?? cx.role.dbobjects?.First();
+                        c != null; c = c.Next())
+                        if (cx._Ob(c.value()) is Table t && t.colRefs != CTree<long, CTree<long, bool>>.Empty
+                            && t.infos[cx.role.defpos]?.metadata[Qlx.REFERENCES] is TSet ts)
+                            for (var d = ts.First(); d != null; d = d.Next())
+                                if (d.Value() is TConnector tc && t.Connects(bf, ab, ae, tc))
+                                {
+                                    al += (t, true);
+                                    bl += (tc.rd, true);
+                                }
+                    if (al.Count > 0L)
+                        if (al.Count == 1L)
+                            dm = al.First()?.key();
+                        else
+                            dm = new Domain(-1L, al, cx.role.defpos);
+                    if (bf.domain.defpos < 0 && bl.Count>0L) // constrain bf?
+                        if (bl.Count == 1L && bl.First()?.key() is Domain bd)
+                            cx.Add(bf + (DBObject._Domain, bd));
+                        else
+                            cx.Add(bf + (DBObject._Domain, new Domain(-1L, bl, cx.role.defpos)));
                 }
                 // state M30
                 if (tok == Qlx.WHERE)
@@ -2352,6 +2383,7 @@ namespace Pyrrho.Level4
                         Qlx.RPAREN => new GqlNode(cx, b, BList<Ident>.Empty, id, dc, st, dm, ml),
                         // and for GqlEdge look at available connector information
                         Qlx.RBRACK or Qlx.ARROW or Qlx.RARROWBASE or Qlx.TILDE or Qlx.RBRACKTILDE
+                            or Qlx.ARROWBASETILDE
                                 => new GqlEdge(b, BList<Ident>.Empty, cx, id, dc, st, dm, ml),
                         _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
                     };
