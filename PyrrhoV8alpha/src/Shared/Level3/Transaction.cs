@@ -333,7 +333,7 @@ namespace Pyrrho.Level3
                 if (uu?.defpos >= TransPos)
                     uu = null;
                 if (rl.defpos >= TransPos)
-                    rl = db.schema;
+                    rl = db.ownerRole;
                 pt = new PTransaction((int)physicals.Count, uu, rl, nextPos, cx.db);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;

@@ -59,14 +59,8 @@ namespace Pyrrho.Level5
        internal class NodeType : UDType
        {
            internal const long
-               IdCol = -472,  // long TableColumn (defining position used if not specified)
-               IdColDomain = -493, // Domain (by default is POSITION)
-               IdIx = -436,    // long Index (defining position used if not specified)
                LabelSet = -462; // CTree<string,bool> 
-           internal Domain idColDomain => (Domain)(mem[IdColDomain] ?? Ref);
        //    internal Domain label =>       (Domain)(mem[GqlNode._Label] ?? GqlLabel.Empty);
-           internal long idCol => (long)(mem[IdCol] ?? -1L);
-           internal long idIx => (long)(mem[IdIx] ?? -1L);
            internal CTree<string,bool> labels => 
                (CTree<string,bool>)(mem[LabelSet] ?? CTree<string,bool>.Empty);
            internal TRow? singleton => (TRow?)mem[TrivialRowSet.Singleton];
@@ -202,7 +196,6 @@ namespace Pyrrho.Level5
                var rt = rowType;
                var rs = representation;
                var ii = infos;
-               var gi = rs.Contains(idCol) || idCol < 0L;
                for (var tb = super.First(); tb != null; tb = tb.Next())
                    if (cx._Ob(tb.key().defpos) is Table pd && pd.defpos>0)
                    {
@@ -214,12 +207,6 @@ namespace Pyrrho.Level5
                                else throw new DBException("42105").Add(Qlx.TYPE);
                                ii += (b.key(), ti);
                            }
-                       if (pd is NodeType pn && (!gi) && (!rs.Contains(pn.idCol)))
-                       {
-                           gi = true;
-           //                rt += pn.idCol;
-                           rs += (pn.idCol, cx._Ob(pn.idCol)?.domain??Ref);
-                       }
                        for (var b = pd?.rowType.First(); b != null; b = b.Next())
                            if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
                            {
@@ -262,17 +249,6 @@ namespace Pyrrho.Level5
                        m += (_Depth, d);
                }
                return (NodeType)et.New(m + x);
-           }
-           internal override Basis ShallowReplace(Context cx, long was, long now)
-           {
-               var r = (NodeType)base.ShallowReplace(cx, was, now);
-               if (idCol == was && was>=0)
-                   r += (IdCol, now); 
-               if (idIx == was && was>=0)
-                   r += (IdIx, now);
-               if (r.dbg!=dbg)
-                   cx.Add(r);
-               return r;
            }
            internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
            {
@@ -928,7 +904,6 @@ namespace Pyrrho.Level5
                 var ed = cx._Ob(ep) as Domain;
                 if (ep ==0L || ed?.kind == Qlx.NODETYPE) // second term here is for Metadata.EdgeType
                 {
-                    ro += (Role.EdgeTypes, ro.edgeTypes + (nm, defpos));
                     cx.db += ro;
                     cx.db += (Database.Role, ro);
                 }
@@ -939,7 +914,6 @@ namespace Pyrrho.Level5
                     else if (ed.kind == Qlx.UNION)
                         ed = (Domain)cx.Add(new Table(ed.defpos, ed.alts));
                     else throw new PEException("PE20901");
-                    ro += (Role.EdgeTypes, ro.edgeTypes + (nm, ed.defpos));
                     ro += (Role.DBObjects, ro.dbobjects + (nm, ed.defpos));
                     cx.db += ed;
                     cx.db += ro;
@@ -1306,11 +1280,11 @@ namespace Pyrrho.Level5
                                 if (ed.kind == Qlx.UNION)
                                 {
                                     var ev = cx.Add(new Table(ep, ed.matchPatterns));
-                                    ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, ev.defpos));
+                                    ro += (Role.EdgeTypeNames, ro.edgeTypes + (oi.name, ev.defpos));
                                 }
                             }
                             else
-                                ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
+                                ro += (Role.EdgeTypeNames, ro.edgeTypes + (oi.name, defpos));
                             cx.db += ro;
                     cx.db += (Database.Role, ro);
                         }
@@ -1370,8 +1344,7 @@ namespace Pyrrho.Level5
         {
             var rt = rowType;
             var rs = representation;
-            var ii = infos;
-            var gi = rs.Contains(idCol); 
+            var ii = infos; 
             for (var tb = super.First(); tb != null; tb = tb.Next())
                 if (cx._Ob(tb.key().defpos) is Table pd && pd.defpos>0)
                 {
@@ -1383,12 +1356,6 @@ namespace Pyrrho.Level5
                             else throw new DBException("42105").Add(Qlx.UNDER);
                             ii += (b.key(), ti);
                         }
-                    if (pd is NodeType pn && (!gi) && (!rs.Contains(pn.idCol)) && pn.idCol>=0)
-                    {
-                        gi = true;
-          //              rt += pn.idCol;
-                        rs += (pn.idCol, pn.idColDomain);
-                    }
                     for (var b = pd?.rowType.First(); b != null; b = b.Next())
                         if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
                         {
@@ -1408,7 +1375,7 @@ namespace Pyrrho.Level5
         {
             var r = New(cx.Fix(defpos), cx.Fix(mem));
             var ro = cx.role;
-      //      cx.db += ro + (Role.EdgeTypes, ro.edgeTypes + (name, cx.Fix(defpos)));
+      //      cx.db += ro + (Role.EdgeTypeNames, ro.edgeTypes + (name, cx.Fix(defpos)));
             if (cx.db.objects.Contains(defpos))
                 cx.db += this;
             if (defpos != -1L)
@@ -1508,108 +1475,51 @@ namespace Pyrrho.Level5
                        return BuildNodeTypeConnector(cx, new TConnector(q, ct.defpos, cn, Ref), this).Item2;
                    return r;
                } */
-    } 
+    }
     /// <summary>
     /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
     /// </summary>
     internal class GraphType : Domain
     {
-        /*       internal GraphType(PGraphType pg, Context cx, long ap)
-                   : this(pg.ppos, _Mem(pg,cx, ap))
-               { }
-               public GraphType(long dp, BTree<long, object> m) : base(dp, m)
-               { }
-               public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
-               {  }
-               static BTree<long,object> _Mem(PGraphType pg,Context cx,long ap)
-               {
-                   var r = BTree<long, object>.Empty;
-                   r += (Graph.Iri, pg.iri);
-                   r += (Graph.GraphTypes, pg.types);
-                   var ix = pg.iri.LastIndexOf('/');
-                   var nm = pg.iri[ix..];
-                   var oi = new ObInfo(nm, Grant.AllPrivileges);
-                   var ns = Names.Empty;
-                   for (var b = pg.types.First(); b != null; b = b.Next())
-                       if (cx._Ob(b.key()) is UDType ut)
-                           ns += (ut.name, (ap,b.key()));
-                   oi += (ObInfo._Names, ns);
-                   r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
-                   return r;
-               }
-               public static GraphType operator +(GraphType et, (long, object) x)
-               {
-                   return (GraphType)et.New(et.defpos, et.mem + x);
-               }
-               internal override DBObject New(long dp, BTree<long, object> m)
-               {
-                   return new GraphType(dp,m);
-               }
-           }
-           // The Graph view of graph data
-
-           // The database is considered to contain a (possibly empty) set of TGraphs.
-           // Every Node in the database belongs to exactly one graph in this set. 
-
-           /// <summary>
-           /// A Graph is a DBObject containing a tree of TNodes.
-           /// </summary>
-           internal class Graph : DBObject,IComparable
-           { */
         internal const long
-            GraphTypes = -122, // CTree<long,bool> GraphType
             Iri = -147, // string
-            _Schema = -450;  // long Schema (GQL)
-       //     Nodes = -499; // CTree<long,TNode> // and edges
-       // internal CTree<long,TNode> nodes =>
-       //     (CTree<long, TNode>) (mem[Nodes]??CTree<long,TNode>.Empty);
-        internal CTree<long,bool> graphTypes => 
-            (CTree<long,bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
-        internal long schema => (long)(mem[_Schema]??-1L);
-        internal string iri => (string)(mem[Iri]??"");
-      //  internal long schema => (long)(mem[Schema] ?? -1L);
-        internal GraphType(PGraphType pg,Context cx,long ap)
-            : base(pg.ppos,_Mem(cx,pg,ap))
+            ElementTypes = -289, // CTree<long,object> Table
+            _Schema = -450; // long
+        internal CTree<long,bool> elTypes => 
+            (CTree<long,bool>)(mem[ElementTypes] ?? CTree<long,bool>.Empty);
+        internal long schema => (long)(mem[_Schema] ?? -1L);
+        internal string iri => (string)(mem[Iri] ?? "");
+        internal GraphType(PGraphType pg, Context cx, long ap)
+            : this(pg.ppos, _Mem(pg, cx, ap))
         {
-            cx.graph = this;
-            cx.schema = cx._Ob(schema) as Schema;
+            cx.db += (Database.Catalog, cx.db.catalog + (pg.name, pg.ppos));
+            cx.db += this;
+            cx.graphType = this;
         }
         public GraphType(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx,PGraphType ps,long ap)
+        static BTree<long, object> _Mem(PGraphType pg, Context cx, long ap)
         {
-            var r = BTree<long, object>.Empty
-                 + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
-            var nm = ps.iri;
-            r += (ObInfo.Name, nm);
-            var ix = ps.iri.LastIndexOf('/');
-            if (ix >= 0)
-            {
-                nm = ps.iri[(ix + 1)..];
-                ps.name = nm;
-                ps.iri = ps.iri[0..ix];
-            }
-            if (cx.role.schemas[ps.iri] is long sp && sp>=0)
-                r += (_Schema, sp);
+            var r = BTree<long, object>.Empty;
+            r += (Iri, pg.iri);
+            var ix = pg.iri.LastIndexOf('/');
+            var nm = pg.iri[ix..];
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             var ns = Names.Empty;
-            for (var b = ps.types?.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is Table ut)
-                    ns += (ut.name, (ap,b.key()));
+            for (var b = pg.types.First(); b != null; b = b.Next())
+                if (cx._Ob(b.value()) is UDType ut)
+                    ns += (ut.name, (ap, b.value()));
             oi += (ObInfo._Names, ns);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
-            var ro = cx.role;
-            ro = ro + (Role.Graphs, ro.graphs + (nm, ps.ppos));
-            cx.db += (Database.Role, ro);
             return r;
         }
         public static GraphType operator +(GraphType et, (long, object) x)
         {
             return (GraphType)et.New(et.defpos, et.mem + x);
         }
-        public static GraphType operator+(GraphType g,TNode r)
+        public static GraphType operator +(GraphType g, TNode r)
         {
-            return new GraphType(g.defpos,g.mem + (Nodes,g.nodes+(r.tableRow.defpos,true)));
+            return new GraphType(g.defpos, g.mem + (Nodes, g.nodes + (r.tableRow.defpos, true)));
         }
         public override int CompareTo(object? obj)
         {
@@ -1617,38 +1527,94 @@ namespace Pyrrho.Level5
                 return 1;
             var c = iri.CompareTo(tg.iri);
             if (c != 0) return c;
-            c = nodes.CompareTo(tg.nodes);
-            if (c!=0) return c;
-            return graphTypes.CompareTo(tg.graphTypes);
+            return elTypes.CompareTo(tg.elTypes);
         }
         public override string ToString()
         {
             var sb = new StringBuilder("GraphType (");
-            sb.Append(name);
+            sb.Append(iri);
             var cm = "[";
-            for (var b=graphTypes.First();b is not null;b=b.Next())
+            for (var b = elTypes.First(); b is not null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.key());
+                sb.Append(Uid(b.key()));
             }
-            if (cm==",")
+            if (cm == ",")
                 sb.Append(']');
             return sb.ToString();
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new GraphType(dp,m);
+            return new GraphType(dp, m);
+        }
+    }
+    /// <summary>
+    /// A Graph is a named DBObject set of TNodes/TEdges
+    /// without constraints on connections or graphtype 
+    /// </summary>
+    internal class Graph : DBObject
+    {
+        internal const long
+            Nodes = -499; // CTree<long,TNode> and edges
+        internal CTree<long, TNode> nodes =>
+                (CTree<long, TNode>)(mem[Nodes] ?? CTree<long, TNode>.Empty);
+        internal long schema => (long)(mem[GraphType._Schema] ?? -1L);
+        public Graph(PGraph p,Context cx) 
+            : this(p.ppos,new BTree<long,object>(ObInfo.Name,p.name))
+        {
+            cx.db += (Database.Catalog, cx.db.catalog + (p.name, p.ppos));
+            cx.db += this;
+            cx.graph = this;
+        }
+        public Graph(long dp, BTree<long, object> m)
+            : base(dp, m)
+        { }
+        public static Graph operator +(Graph et, (long, object) x)
+        {
+            return (Graph)et.New(et.defpos, et.mem + x);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new Graph(dp, m);
+        }
+        public bool EqualTo(object? obj)
+        {
+            var that = obj as Graph;
+            if (that is null) return false;
+            var c = nodes.Count.CompareTo(that.nodes.Count);
+            if (c!=0) return false;
+            var tb = that.nodes.First();
+            for (var b = nodes.First(); b != null && tb != null; b = b.Next(), tb = tb.Next())
+                if (b.key() != tb.key())
+                    return false;
+            return true;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("Graph ");
+            sb.Append(name); sb.Append(" Nodes: [");
+            var cm = '[';
+            for (var b=nodes.First(); b != null;b=b.Next())
+            {
+                sb.Append(cm); cm = ','; sb.Append(Uid(b.key()));
+            }
+            sb.Append(']');
+            return sb.ToString();
         }
     }
     internal class Schema : DBObject
     {
         internal const long
-            _Graphs = -362,    // CTree<long,bool> Graph
+            DefaultGraph = -322, // long
+            DefaultGraphType = -321, // long
+            Graphs = -362,    // CTree<long,bool> Graph
             GraphTypes = -186; // CTree<long,bool> Graph
         internal CTree<long,bool> graphs =>
-            (CTree<long, bool>)(mem[_Graphs] ?? CTree<long, bool>.Empty);
+            (CTree<long, bool>)(mem[Graphs] ?? CTree<long, bool>.Empty);
         internal CTree<long, bool> graphTypes =>
             (CTree<long, bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
+        internal long defaultGraphType => (long)(mem[DefaultGraphType] ?? -1L);
+        internal long defaultGraph => (long)(mem[DefaultGraph] ?? -1L);
         internal string directoryPath => 
             (string)(mem[GraphType.Iri] ?? "");
         internal static Schema Empty = new(); 
@@ -1657,7 +1623,11 @@ namespace Pyrrho.Level5
         { }
         public Schema (PSchema ps,Context cx)
             :base(ps.ppos,_Mem(cx,ps))
-        { }
+        {
+            cx.db += (Database.Catalog, cx.db.catalog + (ps.name, ps.ppos));
+            cx.db += this;
+            cx.schema = this;
+        }
         public Schema(long dp, BTree<long, object> m) : base(dp, m)
         {  }
         public Schema(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
@@ -1665,8 +1635,8 @@ namespace Pyrrho.Level5
         static BTree<long,object> _Mem(Context cx,PSchema ps)
         {
             var r = BTree<long, object>.Empty;
-            r += (GraphType.Iri, ps.directoryPath);
-            var oi = new ObInfo(ps.directoryPath, Grant.AllPrivileges);
+            r += (GraphType.Iri, ps.name);
+            var oi = new ObInfo(ps.name, Grant.AllPrivileges);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
             return r;
         }
@@ -1677,6 +1647,10 @@ namespace Pyrrho.Level5
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new Schema(dp, m);
+        }
+        internal override string NameFor(Context cx)
+        {
+            return directoryPath;
         }
         public override string ToString()
         {

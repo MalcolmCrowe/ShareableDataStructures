@@ -45,7 +45,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string? label => (string?)mem[Label];
         internal Domain valueType => (Domain)(mem[ValueType] ?? Domain.Null);
-        internal long graph => (long)(mem[UseGraph]??-1L);
+        internal string graph => (string)(mem[UseGraph]??"/");
         internal string create => (string)(mem[Source] ?? "");
         internal long worker => (long)(mem[Worker] ?? -1L);
         public static Executable Empty = new EmptyStatement(0);
@@ -74,17 +74,22 @@ namespace Pyrrho.Level3
         }
        internal Context Obey(Context cx)
         {
-            if (cx._Ob(graph) is GraphType g)
-                cx.graph = g;
+            var oc = cx;
+            if (graph != "")
+                cx = new Context(cx);
+            cx.CatalogPath(graph);
             if (cx is Activation ax)
-                return _Obey(ax);
+                cx = _Obey(ax);
             else
             {
                 var a = new LabelledActivation(cx,"");
                 var r = _Obey(a);
-                cx = a.SlideDown();
-                return r;
+                cx = a.SlideDown(); //??
+                cx = r;
             }
+            if (graph != "")
+                cx = cx.SlideDown();
+            return cx;
         }
         /// <summary>
         /// _Obey the Executable for the given Activation.
@@ -3841,7 +3846,7 @@ namespace Pyrrho.Level3
             InsCols = -241, // Domain
             ForNode = -149, // long GqlNode
             Value = -156; // long RowSet
-        internal long source => (long)(mem[RowSet._Source] ?? -1L);
+        internal new long source => (long)(mem[RowSet._Source] ?? -1L);
         public long value => (long)(mem[Value] ?? -1L);
         internal long forNode => (long) (mem[ForNode] ?? -1L);
         public Domain insCols => (Domain)(mem[InsCols]??Domain.Row); // tablecolumns (should be specified)
@@ -4041,7 +4046,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             Action = -146; // PIndex.ConstraintType
-        internal long source => (long)(mem[RowSet._Source] ?? -1L);
+        internal new long source => (long)(mem[RowSet._Source] ?? -1L);
         internal PIndex.ConstraintType action => (PIndex.ConstraintType)(mem[Action] ?? PIndex.ConstraintType.NoType);
  //       internal bool detach => mem.Contains(Index.IndexConstraint);
         /// <summary>
@@ -4221,6 +4226,123 @@ namespace Pyrrho.Level3
             return new UpdateSearch(dp, m);
         }
     }
+    internal class SchemaStatement : Executable
+    {
+        internal ExplicitRowSet ers;
+        internal QlValue q1;
+        internal QlValue q2;
+        internal long pos = 0;
+        internal SchemaStatement(long dp, Context cx, BTree<long, object>? m = null)
+            : base(dp, m)
+        {
+            var n = new Ident("NAME", cx.GetUid());
+            var v = new Ident("JSON", cx.GetUid());
+            q1 = (QlValue)cx.Add(new QlValue(n, new BList<Ident>(n), cx, Domain.Char));
+            q2 = (QlValue)cx.Add(new QlValue(v, new BList<Ident>(v), cx, Domain.Char));
+            var d = new Domain(Qlx.TABLE, cx, new BList<DBObject>(q1)+ q2);
+            ers = (ExplicitRowSet)cx.Add(new ExplicitRowSet(0L,cx.GetUid(),cx,d,BList<(long,TRow)>.Empty));
+        }
+        TRow _Row(Table tb,Context cx)
+        {
+            var sb = new StringBuilder();
+            tb.SchemaJson(cx, sb);
+            return new TRow(ers, new TChar(tb.NameFor(cx)), new TChar(sb.ToString()));
+        }
+        public override Context _Obey(Context cx)
+        {
+            var tb = cx._Ob(ers.target) as Table;
+            if (tb is not null)
+                ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++, _Row(tb, cx)));
+            else if (mem[MatchStatement.MatchList] is BList<GqlNode> ns)
+            {
+                var done = CTree<Domain, bool>.Empty;
+                for (var b = ns.First(); b != null; b = b.Next())
+                    if (b.value().domain is Table nt && !done.Contains(nt))
+                    {
+                        done += (nt, true);
+                        ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++, _Row(nt, cx)));
+                    }
+            }
+            else
+            {
+                var sb = new StringBuilder('[');
+                var cc = "\r\n";
+                for (var c = cx.db.catalog.First(); c != null; c = c.Next())
+                {
+                    if (cx.db.objects[c.value()] is not DBObject ob) continue;
+                    if (ob is GraphType tg)
+                    {
+                        sb.Append(cc); cc = ",\r\n";
+                        sb.Append("GraphType: { ");
+                        sb.Append("Iri : "); sb.Append(tg.iri); 
+                        var st = new StringBuilder();
+                        var cm = "\r\n\tTables: [\r\n";
+                        for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                            if (cx.db.objects[b.value()] is Table t && t is not NodeType && t.defpos > 0)
+                            {
+                                st.Append(cm); cm = ",\r\n";
+                                t.SchemaJson(cx, st, 2);
+                            }
+                        if (st.Length > 0)
+                            st.Append(']');
+                        var sn = new StringBuilder();
+                        cm = "\r\n\tNodes: [\r\n";
+                        for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
+                            if (cx.db.objects[b.value()] is NodeType t && t is not EdgeType && t.defpos > 0)
+                            {
+                                sn.Append(cm); cm = ",\r\n";
+                                t.SchemaJson(cx, sn, 2);
+                            }
+                        if (sn.Length > 0)
+                            sn.Append(']');
+                        var se = new StringBuilder();
+                        cm = "\r\n\tEdges: [\r\n";
+                        for (var b = cx.role.edgeTypes.First(); b != null; b = b.Next())
+                            if (cx.db.objects[b.value()] is EdgeType t && t.defpos > 0)
+                            {
+                                se.Append(cm); cm = ",\r\n";
+                                t.SchemaJson(cx, se, 2);
+                            }
+                        if (se.Length > 0)
+                            se.Append(']');
+                        if (st.Length + sn.Length + se.Length > 0)
+                            sb.Append(',');
+                        sb.Append(st);
+                        if (st.Length > 0 && sn.Length + se.Length > 0)
+                            sb.Append(',');
+                        sb.Append(sn);
+                        if (sn.Length > 0 && se.Length > 0)
+                            sb.Append(',');
+                        sb.Append(se);
+                        sb.Append('}');
+                    }
+                    else if (ob is Schema sc)
+                    {
+                        sb.Append(cc); cc = ",\r\n";
+                        sb.Append("Schema: { ");
+                        sb.Append("Iri : "); sb.Append(sc.directoryPath); sb.Append('}');
+                    } else if (ob is Graph g)
+                    {
+                        sb.Append(cc); cc = ",\r\n";
+                        sb.Append("Graph: { "); 
+                        sb.Append("Name: "); sb.Append(name);
+                        sb.Append(" Nodes: ");
+                        var cm = '[';
+                        for (var b = g.nodes.First(); b != null; b = b.Next())
+                        {
+                            sb.Append(cm); cm = ','; sb.Append(Uid(b.key()));
+                        }
+                        sb.Append(']');
+                    }
+                }
+                sb.Append("]\r\n");
+                ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
+                        new TRow(ers, new TChar(cx.db.name), new TChar(sb.ToString()))));
+            }
+            cx.result = ers;
+            return cx;
+        }
+    }
     internal class GraphInsertStatement : Executable
     {
         internal const long
@@ -4388,14 +4510,14 @@ namespace Pyrrho.Level3
             return cx;
 
         }
-        internal CTree<long,bool> GraphTypes(Context cx)
+        internal CTree<string,long> GraphTypes(Context cx)
         {
-            var r = CTree<long, bool>.Empty;
+            var r = CTree<string, long>.Empty;
             for (var b = graphExps.First(); b != null; b = b.Next())
                 if (b.value() is ObTree nl)
                     for (var c = nl.First(); c != null; c = c.Next())
                         if (c.value() is GqlNode sn)
-                            r += (sn.domain.defpos, true);
+                            r += (sn.domain.NameFor(cx), sn.domain.defpos);
             return r;
         }
 /*        /// <summary>
@@ -4836,7 +4958,7 @@ namespace Pyrrho.Level3
                     cx.undefined -= sr.defpos;
                     cx.Replace(sr, v);
                 }
-            // Graph expression and Database agree on the set of NodeType and EdgeTypes
+            // Graph expression and Database agree on the set of NodeType and EdgeTypeNames
             // Traverse the given graphs, binding as we go
             var ac = new LabelledActivation(cx, "Match")
                 {

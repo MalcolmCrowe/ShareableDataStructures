@@ -160,7 +160,8 @@ namespace Pyrrho.Level3
             RefTypes = -275, // CTree<Domain,long> referenced domain, reference
             Role = -285, // Role: the current role (e.g. an executable's definer)
             Roles = -60, // CTree<string,long>
-            _Schema = -291, // long: the owner role for the database
+            OwnerRole = -291, // long: the owner role for the database
+            Schemas = -290, // CTree<long,bool> Schema
             Suffixes = -376, // CTree<string,long> UDT
             Types = -61, // CTree<Domain,long> for system types and unnamed structured types
             UnlabelledNodeTypes = -237, // CTree<TMetadata,long> Unlabelled NodeType and EdgeType by propertyset
@@ -181,7 +182,7 @@ namespace Pyrrho.Level3
         public CTree<string, long> users =>
             (CTree<string, long>)(mem[Users] ?? CTree<string, long>.Empty);
         // NB The following 8 entries have default values supplied by _system
-        internal Role schema => (Role)(mem[(long)(mem[_Schema]??-1L)] ?? throw new PEException("PE1003"));
+        internal Role ownerRole => (Role)(mem[(long)(mem[OwnerRole]??-1L)] ?? throw new PEException("PE1003"));
         internal Role guest => (Role)(mem[Guest]??throw new PEException("PE1003"));
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
@@ -222,7 +223,7 @@ namespace Pyrrho.Level3
             schemaRole = new Role("$Schema",--_uid,BTree<long, object>.Empty +
                     (User, su) +  (Owner, su.defpos));
             guestRole = new Role("GUEST", Guest, BTree<long, object>.Empty);
-            _system = new Database("System", su, schemaRole, guestRole)+(_Schema,schemaRole.defpos);
+            _system = new Database("System", su, schemaRole, guestRole)+(OwnerRole,schemaRole.defpos);
             Domain.Kludge();
             SystemRowSet.Kludge();
         }
@@ -402,7 +403,7 @@ namespace Pyrrho.Level3
                     {
                         var sysdb = _system ?? throw new PEException("PE1009");
                         u = sysdb.user ?? throw new PEException("PE855");
-                        ro = schema // allow the server account use the rowType role
+                        ro = ownerRole // allow the server account use the rowType role
                             ?? throw new PEException("PE856");
                     }
                     else // 2bii deny access
@@ -419,13 +420,13 @@ namespace Pyrrho.Level3
                 if (ro.infos[guest.defpos] is ObInfo oi
                     && oi.priv.HasFlag(Grant.Privilege.UseRole)) // 3b public role
                     goto done;
-                if (u is not null && owner == u.defpos && ro == schema) // 3ci1
+                if (u is not null && owner == u.defpos && ro == ownerRole) // 3ci1
                     goto done;
                 throw new DBException("42105").Add(Qlx.USER);
             }
             // 4. No specific role requested
             if (u.defpos == owner)
-                ro = schema; // 4ai
+                ro = ownerRole; // 4ai
             else if (u.defpos >= 0 && u.defpos < Transaction.TransPos)
             {
                 // 4aii See if the use can access just one role 

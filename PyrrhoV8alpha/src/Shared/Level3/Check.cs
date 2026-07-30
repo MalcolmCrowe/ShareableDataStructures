@@ -117,8 +117,6 @@ namespace Pyrrho.Level3
                         ro += (Role.NodeTypes, ro.nodeTypes - oi.name);
                     if (ro.edgeTypes[oi.name] == checkobjpos)
                         ro += (Role.EdgeTypes, ro.edgeTypes - oi.name);
-                    if (ro.graphs[oi.name] == checkobjpos)
-                        ro += (Role.Graphs, ro.graphs - oi.name);
                     nd += ro;
                 }
             return base.Drop(d, nd);

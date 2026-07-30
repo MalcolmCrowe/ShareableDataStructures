@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.IO.IsolatedStorage;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
@@ -595,8 +596,6 @@ namespace Pyrrho.Level3
                         ro += (Role.NodeTypes, ro.nodeTypes - oi.name);
                     if (ro.edgeTypes[oi.name] == defpos)
                         ro += (Role.EdgeTypes, ro.edgeTypes - oi.name);
-                    if (ro.graphs[oi.name] == defpos)
-                        ro += (Role.Graphs, ro.graphs - oi.name);
                     nd += ro;
                 }
             return base.Drop(d, nd);
@@ -933,7 +932,7 @@ namespace Pyrrho.Level3
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind == Qlx.Null || cx.db.user is not User ud)
                 throw new DBException("42105").Add(Qlx.ROLE);
-            sb.Append('{');// sb.Append("{Table:'");sb.Append(NameFor(cx)); sb.Append('\'');
+            sb.Append("{ \t"); sb.Append(NameFor(cx)); sb.Append(": {\r\n");
             var cm = "";
             if (super.Count > 0)
             {
@@ -967,7 +966,148 @@ namespace Pyrrho.Level3
                 sb.Append("Display:"); sb.Append(display); 
             }
             infos[cx.role.defpos]?.metadata.JsonSchema(cx, sb);
+            if (model.Count>0L)
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append("Model:");
+                var cn = '[';
+                for (var b = model.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cn); cn = ',';
+                    sb.Append(b.key()); sb.Append(':');
+                    var co = '[';
+                    for (var c=b.value().First(); c != null; c=c.Next())
+                    {
+                        sb.Append(co); co = ',';
+                        sb.Append(c.key());  sb.Append(':');
+                        sb.Append(cx.NameFor(c.value()));
+                    }
+                    sb.Append(']');
+                }
+                sb.Append(']');
+            }
             sb.Append("}");
+        }
+        /// <summary>
+        /// Special version for the TypedGraph Model
+        /// Leave the final line without \r\n
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="sb"></param>
+        /// <param name="tabs"></param>
+        internal void SchemaJson(Context cx, StringBuilder sb, int tabs)
+        {
+            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
+                || kind == Qlx.Null || cx.db.user is not User)
+                throw new DBException("42105").Add(Qlx.ROLE);
+            sb.Append(new string('\t', tabs)); sb.Append(NameFor(cx)); sb.Append(": {");
+            var cm = "";
+            if (super.Count > 0)
+            {
+                cm = ", ";
+                sb.Append("Under: [");
+                var cn = "";
+                for (var b = super.First(); b != null; b = b.Next())
+                    if (b.key().NameFor(cx) is string nm && nm != "")
+                    {
+                        sb.Append(cn); cn = ", ";
+                        sb.Append(nm);
+                    }
+                sb.Append(']');
+            }
+            if (rowType.Count > 0)
+            {
+                var sd = new StringBuilder(); // dataType section
+                var marg = 8 * tabs + 1;
+                // computing the rowtype block: a sequence of lines sl
+                var sl = new StringBuilder(new string('\t',tabs+2));
+                var sl0 = sl.Length;
+                // each containing several columns si + its metadata sm
+                var cn = "";
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long bp && cx.db.objects[bp] is TableColumn tc
+                        && tc.infos[cx.role.defpos] is ObInfo ci
+                        && !mi.model.Contains(tc.NameFor(cx)))
+                    {
+                        sl.Append(cn); cn = ", ";
+                        var si = new StringBuilder();
+                        si.Append(tc.NameFor(cx));
+                        si.Append(": ");
+                        var sm = new StringBuilder();
+                        ci.metadata.JsonSchema(cx, sm);
+                        tc.domain.FieldJson(cx, si, sm);
+                        if (marg+si.Length+sm.Length+sl.Length>100)
+                        {
+                            sd.Append(sl);
+                            sd.Append("\r\n");
+                            sl = new StringBuilder(new string('\t', tabs + 2));
+                            sl0 = sl.Length;
+                        }
+                        sl.Append(si);
+                        if (sm.Length > 0)
+                        { sl.Append(' '); sl.Append(sm); }
+                    }
+                if (sl.Length > sl0)
+                    sd.Append(sl);
+                if (sd.Length > 0)
+                {
+                    sb.Append(cm); cm = ", ";
+                    sb.Append("dataType: [\r\n");
+                    sb.Append(sd);
+                    sb.Append("]");
+                }
+                cn = "";
+                var st = new StringBuilder(); // tail
+                for (var b=rowType.First();b!=null;b=b.Next())
+                    if (b.value() is long bp && cx.db.objects[bp] is TableColumn tc
+                        && tc.NameFor(cx).StartsWith("FROM")
+                        && tc.domain.elType is Domain rt
+                        && tc.infos[cx.role.defpos] is ObInfo ci)
+                    {
+                        st.Append("from: { node: "); st.Append(rt.NameFor(cx)); st.Append(',');
+                        st.Append(" min: "); st.Append(Mult(ci.metadata,Qlx.MINVALUE,"0"));st.Append(',');
+                        st.Append(" max: "); st.Append(Mult(ci.metadata,Qlx.MAXVALUE,"*")); st.Append('}');
+                    }
+                var sw = new StringBuilder(); // with
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long bp && cx.db.objects[bp] is TableColumn tc
+                        && tc.NameFor(cx).StartsWith("WITH")
+                        && tc.domain.elType is Domain rt
+                        && tc.infos[cx.role.defpos] is ObInfo ci)
+                    {
+                        sw.Append("with: { node: "); sw.Append(rt.NameFor(cx)); sw.Append(',');
+                        sw.Append(" min: "); sw.Append(Mult(ci.metadata, Qlx.MINVALUE, "0")); sw.Append(',');
+                        sw.Append(" max: "); sw.Append(Mult(ci.metadata, Qlx.MAXVALUE, "*")); sw.Append('}');
+                    }
+                var sh = new StringBuilder(); // head
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long bp && cx.db.objects[bp] is TableColumn tc
+                        && tc.NameFor(cx).StartsWith("TO")
+                        && tc.domain.elType is Domain rt
+                        && tc.infos[cx.role.defpos] is ObInfo ci)
+                    {
+                        sh.Append("to: { node: "); sh.Append(rt.NameFor(cx)); sh.Append(',');
+                        sh.Append(" min: "); sh.Append(Mult(ci.metadata,Qlx.MINVALUE,"0")); sh.Append(',');
+                        sh.Append(" max: "); sh.Append(Mult(ci.metadata,Qlx.MAXVALUE,"*")); sh.Append('}');
+                    }
+                if (sd.Length > 0 && st.Length > 0)
+                { sb.Append(",\r\n"); sb.Append(new string('\t', tabs + 1)); }
+                sb.Append(st);
+                if (sd.Length+st.Length>0 && sw.Length> 0)
+                { sb.Append(",\r\n"); sb.Append(new string('\t', tabs + 1)); }
+                sb.Append(sw);
+                if (sd.Length+st.Length + sw.Length>0 && sh.Length>0)
+                { sb.Append(",\r\n"); sb.Append(new string('\t', tabs + 1)); }
+                sb.Append(sh);
+            }
+            sb.Append('}');
+        }
+        string Mult(TMetadata m,Qlx q,string d)
+        {
+            if (q == Qlx.MAXVALUE && m[q] is TInt tm && tm.ToInt() == 0)
+                return "*";
+            if (m[q] is TInt ti) return ti.ToString();
+            return d;
         }
         /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
@@ -1100,11 +1240,15 @@ namespace Pyrrho.Level3
             cx.db += r;
             var md = oi.metadata;
             if (md.Contains(Qlx.NODETYPE))
+            {
                 ro += (Role.NodeTypes, ro.nodeTypes + (NameFor(cx), defpos));
+                r = new NodeType(r.defpos, r.mem + (Kind,Qlx.NODETYPE));
+            }
             if (md.Contains(Qlx.EDGETYPE))
+            {
                 ro += (Role.EdgeTypes, ro.edgeTypes + (NameFor(cx), defpos));
-            if (md.Contains(Qlx.GRAPH))
-                ro += (Role.Graphs, ro.graphs + (NameFor(cx), defpos));
+                r = new EdgeType(r.defpos, r.mem + (Kind,Qlx.EDGETYPE));
+            }
             cx.db += ro;
             cx.db += (Database.Role, ro);
             return r;
@@ -1553,8 +1697,6 @@ namespace Pyrrho.Level3
                 ro += (Role.NodeTypes, ro.nodeTypes + (ut.NameFor(cx), ut.defpos));
             if (md.Contains(Qlx.EDGETYPE))
                 ro += (Role.EdgeTypes, ro.edgeTypes + (ut.NameFor(cx), ut.defpos));
-            if (md.Contains(Qlx.GRAPH))
-                ro += (Role.Graphs, ro.graphs + (ut.NameFor(cx), ut.defpos));
             cx.db = cx.db + ut + ro;
             return ut;
         }
@@ -1817,7 +1959,6 @@ namespace Pyrrho.Level3
                     ts -= bc;
             ts += cc;
             ti += (ObInfo._Metadata, ti.metadata + (Qlx.REFERENCES, ts));
-            ti += (ObInfo.Model, cm);
             var r = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ti)));
              // do not change the representation! metadata cannot change structure
             cx.db += r;

@@ -6944,7 +6944,7 @@ namespace Pyrrho.Level4
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is GraphType g)
-                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        for (var c = g.elTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is Table e)
                             {
@@ -6953,14 +6953,14 @@ namespace Pyrrho.Level4
                                     return rb;
                             }
                         }
-                    else if (b.value() is GraphType gt)
+                    else if (b.value() is Table gt)
                         for (var c = gt.constraints.First(); c != null; c = c.Next())
                             if (cx._Ob(c.key()) is Table e)
                             {
                                 var rb = new RoleGraphEdgeTypeBookmark(cx, res, 0, b, c, gt, e);
                                 if (rb.Match(res) && Eval(res.where, cx))
                                     return rb;
-                            }
+                            } 
                     return null;
             }
             protected override Cursor? _Next(Context cx)
@@ -6982,15 +6982,15 @@ namespace Pyrrho.Level4
                         if (obmk.value() is GraphType g1)
                         {
                             g = g1;
-                            bmk = g1.graphTypes.First();
+                            bmk = g1.elTypes.First();
                             break;
                         }
-                        else if (obmk.value() is GraphType gt)
+                      else if (obmk.value() is Table gt)
                         {
                             g = gt;
                             bmk = gt.constraints.First();
                             break;
-                        }
+                        } 
                     }
                 }
                 return null;
@@ -7150,8 +7150,8 @@ namespace Pyrrho.Level4
             internal static RoleGraphLabelBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is GraphType g)
-                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                    if (cx.db.objects[b.key()] is GraphType g)
+                        for (var c = g.elTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is Table e && e.infos[e.definer]?.metadata[Qlx.LABELS] is TSet ls)
                                 for (var d = ls.First(); d != null; d = d.Next())
@@ -7161,17 +7161,19 @@ namespace Pyrrho.Level4
                                         return rb;
                                 }
                         }
-                /*      else if (b.value() is GraphType gt)
+                     else if (cx.db.objects[b.key()] is Table gt)
                           for (var c = gt.constraints.First(); c != null; c = c.Next())
                           {
-                              if (cx._Ob(c.key().defpos) is UDType e && e.metadata[Qlx.LABELS] is TSet ls)
+                              if (cx._Ob(c.key()) is UDType e 
+                                && e.infos[cx.role.defpos] is ObInfo ei
+                                && ei.metadata[Qlx.LABELS] is TSet ls)
                                   for (var d = ls.First(); d != null; d = d.Next())
                                   {
                                       var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, d.Value());
                                       if (rb.Match(res) && Eval(res.where, cx))
                                           return rb;
                                   }
-                          } */
+                          } 
                 return null;
             }
             protected override Cursor? _Next(Context cx)
@@ -7202,15 +7204,15 @@ namespace Pyrrho.Level4
                         if (obmk.value() is GraphType g1)
                         {
                             g = g1;
-                            mbmk = g1.graphTypes.First();
+                            mbmk = g1.elTypes.First();
                             break;
                         }
-                   /*     else if (obmk.value() is GraphType gt)
+                        else if (obmk.value() is GraphType gt)
                         {
                             g = gt;
                             mbmk = gt.constraints.First();
                             break; 
-                        } */
+                        } 
                     }
                     next:;
                 }
@@ -7253,7 +7255,7 @@ namespace Pyrrho.Level4
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is GraphType g)
-                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        for (var c = g.elTypes.First(); c != null; c = c.Next())
                             if (cx._Ob(c.key()) is Table e && e.kind!=Qlx.EDGETYPE)
                             {
                                 var rb = new RoleGraphNodeTypeBookmark(cx, res, 0, b, c, g, e);
@@ -7280,7 +7282,7 @@ namespace Pyrrho.Level4
                         if (obmk.value() is GraphType g1)
                         {
                             g = g1;
-                            bmk = g.graphTypes.First();
+                            bmk = g.elTypes.First();
                             break;
                         }
                 }
@@ -7306,8 +7308,8 @@ namespace Pyrrho.Level4
         {
             var t = new SystemTable("Role$GraphProperty");
             t += new SystemTableColumn(t, "Pos", Char, 1);
-            t += new SystemTableColumn(t, "GraphorGraphType", Char, 0);
-            t += new SystemTableColumn(t, "NodeorEdgeType", Char, 0);
+            t += new SystemTableColumn(t, "GraphType", Char, 0);
+            t += new SystemTableColumn(t, "ElementType", Char, 0);
             t += new SystemTableColumn(t, "Name", Char, 0);
             t += new SystemTableColumn(t, "ValueType", Char, 0);
             t.Add();
@@ -7326,7 +7328,7 @@ namespace Pyrrho.Level4
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is GraphType g)
-                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        for (var c = g.elTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is Table e)
                                 for (var d = e.rowType.First(); d != null; d = d.Next())
@@ -7337,10 +7339,10 @@ namespace Pyrrho.Level4
                                             return rb;
                                     }
                         }
-                /*         else if (b.value() is GraphType gt)
+                         else if (b.value() is GraphType gt)
                              for (var c = gt.constraints.First(); c != null; c = c.Next())
                              {
-                                 if (cx._Ob(c.key().defpos) is Table e)
+                                 if (cx._Ob(c.key()) is Table e)
                                      for (var d = e.rowType.First(); d != null; d = d.Next())
                                          if (cx._Ob(d.value()) is TableColumn tc)
                                          {
@@ -7348,7 +7350,7 @@ namespace Pyrrho.Level4
                                              if (rb.Match(res) && Eval(res.where, cx))
                                                  return rb;
                                          }
-                             } */
+                             } 
                 return null;
             }
             protected override Cursor? _Next(Context cx)
@@ -7379,15 +7381,15 @@ namespace Pyrrho.Level4
                         if (obmk.value() is GraphType g1)
                         {
                             g = g1;
-                            mbmk = g1.graphTypes.First();
+                            mbmk = g1.elTypes.First();
                             break;
                         }
-                        else if (obmk.value() is GraphType gt)
+                        else if (obmk.value() is Table gt)
                         {
                             g = gt;
                             mbmk = gt.constraints.First();
                             break;
-                        }
+                        } 
                     }
                 next:;
                 }

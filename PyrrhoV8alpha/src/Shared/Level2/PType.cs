@@ -202,13 +202,13 @@ namespace Pyrrho.Level2
                 case Qlx.NODETYPE:
                     metadata = new TMetadata(new CTree<Qlx, TypedValue>(Qlx.NODETYPE, new TChar("NODETYPE")));
                     metastring = "NODETYPE";
-                    dataType = (UDType)rdr.context.Add(new UDType(defpos, m));
+                    dataType = (UDType)rdr.context.Add(new NodeType(defpos, m));
                     dataType += (DBObject.Infos,dataType.infos+(rdr.context.role.defpos, oi));
                     break;
                 case Qlx.EDGETYPE:
                     metadata = new TMetadata(new CTree<Qlx, TypedValue>(Qlx.EDGETYPE, new TChar("EDGETYPE")));
                     metastring = "EDGETYPE";
-                    dataType = (UDType)rdr.context.Add(new UDType(defpos, m));
+                    dataType = (UDType)rdr.context.Add(new EdgeType(defpos, m));
                     dataType += (DBObject.Infos,dataType.infos+(rdr.context.role.defpos, oi));
                     break;
                 default:
@@ -418,8 +418,6 @@ namespace Pyrrho.Level2
                ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
            if (oi.metadata.Contains(Qlx.EDGETYPE))
                ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
-           if (oi.metadata.Contains(Qlx.GRAPH))
-               ro += (Role.Graphs, ro.graphs + (name, defpos)); 
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + ro + dataType;

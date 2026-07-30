@@ -176,7 +176,7 @@ namespace Pyrrho.Level2
                 var g = new Graph(this,cx,0L);
                 cx.db += g;
                 var ro = cx.role;
-                ro += (Role.Graphs, ro.graphs + (name, ppos));
+                ro += (Role.GraphNames, ro.graphs + (name, ppos));
                 cx.db += g;
                 cx.db += ro;
                 cx.db += (Database.Role, ro);
@@ -212,13 +212,12 @@ namespace Pyrrho.Level2
                 return sb.ToString();
             }
         } */
-    internal class PGraphType : Physical
+    internal class PGraphType : Defined
     {
         public string iri = "";
-        public string name = ""; // final component of iri, set in Graph constructor
-        public CTree<long, bool> types = CTree<long, bool>.Empty;
-        public PGraphType(long pp,  string s, CTree<long, bool> ts, Database d)
-            : base(Type.PGraphType, pp, d)
+        public CTree<string, long> types = CTree<string, long>.Empty;
+        public PGraphType(long pp,  string s, CTree<string,long> ts, Context cx)
+            : base(Type.PGraphType, pp, cx, s, Grant.Privilege.NoPrivilege)
         {
             iri = s;
             types = ts;
@@ -236,29 +235,21 @@ namespace Pyrrho.Level2
             iri = rdr.GetString();
             var ix = iri.LastIndexOf('/');
             if (ix >= 0)
-            {
                 name = iri[(ix + 1)..];
-                iri = iri[0..ix];
-            }
             var n = rdr.GetInt();
             for (var i = 0; i < n; i++)
-                types += (rdr.GetLong(), true);
+            {
+                var t = rdr.context.db.objects[rdr.GetLong()] as Table??throw new DBException("3D000");
+                types += (t.NameFor(rdr.context), t.defpos);
+            }
             base.Deserialise(rdr);
         }
         public override void Serialise(Writer wr)
         {
-            var nm = iri;
-            if (name != "")
-            {
-                if (!iri.EndsWith("/"))
-                    nm = iri + "/" + name;
-                else
-                    nm = iri + name;
-            }
-            wr.PutString(nm);
+            wr.PutString(iri);
             wr.PutInt((int)types.Count);
             for (var b = types.First(); b != null; b = b.Next())
-                wr.PutLong(b.key());
+                wr.PutLong(b.value());
             base.Serialise(wr);
         }
         public override long Dependent(Writer wr, Transaction tr)
@@ -274,17 +265,11 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var ns = CTree<long, TNode>.Empty;
-            var g = new GraphType(ppos,BTree<long,object>.Empty+ (GraphType.GraphTypes, types)
-                + (ObInfo.Name, iri + '/' + name));
+            var g = new GraphType(this,cx,0L);
             cx.db += g;
-            var ro = cx.role;
-            ro += (Role.Graphs, ro.graphs + (name, ppos));
             cx.db += g;
-            cx.db += ro;
-            cx.db += (Database.Role, ro);
-            cx.Add(ro);
             cx.Add(g);
-            cx.graph = g;
+            cx.graphType = g;
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -300,34 +285,144 @@ namespace Pyrrho.Level2
             var cm = " [";
             for (var b = types.First(); b!=null;b=b.Next())
             {
-                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.value()));
             }
             if (cm == ",")
                 sb.Append(']');
             return sb.ToString();
         }
     }
+    internal class PGraph : Defined
+    {
+        public PGraph(long pp, string s, Context cx) 
+            : base(Type.PSchema, pp, cx, s, Grant.Privilege.NoPrivilege)
+        {
+            name = s;
+        }
+        public PGraph(Reader rdr) : base(Type.PSchema, rdr)
+        { }
+        public PGraph(PGraph x, Writer wr) : base(x, wr)
+        { }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            return new PGraph(this, wr);
+        }
+
+        internal override Graph? Install(Context cx)
+        {
+            var g = new Graph(this, cx);
+            cx.db += g;
+            cx.Add(g);
+            return g;
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (name.StartsWith("http")) // do not commit
+                return (tr, this);
+            return base.Commit(wr, tr);
+        }
+        public override string ToString()
+        {
+            return "PSchema " + name;
+        }
+    }
+    internal class EditGraph : Physical
+    {
+        public long graph;
+        public long table;
+        public long node; // + or - 
+        public EditGraph(long pp,long g, long t, long n, Context cx)
+            :base(Type.EditGraph,pp,cx.db)
+        {
+            graph = g;
+            table = t;
+            node = n;
+        }
+        protected EditGraph(Type tp, Reader rdr) : base(tp, rdr)
+        {
+        }
+        protected EditGraph(EditGraph x, Writer wr) : base(x, wr)
+        {
+            graph = wr.cx.Fix(x.graph);
+            node = (x.node > 0) ? wr.cx.Fix(x.node) : -wr.cx.Fix(-x.node);
+        }
+        internal override DBObject? Install(Context cx)
+        {
+            if (cx.db.objects[graph] is Graph g && cx.db.objects[table] is Table t)
+            {
+                if (node > 0 && t.tableRows[node] is TableRow tr)
+                    g += (Graph.Nodes, g.nodes + (node, new TNode(cx,tr)));
+                else
+                    g += (Graph.Nodes, g.nodes - (-node));
+                cx.db += g;
+            }
+            return base.Install(cx);
+        }
+    }
+    /*
+    internal class PSchema : Defined
+    {
+        public PSchema(long pp, string s, Context cx) 
+            : base(Type.PSchema, pp, cx, s, Grant.Privilege.NoPrivilege)
+        {
+            name = s;
+        }
+        public PSchema(Reader rdr) : base(Type.PSchema, rdr)
+        { }
+        public PSchema(PSchema x, Writer wr) : base(x, wr)
+        { }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            return new PSchema(this, wr);
+        }
+
+        internal override DBObject? Install(Context cx)
+        {
+            var g = new Schema(this,cx);
+            var ro = cx.role;
+            ro += (Role.SchemaNames, ro.schemas + (name, ppos));
+            cx.db += g;
+            cx.db += ro;
+            cx.db += (Database.Role, ro);
+            cx.Add(ro);
+            cx.Add(g);
+            cx.ownerRole = g;
+            return g;
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (name.StartsWith("http")) // do not commit
+                return (tr, this);
+            return base.Commit(wr, tr);
+        }
+        public override string ToString()
+        {
+            return "PSchema "+name;
+        }
+    } */
     internal class PSchema : Physical
     {
-        public string directoryPath = ""; // may begin with http:// etc
+        public string name = ""; // may begin with http:// etc
         public PSchema(long pp, string s, Database d) : base(Type.PSchema, pp, d)
         {
-            directoryPath = s;
+            name = s;
         }
         public PSchema(Reader rdr) : base(Type.PSchema, rdr)
         { }
         public PSchema(PSchema x, Writer wr) : base(x, wr)
         {
-            directoryPath = x.directoryPath;
+            name = x.name;
         }
         public override void Deserialise(Reader rdr)
         {
-            directoryPath = rdr.GetString();
+            name = rdr.GetString();
             base.Deserialise(rdr);
         }
         public override void Serialise(Writer wr)
         {
-            wr.PutString(directoryPath);
+            wr.PutString(name);
             base.Serialise(wr);
         }
         public override long Dependent(Writer wr, Transaction tr)
@@ -342,26 +437,21 @@ namespace Pyrrho.Level2
 
         internal override DBObject? Install(Context cx)
         {
-            var g = new Schema(this,cx);
-            var ro = cx.role;
-            ro += (Role.Schemas, ro.schemas + (directoryPath, ppos));
+            var g = new Schema(this, cx);
             cx.db += g;
-            cx.db += ro;
-            cx.db += (Database.Role, ro);
-            cx.Add(ro);
             cx.Add(g);
             cx.schema = g;
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
-            if (directoryPath.StartsWith("http")) // do not commit
+            if (name.StartsWith("http")) // do not commit
                 return (tr, this);
             return base.Commit(wr, tr);
         }
         public override string ToString()
         {
-            return "PSchema "+directoryPath;
+            return "PSchema " + name;
         }
     }
 }

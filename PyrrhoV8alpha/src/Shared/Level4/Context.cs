@@ -86,8 +86,9 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, CTree<string, Qlx>>> model = CTree<long, CTree<long, CTree<string, Qlx>>>.Empty; // ad-hoc graph model
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
-        internal GraphType? graph = null; // current graph, set by USE
-        internal Schema? schema = null; // current schema, set by USE
+        internal Schema? schema = null; // current ownerRole, set by USE or CREATE
+        internal GraphType? graphType = null; // current graph type, set by USE or CREATE
+        internal Graph? graph = null; // current graph, set by USE or CREATE
         internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4, Yes = 5 };
         internal ParsingGQL parsingGQL = ParsingGQL.No;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
@@ -153,9 +154,9 @@ namespace Pyrrho.Level4
             cxid = db.lexeroffset;
             conn = cx.conn;
             if (conn.props["Schema"] is string sn)
-                cx.schema = cx._Ob(cx.role.schemas[sn]) as Schema;
+                cx.schema = cx._Ob(cx.db.catalog[sn]) as Schema;
             if (conn.props["Graph"] is string gn)
-                cx.graph = cx._Ob(cx.role.graphs[gn]) as GraphType;
+                cx.graphType = cx._Ob(cx.db.catalog[gn]) as GraphType;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
             toFix = cx.toFix;
@@ -185,8 +186,7 @@ namespace Pyrrho.Level4
             cursors = cx.cursors;
             val = cx.val;
             parent = cx.parent; // for triggers
-      //      if (cx.parse==ExecuteStatus.Detach)
-      //          parse = cx.parse;
+            CatalogPath(role.homeGraph);
             rdC = cx.rdC;
             rdS = cx.rdS;
             toFix = cx.toFix;
@@ -323,51 +323,43 @@ namespace Pyrrho.Level4
                     return true;
             return false;
         }
-            /*        /// <summary>.
-        /// If the selectdepth has changed it is unlikely to be the right identification,
-        /// so leave it to resolve later.
-        /// </summary>
-        /// <param name="lp"></param>
-        /// <param name="n"></param>
-        /// <param name="d"></param>
-        /// <returns></returns>
-        internal (DBObject?, Ident?) Lookup(long lp, Ident n, int d)
+        internal void CatalogPath(string ident)
         {
-            var (bc, _, sub) = defs[(n, d, BList<Iix>.Empty)]; // chain lookup
-            DBObject? rr, r = null;
-            Ident? cn = n;
-            for (var b = bc.First(); b != null; b = b.Next())
-            {
-                rr = r;
-                var ix = b.value();
-                if (_Ob(ix.dp) is DBObject ob)
-                {
-                    if (ix.sd < sD && (ob is SqlReview||
-                        (ob.GetType().Name=="QlValue" && parse!=ExecuteStatus.Graph)
-                            &&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
-                        return (null, n);
-                    (r, cn) = ob._Lookup(lp, this, n, n.sub, rr);
-                    if (r!=ob && (r is SqlField||(r is SqlValueExpr se && se.op==Qlx.DOT)))
-                    {
-                        if (cn is null)
-                        {
-                            undefined -= n.iix.dp;
-                            undefined -= lp;
-                        }
-                        break;
-                    }
-                    (r,cn) = ob._Lookup(lp, this, n, sub, rr);
-                    lp = GetUid();
-                    if (sub!=null)
-                        n = sub;
-                    continue;
-                }
-                if (ix.sd < sD) // an undefined identifier from a lower level
-                    return (null, n);
-            }
-            return (r,cn);
+            if (ident == "")
+                return;
+            var ss = ident.Split('/');
+            for (var i = 0; i < ss.Length; i++)
+                CatPath(ss[i]);
         }
-*/
+        /// <summary>
+        /// Process a component of the catalog path, and update the following:
+        /// cx.ownerRole, cx.graphType and cx.graph 
+        /// (note that any of these can be or be set to null) 
+        /// </summary>
+        /// <param name="n"></param>
+        private void CatPath(string n)
+        {
+            if (n == ".")
+                return;
+            if (n == "") // it's an absolute path: go to the top
+            { schema = null; graphType = null; graph = null; }
+            else if (n == "..")
+            {
+                if (graph != null)
+                    graph = null;
+                else if (graphType != null)
+                    graphType = null;
+                else
+                    schema = null;
+            }
+            else if (db.objects[db.catalog[n]] is Graph gn)
+            { graph = gn; schema = db.objects[gn.schema] as Schema; }
+            else if (db.objects[db.catalog[n]] is GraphType gt)
+            { graphType = gt; schema = db.objects[gt.schema] as Schema; }
+            else if (db.objects[db.catalog[n]] is Schema sc)
+            { schema = sc; graphType = db.objects[sc.defaultGraphType] as GraphType; 
+                graph = db.objects[sc.defaultGraph] as Graph;  }
+        }
         internal CTree<long, bool> Needs(CTree<long, bool> nd,
         RowSet rs, Domain dm)
         {
@@ -1573,7 +1565,7 @@ namespace Pyrrho.Level4
         /// Per-role DBObject metadata is kept in the cx.obs list and not transmitted to db.objects.
         /// Any updates to such details etc can only be committed via PMetadata physicals.
         /// PMetadata is string-based: the details for the definer are unpacked on PMetadata.Install
-        /// object infos updated for definer only when PMetadata and other schema-modifying physicals are Installed
+        /// object infos updated for definer only when PMetadata and other ownerRole-modifying physicals are Installed
         /// and a snapshot copied to (resp deleted from) another role when a Grant (resp Revoke) is Installed
         /// </summary>
         /// <param name="dp"></param>
@@ -1693,7 +1685,7 @@ namespace Pyrrho.Level4
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Replaced((long)v); break;
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
-                        case Schema._Graphs: v = ReplacedTlb((CTree<long,bool>)v); break;
+                        case Schema.Graphs: v = ReplacedTlb((CTree<long,bool>)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
                         case CompositeRowSet._Right: v = Replaced((long)v); break;
                         case QlValue.Right: v = Replaced((long)v); break;
@@ -1868,7 +1860,6 @@ namespace Pyrrho.Level4
                         case DocArrayRowSet.Docs: v = FixBQ((BList<QlValue>)v); break;
                         case GqlNode.DocValue: v = FixTsQ((CTree<string, QlValue>)v); break;
                         case DBObject._Domain: v = ((Domain)v).Fix(this); break;
-                        case Role.EdgeTypes: v = FixTsl((CTree<string, long>)v); break;
                         case Domain.Element: v = ((Domain)v).Fix(this); break;
                         case SqlValueSet.Elements: v = FixLl((CList<long>)v); break;
                         case ConditionalStatement.Else: v = (Executable)((Executable)v).Fix(this); break;
@@ -1881,8 +1872,7 @@ namespace Pyrrho.Level4
                         case SqlInsert.ForNode: v = Fix((long)v); break;
                         case DBObject._From: v = Fix((long)v); break;
                         case GraphInsertStatement.GraphExps: v = FixBO((BList<ObTree>)v); break;
-                        case Schema._Graphs: v = FixTlb((CTree<long, bool>)v); break;
-                        case GraphType.GraphTypes: v = FixTlb((CTree<long, bool>)v); break;
+                        case Schema.Graphs: v = FixTlb((CTree<long, bool>)v); break;
                         case RowSet.Group: v = Fix((long)v); break;
                         case RowSet.GroupCols: v = ((Domain)v).Fix(this); break;
                         case RowSet.Groupings: v = FixLl((CList<long>)v); break;
@@ -1984,7 +1974,6 @@ namespace Pyrrho.Level4
                         case RowSet.RSTargets: v = FixTll((CTree<long, long>)v); break;
                         case SqlDefaultConstructor.Sce: v = Fix((long)v); break;
                         case GraphType._Schema: v = Fix((long)v); break;
-                        case Role.Schemas: v = FixTsl((CTree<string, long>)v); break;
                         case ConditionalStatement.Search: v = Fix((long)v); break;
                         case ForSelectStatement.Sel: v = Fix((long)v); break;
                         case QuantifiedPredicate._Select: v = Fix((long)v); break;

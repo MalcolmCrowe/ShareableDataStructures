@@ -257,8 +257,6 @@ namespace Pyrrho.Level2
                     ro += (Role.NodeTypes, ro.nodeTypes + (domain.name, defpos));
                 if (di.metadata.Contains(Qlx.EDGETYPE)==true)
                     ro += (Role.EdgeTypes, ro.edgeTypes + (domain.name, defpos));
-                if (di.metadata.Contains(Qlx.GRAPH) == true)
-                    ro += (Role.Graphs, ro.graphs + (domain.name, defpos));
             }
             cx.Install(dt);
             cx.db += ro;

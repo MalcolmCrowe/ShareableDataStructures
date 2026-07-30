@@ -350,7 +350,7 @@ namespace Pyrrho.Level4
                             Next();
                             var sn = new Ident(this);
                             Mustbe(Qlx.Id);
-                            var sc = cx._Ob(cx.role.schemas[sn.ident]) as Schema
+                            var sc = cx._Ob(cx.db.catalog[sn.ident]) as Schema
                                 ?? throw new DBException("42107", sn.ident);
                             var sa = ParseStatement(m);
                             return (Executable)cx.Add(sa + (Executable.ValueType, sc));
@@ -456,6 +456,8 @@ namespace Pyrrho.Level4
                             cx.Add(e);
                         cx.exec = e;
                         return e;
+                    case Qlx.SCHEMA:
+                        return ParseSchemaStatement(m);
                     case Qlx.SELECT:
                         return ParseSelectStatement(m); // single TBD
                     case Qlx.SET:
@@ -479,12 +481,22 @@ namespace Pyrrho.Level4
                         {
                             Next();
                             var sn = new Ident(this);
-                            Mustbe(Qlx.Id);
-                            var gg = cx._Ob((sn.ident == "HOME_GRAPH") ? cx.role.home_graph
-                                : cx.role.graphs[sn.ident]) as GraphType
-                                ?? throw new DBException("42107", sn.ident);
+                            string ug = "/";
+                            if (Match(Qlx.HOME_SCHEMA))
+                            {
+                                Next();
+                                ug = cx.role.schema;
+                            } else if (Match(Qlx.HOME_GRAPH, Qlx.HOME_PROPERTY_GRAPH))
+                            {
+                                Next();
+                                ug = cx.role.homeGraph;
+                            } else
+                            {
+                                Mustbe(Qlx.Id);
+                                ug = sn.ident;
+                            }
                             var sa = ParseStatement(m+(DBObject._Domain, xp));
-                            return (Executable)cx.Add(sa + (Executable.UseGraph, gg));
+                            return (Executable)cx.Add(sa + (Executable.UseGraph, ug));
                         }
                     case Qlx.VALUE: goto case Qlx.BINDING;
                     case Qlx.VALUES: return ParseSelectStatement(m);
@@ -494,6 +506,28 @@ namespace Pyrrho.Level4
                     case Qlx.WITH: goto case Qlx.MATCH; // wow
                 }
             throw new DBException("42000");
+        }
+        private Executable ParseSchemaStatement(BTree<long, object> m)
+        {
+            Next();
+            if (Match(Qlx.LPAREN))
+            {
+                Next();
+                if (Match(Qlx.COLON))
+                {
+                    Next();
+                    var id = new Ident(this);
+                    Mustbe(Qlx.Id);
+                    if (cx.GetObject(id.ident) is Domain xp)
+                        m += (DBObject._Domain, xp);
+                }
+                else
+                {
+                    var (tgs, svgs) = ParseGraphPattern(m);
+                    m += (MatchStatement.MatchList, svgs);
+                }
+            }
+            return new SchemaStatement(cx.GetUid(),cx,m);
         }
 
         bool StartStatement()
@@ -1104,7 +1138,7 @@ namespace Pyrrho.Level4
             var cr = ParseCatalogReference();
             if (cr is null || cr == "")
                 throw new DBException("42000").Add(Qlx.CREATE_SCHEMA_STATEMENT,new TChar(cr??"??"));
-            if (cx.role.schemas.Contains(cr))
+            if (cx.db.catalog.Contains(cr))
             {
                 if (!ifnotexists)
                     throw new DBException("42104",cr.ToString()).Add(Qlx.CREATE_SCHEMA_STATEMENT, new TChar(cr ?? "??"));
@@ -1117,10 +1151,10 @@ namespace Pyrrho.Level4
             if (ifnotexists) { Next(); Mustbe(Qlx.NOT); Mustbe(Qlx.EXISTS); }
             var cr = ParseCatalogReference();
             var (sd,nm) = Schema(cr);
-            if (((sd==".")?Level5.Schema.Empty:cx._Ob(cx.role.schemas[sd])) is not Schema sc 
+            if (((sd==".")?Level5.Schema.Empty:cx._Ob(cx.db.catalog[sd])) is not Schema sc 
                 || nm is null || nm == "")
                 throw new DBException("42000", nm ?? "??").Add(Qlx.CREATE_GRAPH_STATEMENT, new TChar(nm ?? "??"));
-            if (cx.role.graphs.Contains(cr.ToString()))
+            if (cx.db.catalog.Contains(cr.ToString()))
             {
                 if (ifnotexists)
                     return;
@@ -1136,7 +1170,7 @@ namespace Pyrrho.Level4
                 if (!replace)
                     throw new DBException("42104", cr.ToString());
             }
-            var ts = CTree<long, bool>.Empty;
+            var ts = CTree<string, long>.Empty;
             var ns = CTree<long, TNode>.Empty;
             if (Match(Qlx.DOUBLECOLON, Qlx.TYPED))
                 Next();
@@ -1149,18 +1183,19 @@ namespace Pyrrho.Level4
             else if (tok == Qlx.LIKE)
             {
                 var op = cx.parse;
-                var cs = (GraphInsertStatement)ParseInsertGraph();
-                cs._Obey(cx);
-                ts = cs.GraphTypes(cx);
+                var cs = (MatchStatement)ParseMatchStatement(BTree<long,object>.Empty);
+                var cc = new Context(cx);
+                cs._Obey(cc);
+                // TBD now collect all the element types and nodes in cc.value and
+                // add them to the newly created graph.
                 cx.parse = op;
             } 
             else if (tok==Qlx.Id)
             {
                 var id = new Ident(this);
                 Mustbe(Qlx.Id);
-                if (cx._Ob(cx.role.graphs[id.ident]) is not GraphType g)
+                if (cx._Ob(cx.db.catalog[id.ident]) is not GraphType g)
                     throw new DBException("42107", id.ident);
-                ts = g.graphTypes;
             } else
             {
                 if (Match(Qlx.PROPERTY))
@@ -1168,11 +1203,13 @@ namespace Pyrrho.Level4
                 if (Match(Qlx.GRAPH))
                     Next();
                 Mustbe(Qlx.LBRACE);
-                ts += (ParseElementTypeSpec(ts),true);
+                var t = cx.db.objects[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+                ts += (t.NameFor(cx),t.defpos);
                 while (tok == Qlx.COMMA)
                 {
                     Next();
-                    ts += (ParseElementTypeSpec(ts), true);
+                    t = cx.db.objects[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+                    ts += (t.NameFor(cx), t.defpos);
                 }
                 Mustbe(Qlx.RBRACE);
             }
@@ -1182,7 +1219,7 @@ namespace Pyrrho.Level4
                 var cs = ParseInsertGraph();
             }
             if (cx.parse == ExecuteStatus.Obey)
-                cx.Add(new PGraphType(cx.db.nextPos, cr,ts, cx.db));
+                cx.Add(new PGraphType(cx.db.nextPos, cr,ts, cx));
         }
         void ParseCreateGraphType(bool replace = false)
         {
@@ -1190,10 +1227,10 @@ namespace Pyrrho.Level4
             if (ifnotexists) { Next(); Mustbe(Qlx.NOT); Mustbe(Qlx.EXISTS); }
             var cr = ParseCatalogReference();
             var (pr, nm) = Schema(cr);
-            if (cx._Ob(cx.role.schemas[pr]) is not Schema sc || nm is null || nm == "")
+            if (cx._Ob(cx.db.catalog[pr]) is not Schema sc || nm is null || nm == "")
                 throw new DBException("42107","Schema");
             var gt = cx._Ob(sc.names[nm].Item2) as GraphType;
-            var ts = CTree<long, bool>.Empty;
+            var ts = CTree<string, long>.Empty;
             if (gt is not null)
             {
                 if (ifnotexists)
@@ -1209,7 +1246,6 @@ namespace Pyrrho.Level4
                 var id = new Ident(this);
                 var og = cx._Ob(cx.db.catalog[id.ident]) as GraphType
                     ?? throw new DBException("42107", id.ident);
-                ts = og.constraints;
             }
             else if (tok == Qlx.LIKE)
             {
@@ -1222,16 +1258,18 @@ namespace Pyrrho.Level4
             else 
                 ts = ParseNestedGraphTypeSpecification(ts);
             if (cx.parse == ExecuteStatus.Obey)
-                cx.Add(new PGraphType(cx.db.nextPos, cr.ToString(), ts, cx.db));
+                cx.Add(new PGraphType(cx.db.nextPos, cr.ToString(), ts, cx));
         }
-        CTree<long,bool> ParseNestedGraphTypeSpecification(CTree<long,bool> ts)
+        CTree<string,long> ParseNestedGraphTypeSpecification(CTree<string,long> ts)
         {
             Mustbe(Qlx.LBRACE);
-            ts += (ParseElementTypeSpec(ts), true);
+            var t = cx.obs[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+            ts += (t.NameFor(cx),t.defpos);
             while (tok == Qlx.COMMA)
             {
                 Next();
-                ts += (ParseElementTypeSpec(ts), true);
+                t = cx.obs[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+                ts += (t.NameFor(cx), t.defpos);
             }
             Mustbe(Qlx.RBRACE);
             return ts;
@@ -1271,7 +1309,7 @@ namespace Pyrrho.Level4
         /// <param name="ts">Element types already declared</param>
         /// <returns>The defpos of the newly defined (possibly unnamed) element type</returns>
         /// <exception cref="DBException"></exception>
-        long ParseElementTypeSpec(CTree<long,bool> ts)
+        long ParseElementTypeSpec(CTree<string, long> ts)
         {
             var ab = tok;
             Table? r = null;
@@ -1494,7 +1532,7 @@ namespace Pyrrho.Level4
                     case Qlx.GRAPH:
                         if (Match(Qlx.DOUBLECOLON, Qlx.TYPED, Qlx.ANY, Qlx.BINDING, Qlx.GRAPH))
                         {
-                            var ts = CTree<long, bool>.Empty;
+                            var ts = CTree<string, long>.Empty;
                             if (Match(Qlx.DOUBLECOLON, Qlx.TYPED))
                                 Next();
                             if (tok == Qlx.ANY)
@@ -1527,7 +1565,7 @@ namespace Pyrrho.Level4
                     case Qlx.TABLE:
                         if (Match(Qlx.DOUBLECOLON, Qlx.TYPED, Qlx.BINDING, Qlx.TABLE))
                         {
-                            var ts = CTree<long, bool>.Empty;
+                            var ts = CTree<string, long>.Empty;
                             if (Match(Qlx.DOUBLECOLON, Qlx.TYPED))
                                 Next();
                             if (tok == Qlx.ANY)
@@ -3081,14 +3119,30 @@ namespace Pyrrho.Level4
                         supers += ((udm as UDType)
                             ?? (UDType)cx.Add(dt.New(udm.defpos, udm.mem + (DBObject._Domain, udm))), true);
                         cx.names += udm.names ?? Names.Empty;
+                        if (udm is EdgeType)
+                            kind = Qlx.EDGETYPE;
+                        if (udm is NodeType && kind != Qlx.EDGETYPE)
+                            kind = Qlx.NODETYPE;
                     }
                 }
-            var tb = (Table)cx.Add((kind == Qlx.TABLE) ? new Table(cx.NewObject(), m) : new UDType(cx.NewObject(), m));
+            m += (Domain.Kind, kind);
+            var tb = (Table)cx.Add(kind switch
+            {
+                Qlx.TABLE => new Table(cx.NewObject(), m),
+                Qlx.NODETYPE => new NodeType(cx.NewObject(), m),
+                Qlx.EDGETYPE => new EdgeType(cx.NewObject(), m),
+                _ => new UDType(cx.NewObject(), m)
+            });
             var ti = tb.infos[cx.role.defpos] ?? new ObInfo(typename.ident);
             if (cx.parse == ExecuteStatus.Obey || cx.parse == ExecuteStatus.Compile)
             {
-                Physical pt = (kind == Qlx.TABLE) ? new PTable(typename.ident, Domain.TableType, cx.db.nextPos, cx) :
-                                new PType2(typename.ident, dt, supers, -1L, cx.db.nextPos, cx);
+                Physical pt = kind switch
+                {
+                    Qlx.TABLE => new PTable(typename.ident, Domain.TableType, cx.db.nextPos, cx),
+                    Qlx.NODETYPE => new PNodeType(typename.ident, (NodeType)tb, supers, -1L, cx.db.nextPos, cx),
+                    Qlx.EDGETYPE => new PEdgeType(typename.ident, (EdgeType)tb, supers, -1L, cx.db.nextPos, cx),
+                    _ => new PType2(typename.ident, dt, supers, -1L, cx.db.nextPos, cx)
+                }; 
                 tb = (Table)(cx.Add(pt) ?? throw new DBException("42105").Add(Qlx.TABLE));
             }
             string si = "";
@@ -3459,7 +3513,7 @@ namespace Pyrrho.Level4
             var nst = cx.db.nextStmt;
             var name = new Ident(this);
             Mustbe(Qlx.Id);
-            if (cx.db.schema.dbobjects.Contains(name.ident) || cx.role.dbobjects.Contains(name.ident))
+            if (cx.db.ownerRole.dbobjects.Contains(name.ident) || cx.role.dbobjects.Contains(name.ident))
                 throw new DBException("42104", name);
             string si = "";
             TMetadata sm = TMetadata.Empty;
@@ -5687,7 +5741,7 @@ namespace Pyrrho.Level4
                     cx.anames += (b.key(), b.value());
             var ls = Executable.Empty;
             if (Match(Qlx.JSON)) throw new DBException("42000");
-            while (StartStatement() && !Match(Qlx.UNTIL))
+            while (StartStatement() && !Match(Qlx.UNTIL,Qlx.EOF))
             {
                 if (ParseStatement(m + (DBObject.Scope,lp)) is not Executable b)
                     throw new DBException("42161", "statement");

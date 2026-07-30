@@ -182,8 +182,6 @@ namespace Pyrrho.Level2
                     ro += (Role.NodeTypes, ro.nodeTypes - oi.name + (name, defpos));
                 if (oi.metadata.Contains(Qlx.EDGETYPE))
                     ro += (Role.EdgeTypes, ro.edgeTypes - oi.name + (name, defpos));
-                if (oi.metadata.Contains(Qlx.GRAPH))
-                    ro += (Role.Graphs, ro.graphs - oi.name + (name, defpos));
             }
             ob = (DBObject)ob.New(m);
             cx.db += ob;

@@ -125,7 +125,7 @@ namespace Pyrrho.Level2
 		{
 			nrecs = rdr.GetInt();
             var db = rdr.context.db;
-			ptrole = (Role)(db.objects[rdr.GetLong()]??db.schema);
+			ptrole = (Role)(db.objects[rdr.GetLong()]??db.ownerRole);
 			ptuser = (User?)db.objects[rdr.GetLong()];
 			pttime = rdr.GetLong();
 		}

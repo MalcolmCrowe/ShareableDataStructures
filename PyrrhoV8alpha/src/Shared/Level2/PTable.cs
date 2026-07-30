@@ -38,7 +38,7 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm,Domain d, long pp, Context cx)
+        public PTable(string nm, Domain d, long pp, Context cx)
             : this(Type.PTable, nm, d, pp, cx)
         { }
         /// <summary>
@@ -136,8 +136,6 @@ namespace Pyrrho.Level2
                     ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
                 if (oi.metadata.Contains(Qlx.EDGETYPE))
                     ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
-                if (oi.metadata.Contains(Qlx.GRAPH))
-                    ro += (Role.Graphs, ro.graphs + (name, defpos));
             }
             if (dataType.name!="")
                 dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else

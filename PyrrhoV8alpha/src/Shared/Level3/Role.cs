@@ -46,7 +46,7 @@ namespace Pyrrho.Level3
     /// in GqlNode._NodeType from CTree(long,bool) where long is an existing graph type, and in that case
     /// (i.e. if the name has &) we always get a NodeType, which, if we are expecting an Edge Type,
     /// will have the EdgeType we want as a subtype.
-    /// We need extra lookup tables for NodeTypes and EdgeTypes because it is legal in GQL to have ambiguous names.
+    /// We need extra lookup tables for NodeTypes and EdgeTypeNames because it is legal in GQL to have ambiguous names.
     /// For SQL purposes we can diambiguate where necessary with the defining position of a type as a numerical ID.
     /// Immutable
     /// 
@@ -56,11 +56,11 @@ namespace Pyrrho.Level3
         internal const long
             DBObjects = -248, // CTree<string,long> Domain/Table/View etc by name
             EdgeTypes = -128, // CTree<string,long>> Labelled EdgeType by name
-            Graphs = -357,    // CTree<string,long> Labelled Graph by name
-            NodeTypes = -115, // CTree<string,long> Labelled NodeType by name
-            PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names
+            HomeGraph = -474, // string preferred HomeGraph 
+            NodeTypes = -115, // CTree<string,long> Labelled NodeTypes by name
+            Properties = -243, // CTree<string,CTree<long,bool>> Domains by child names
             Procedures = -249, // CTree<string,CTree<CList<Domain>,long>> Procedure/Function by name and arity
-            Schemas = -356,    // CTree<string,long> Schemas by name
+            Schema = -350,     // string home Schema 
             UnlabelledNodeTypesInfo = -476, //CTree<CTree<string,bool>,long> NodeType by properties
             UnlabelledEdgeTypesInfo = -482; //CTree<CTree<string,bool>,long> EdgeType by properties
         internal CTree<string, long> dbobjects => 
@@ -82,15 +82,12 @@ namespace Pyrrho.Level3
             (CTree<CTree<string, bool>, long>)(mem[UnlabelledEdgeTypesInfo]
             ?? CTree<CTree<string, bool>, long>.Empty);
         internal CTree<string, CTree<long, bool>> propertyNames =>
-            (CTree<string, CTree<long, bool>>)(mem[PropertyNames] 
+            (CTree<string, CTree<long, bool>>)(mem[Properties] 
             ?? CTree<string, CTree<long, bool>>.Empty);
-        internal CTree<string, long> graphs =>
-            (CTree<string, long>)(mem[Graphs] ?? CTree<string, long>.Empty);
-        internal CTree<string, long> schemas =>
-            (CTree<string, long>)(mem[Schemas] ?? CTree<string, long>.Empty); 
+        internal string homeGraph => (string)(mem[HomeGraph] ?? "/");
+        internal string schema => (string)(mem[Schema] ?? "/");
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-        internal long home_graph => (long)(mem[Executable.UseGraph] ?? -1);
         /// <summary>
         /// Just to create the rowType and guest roles
         /// </summary>
@@ -107,11 +104,10 @@ namespace Pyrrho.Level3
         {
             if (db.role is not Role ro || db.guest is not Role gu)
                 throw new DBException("42105").Add(Qlx.USER);
-            return ((first ? ro : gu).mem ?? BTree<long, object>.Empty) + (LastChange, p.ppos) 
-                + (ObInfo.Name, p.name) + (Definer, p.definer) + (Infos,p.infos) + (Owner,p.owner)
-            + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
-            + (Procedures, first ? db.schema.procedures : db.guest.procedures)
-            + (Infos, p.infos);
+            return ((first ? ro : gu).mem ?? BTree<long, object>.Empty) + (LastChange, p.ppos)
+                + (ObInfo.Name, p.name) + (Definer, p.definer) + (Infos, p.infos) + (Owner, p.owner)
+            + (DBObjects, first ? db.ownerRole.dbobjects : db.guest.dbobjects)
+            + (Procedures, first ? db.ownerRole.procedures : db.guest.procedures);
         }
         public static Role operator+(Role r,(long,object)x)
         {
@@ -155,30 +151,6 @@ namespace Pyrrho.Level3
                     if (cn == ',') sb.Append(']');
                 }
                 if (cm == ';') sb.Append(')');
-            }
-            if (schemas.Count > 0)
-            {
-                sb.Append(" Schemas:");
-                cm = '(';
-                for (var b = schemas.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                    {
-                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
-                        sb.Append(Uid(p));
-                    }
-                if (cm == ',') sb.Append(')');
-            }
-            if (graphs.Count > 0)
-            {
-                sb.Append(" Graphs:");
-                cm = '(';
-                for (var b = graphs.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                    {
-                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
-                        sb.Append(Uid(p));
-                    }
-                if (cm == ',') sb.Append(')');
             }
             if (nodeTypes.Count > 0)
             {

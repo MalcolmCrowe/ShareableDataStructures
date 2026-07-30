@@ -100,7 +100,7 @@ namespace Pyrrho.Level2
             var nr = new Role(this, cx.db, first);
             if (first) // make the new Role the RowType role, and the definer of all objects so far
             {
-                cx.db += (Database._Schema, nr.defpos);
+                cx.db += (Database.OwnerRole, nr.defpos);
                 for (var b = cx.db.objects.PositionAt(0); b != null && b.key()<Transaction.Analysing; 
                     b = b.Next())
                 {
@@ -109,6 +109,8 @@ namespace Pyrrho.Level2
                     if (ob.GetType().Name=="Domain" || ob.defpos<=0) // but Domains always belong to Database._system._role
                         continue;
                     var os = ob.infos;
+                    if (os.Count == 0L)
+                        continue;
                     var oi = os[-502]??throw new PEException("PE1410");
                     os -= -502;
                     os += (nr.defpos, oi); 

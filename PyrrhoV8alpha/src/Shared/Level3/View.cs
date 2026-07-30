@@ -339,8 +339,6 @@ namespace Pyrrho.Level3
                         ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
                     if (oi.metadata.Contains(Qlx.EDGETYPE))
                         ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
-                    if (oi.metadata.Contains(Qlx.GRAPH))
-                        ro += (Role.Graphs, ro.graphs + (name, defpos));
                     nd += ro;
                 }
             return base.Drop(d, nd);
