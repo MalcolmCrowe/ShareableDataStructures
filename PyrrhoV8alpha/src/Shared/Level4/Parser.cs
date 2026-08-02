@@ -1263,12 +1263,14 @@ namespace Pyrrho.Level4
         CTree<string,long> ParseNestedGraphTypeSpecification(CTree<string,long> ts)
         {
             Mustbe(Qlx.LBRACE);
-            var t = cx.obs[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+            var dp = ParseElementTypeSpec(ts);
+            var t = cx.obs[dp] as Table ?? throw new DBException("42000");
             ts += (t.NameFor(cx),t.defpos);
             while (tok == Qlx.COMMA)
             {
                 Next();
-                t = cx.obs[ParseElementTypeSpec(ts)] as Table ?? throw new DBException("42000");
+                dp = ParseElementTypeSpec(ts);
+                t = cx.obs[dp] as Table ?? throw new DBException("42000");
                 ts += (t.NameFor(cx), t.defpos);
             }
             Mustbe(Qlx.RBRACE);
@@ -3697,7 +3699,7 @@ namespace Pyrrho.Level4
             var colname = new Ident(this);
             var cp = colname.uid;
             Mustbe(Qlx.Id);
-            Match(Qlx.NUMERIC,Qlx.REFERENCES); // backward compatibility: GQL does not know about NUMERIC
+            Match(Qlx.NUMERIC,Qlx.REFERENCES, Qlx.DOCUMENT); // backward compatibility: GQL does not know about NUMERIC
             if (StartDataType())
                 type = ParseDataType();
             else if (tok == Qlx.Id)
@@ -7391,7 +7393,7 @@ namespace Pyrrho.Level4
                 or Qlx.UINT8 or Qlx.UINT16 or Qlx.UINT32 or Qlx.UINT64 or Qlx.UINT128 or Qlx.UINT256 
                 or Qlx.CLOB or Qlx.DATE or Qlx.TIME or Qlx.TIMESTAMP or Qlx.INTERVAL or Qlx.DOCUMENT 
                 or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE or Qlx.ARRAY or Qlx.SET or Qlx.MULTISET 
-                or Qlx.LIST or Qlx.VECTOR or Qlx.REF => true,
+                or Qlx.DOCUMENT or Qlx.LIST or Qlx.VECTOR or Qlx.REF => true,
                 _ => false,
             };
             ;
@@ -9721,6 +9723,26 @@ namespace Pyrrho.Level4
                     tf = new TRef(tp, xp);
                 Next();
                 left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), tf, xp));
+            }
+            else if (xp.kind==Qlx.DOCUMENT)
+            {
+                if (!Match(Qlx.LBRACE))
+                    throw new DBException("42161", "{");
+                var st = lxr.pos;
+                tok = lxr.DocumentString(Qlx.RBRACE);
+                Mustbe(Qlx.RBRACE);
+                var td = new TDocument(new string(lxr.input, st, lxr.pos - st - 1));
+                left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), td, xp));
+            }
+            else if (xp.kind == Qlx.DOCARRAY)
+            {
+                if (!Match(Qlx.LBRACK))
+                    throw new DBException("42161", "[");
+                var st = lxr.pos;
+                tok = lxr.DocumentString(Qlx.RBRACK);
+                Mustbe(Qlx.RBRACK);
+                var td = new TDocArray(new string(lxr.input, st, lxr.pos - st - 1));
+                left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), td, xp));
             }
             else
                 left = ParseSqlValueExpression(m);
