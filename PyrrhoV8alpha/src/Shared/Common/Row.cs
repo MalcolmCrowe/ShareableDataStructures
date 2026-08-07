@@ -477,7 +477,7 @@ namespace Pyrrho.Common
         internal TIdent(Ident s) : base(Domain.Identity) { val = s; }
         public override string ToString()
         {
-            var special = Lexer.IsResWd(val.ident);
+            var special = Lexer.IsResWd(val.ident.ToUpper()); // ignore caseSensitive option
             if (val.ident == null || val.ident =="")
                 throw new DBException("42000");
             if (!char.IsLetterOrDigit(val.ident[0]))

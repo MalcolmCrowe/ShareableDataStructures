@@ -1182,9 +1182,9 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.LEVEL:
                 case Qlx.METADATA:
                 case Qlx.CHECK:
+                case Qlx.DOCUMENT:
+                case Qlx.DOCARRAY:
                 case Qlx.CHAR: wr.WriteByte((byte)DataType.String); break;
-                case Qlx.DOCUMENT: goto case Qlx.BLOB;
-                case Qlx.DOCARRAY: goto case Qlx.BLOB;
                 case Qlx.OBJECT: goto case Qlx.BLOB;
 #if MONGO || SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
@@ -1237,9 +1237,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.BOOLEAN: wr.WriteByte((byte)((tv.ToBool() is bool b && b) ? 1 : 0)); return;
                 case Qlx.DOCUMENT:
                 case Qlx.DOCARRAY:
-                    {
-                        return;
-                    }
                 case Qlx.CHAR: wr.PutString(tv.ToString()); return;
                 case Qlx.INCREMENT:
                     {
@@ -3891,10 +3888,9 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     return;
             }
         }
-        internal virtual void FieldJson(Context cx, StringBuilder sb)
+        internal virtual void DomainJson(Context cx, StringBuilder sb, StringBuilder sm)
         {
-            sb.Append("{Domain:"); sb.Append(kind);
-            var cm = "";
+            sb.Append("{Kind:"); sb.Append(kind);
             switch (Equivalent(kind))
             {
                 case Qlx.INTEGER:
@@ -3918,16 +3914,57 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     if (elType is Table e && cx.db.objects[e.defpos] is Table ee)
                     { sb.Append(",ToType:'"); sb.Append(ee.NameFor(cx)); sb.Append('\''); }
                     break;
-                case Qlx.UNION:
-                    sb.Append(",Alts:[");
-                    for (var b=alts.First(); b!=null;b=b.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(b.key().NameFor(cx));
-                    }
-                    sb.Append(']');
+            }
+            if (sm.Length > 0)
+            { sb.Append(','); sb.Append(sm); }
+            sb.Append('}');
+        }
+        internal virtual void FieldJson(Context cx, StringBuilder sb, StringBuilder? sm = null)
+        {
+            sm ??= new StringBuilder();
+            var cm = "";
+            sb.Append("[");
+            if (kind == Qlx.REF && sm.Length==0)
+            { sb.Append(' '); sb.Append(elType?.NameFor(cx)); }
+            else if (kind == Qlx.UNION)
+                for (var b = alts.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    b.key().DomainJson(cx, sb, sm);
+                }
+            else if (defpos <= 0 && sm.Length==0)
+                sb.Append(kind);
+            else
+                DomainJson(cx, sb, sm);
+            sb.Append(']');
+        }
+        internal virtual void DomainJson(Context cx, StringBuilder sb)
+        {
+            var cm = "";
+            switch (Equivalent(kind))
+            {
+                case Qlx.INTEGER:
+                    if (prec != 0)
+                    { sb.Append(":{Precision:"); sb.Append(prec); }
+                    break;
+                case Qlx.NUMERIC:
+                case Qlx.REAL:
+                    if (prec != 0 || scale != 0)
+                        sb.Append(":{");
+                    if (prec != 0)
+                    { sb.Append("Precision:"); sb.Append(prec); }
+                    if (prec != 0 || scale != 0)
+                        sb.Append(',');
+                    if (scale != 0)
+                    { sb.Append(",Scale:"); sb.Append(scale); }
+                    break;
+                case Qlx.NCHAR:
+                case Qlx.CHAR:
+                    if (prec != 0)
+                    { sb.Append(":{Length:"); sb.Append(prec); }
                     break;
             }
+            sb.Append('}');
         }
         /// <summary>
         /// Validator

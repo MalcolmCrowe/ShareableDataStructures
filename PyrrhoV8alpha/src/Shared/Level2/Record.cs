@@ -196,11 +196,13 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var (_, cdt) = rdr.GetColumnDomain(c); // nominal ob type from log
-                cdt = cdt.GetDataType(rdr); // actual ob type from buffer
+                var (_, ndt) = rdr.GetColumnDomain(c); // nominal ob type from log
+                var cdt = ndt.GetDataType(rdr); // actual ob type from buffer
                 if (cdt != null)
                 {
                     var tv = cdt.Get(rdr.log, rdr, ppos);
+                    if (ndt == Domain.Document)
+                        tv = new TDocument(tv.ToString());
                     fields += (c, tv);
                 }
                 else

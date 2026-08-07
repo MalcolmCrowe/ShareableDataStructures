@@ -1020,7 +1020,7 @@ namespace Pyrrho.Level3
                 var sd = new StringBuilder(); // dataType section
                 var marg = 8 * tabs + 1;
                 // computing the rowtype block: a sequence of lines sl
-                var sl = new StringBuilder(new string('\t',tabs+2));
+                var sl = new StringBuilder(new string('\t',tabs+1));
                 var sl0 = sl.Length;
                 // each containing several columns si + its metadata sm
                 var cn = "";
@@ -1032,6 +1032,8 @@ namespace Pyrrho.Level3
                         sl.Append(cn); cn = ", ";
                         var si = new StringBuilder();
                         si.Append(tc.NameFor(cx));
+                        if (tc.NameFor(cx).StartsWith("currency"))
+                            ;
                         si.Append(": ");
                         var sm = new StringBuilder();
                         ci.metadata.JsonSchema(cx, sm);
@@ -1040,7 +1042,7 @@ namespace Pyrrho.Level3
                         {
                             sd.Append(sl);
                             sd.Append("\r\n");
-                            sl = new StringBuilder(new string('\t', tabs + 2));
+                            sl = new StringBuilder(new string('\t', tabs+1));
                             sl0 = sl.Length;
                         }
                         sl.Append(si);
@@ -1052,9 +1054,9 @@ namespace Pyrrho.Level3
                 if (sd.Length > 0)
                 {
                     sb.Append(cm); cm = ", ";
-                    sb.Append("dataType: [\r\n");
+                    sb.Append("dataType: {\r\n");
                     sb.Append(sd);
-                    sb.Append("]");
+                    sb.Append("}");
                 }
                 cn = "";
                 var st = new StringBuilder(); // tail

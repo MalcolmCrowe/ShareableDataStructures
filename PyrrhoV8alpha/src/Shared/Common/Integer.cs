@@ -798,14 +798,6 @@ namespace Pyrrho.Common
         {
             return CompareTo(obj)==0;
         }
-        /// <summary>
-        /// Formal hash code computation
-        /// </summary>
-        /// <returns>a hash code</returns>
-        public override int GetHashCode()
-        {
-            return bytes.GetHashCode();
-        }
     }
     /// <summary>
     /// An arbitrary-precision decimal class
@@ -1190,9 +1182,6 @@ namespace Pyrrho.Common
         {
             return CompareTo(obj)==0;
         }
-        public override int GetHashCode()
-        {
-            return mantissa.GetHashCode();
-        }
+
 	}
 }

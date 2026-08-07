@@ -755,7 +755,7 @@ namespace Pyrrho.Level3
             SPos = -284; // long
         public long sPos => (long)(mem[SPos]??-1L);
         public QlInstance(long lp, long dp, Context cx, string nm, long fp, long cp, BTree<long,object>?m=null)
-            :this(lp, dp,cx,nm,fp,(DBObject?)(cx.obs[cp] ?? cx._Ob(cp)),m)
+            :this(lp, dp,cx,nm,fp,cx.obs[cp] ?? cx._Ob(cp),m)
         { }
         public QlInstance(long lp, long dp, Context cx, string nm, long fp, DBObject? cf, BTree<long, object>? m = null)
             : base(dp, _Mem(cx, dp, fp, cf, nm, m))
@@ -771,7 +771,7 @@ namespace Pyrrho.Level3
         }
         public QlInstance(Ident id, Context cx, long fp, long cp,
             BTree<long, object>? m = null)
-            : this(id,cx,fp,(DBObject?)(cx.obs[cp]??cx._Ob(cp)), m)
+            : this(id,cx,fp,cx.obs[cp]??cx._Ob(cp), m)
         {
             if (cx.obs[fp] is RowSet r)
                 cx.Add(r.Apply(new BTree<long, object>(RowSet.ISMap, r.iSMap + (id.uid, cp))

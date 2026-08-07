@@ -6012,7 +6012,7 @@ namespace Pyrrho.Level4
                 return cx.Add(co);
             }
             if (pa is QlValue sr && sr.domain.kind==Qlx.REF 
-                && cx.db.objects[sr.domain.elType.defpos] is Domain rd
+                && cx.db.objects[sr.domain.elType?.defpos??-1L] is Domain rd
                 && sub != null
                 && rd.infos[cx.role.defpos] is ObInfo ri && ri.names.Contains(sub.ident))
             {
@@ -9660,6 +9660,28 @@ namespace Pyrrho.Level4
                         Disjoin(ParseSqlValueDisjunct(m)), Qlx.NO);
                 }
             }
+            else if (xp.kind == Qlx.DOCUMENT && Match(Qlx.LBRACE))
+            {
+                var oj = lxr.json;
+                var oc = lxr.caseSensitive;
+                lxr.tok = Qlx.Null;
+                lxr.PushBack(lxr.prevtok);
+                lxr.pos = lxr.prevPos;
+                lxr.json = true;
+                lxr.caseSensitive = true;
+                lxr.ch = '{';
+                Next();
+                left = new SqlLiteral(cx.GetUid(), lxr.val);
+                lxr.caseSensitive = oc;
+                lxr.json = oj;
+                Mustbe(Qlx.DOCUMENT);
+            }
+            else if (xp.kind == Qlx.DOCARRAY && Match(Qlx.LBRACK))
+            {
+                lxr.json = true;
+                Next();
+                left = new SqlLiteral(cx.GetUid(), lxr.val);
+            }
             else if (xp.kind == Qlx.TABLE || xp.kind == Qlx.VIEW)
             {
                 if (Match(Qlx.TABLE))
@@ -9699,7 +9721,7 @@ namespace Pyrrho.Level4
             {
                 if (cx.db.objects[xp.elType?.defpos ?? -1L] is not Table et)
                     throw new DBException("42107", xp);
-                long tp = Match(Qlx.CHARLITERAL) ? long.Parse(lxr.val.ToString()): lxr.val.ToLong() ?? -1L;
+                long tp = Match(Qlx.CHARLITERAL) ? long.Parse(lxr.val.ToString()) : lxr.val.ToLong() ?? -1L;
                 TypedValue tf = TNull.Value;
                 if (m[RowSet.Target] is long fp && cx.db.objects[fp] is Table ft
                     && m[DBObject.Defpos] is long p
@@ -9723,26 +9745,6 @@ namespace Pyrrho.Level4
                     tf = new TRef(tp, xp);
                 Next();
                 left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), tf, xp));
-            }
-            else if (xp.kind==Qlx.DOCUMENT)
-            {
-                if (!Match(Qlx.LBRACE))
-                    throw new DBException("42161", "{");
-                var st = lxr.pos;
-                tok = lxr.DocumentString(Qlx.RBRACE);
-                Mustbe(Qlx.RBRACE);
-                var td = new TDocument(new string(lxr.input, st, lxr.pos - st - 1));
-                left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), td, xp));
-            }
-            else if (xp.kind == Qlx.DOCARRAY)
-            {
-                if (!Match(Qlx.LBRACK))
-                    throw new DBException("42161", "[");
-                var st = lxr.pos;
-                tok = lxr.DocumentString(Qlx.RBRACK);
-                Mustbe(Qlx.RBRACK);
-                var td = new TDocArray(new string(lxr.input, st, lxr.pos - st - 1));
-                left = (SqlLiteral)cx.Add(new SqlLiteral(LexDp(), td, xp));
             }
             else
                 left = ParseSqlValueExpression(m);
@@ -11483,8 +11485,9 @@ namespace Pyrrho.Level4
                     Next();
                     break;
                 default:
-                    return (SqlProcedureCall)(cx.obs[((CallStatement)ParseProcedureCall(m)).call] 
-                        ?? throw new DBException("42000", "Call"));
+                    if (ParseProcedureCall(m) is not CallStatement sc || cx.obs[sc.call] is not SqlProcedureCall ca)
+                      throw new DBException("42000", "Call");
+                    return ca;
             }
             return (QlValue)cx.Add(new SqlFunction(LexLp(), lp, cx, kind, val, op1, op2, mod));
         }

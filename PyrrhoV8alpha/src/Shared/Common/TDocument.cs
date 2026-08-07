@@ -33,7 +33,6 @@ namespace Pyrrho.Common
         {
             content = d.content; names = d.names;
         }
-      
         internal TDocument(CList<(string,TypedValue)> c,CTree<string,int> n) :base(Domain.Document)
         {
             content = c; names = n;
@@ -115,6 +114,12 @@ namespace Pyrrho.Common
 #else
             return TNull.Value;
 #endif
+        }
+        internal static (Qlx,TDocument) Create(Lexer lx)
+        {
+            var td = new TDocument();
+            lx.pos = Fields(ref td, new string(lx.input), lx.pos, lx.input.Length);
+            return (Qlx.RBRACE,td);
         }
         /// <summary>
         /// Get a value from Json format
@@ -624,9 +629,9 @@ namespace Pyrrho.Common
                         break;
                     case Qlx.TIMESTAMP:
                     case Qlx.CHAR:
-                        sb.Append('\'');
-                        sb.Append(v.Item2.ToString().Replace("'","''"));
-                        sb.Append('\'');
+                        sb.Append('"');
+                        sb.Append(v.Item2.ToString());//.Replace("'","''"));
+                        sb.Append('"');
                         break;                       
                     default:// NB leave DATE and TIMESTAMP as strings
                         sb.Append(v.Item2.ToString());
@@ -1114,6 +1119,7 @@ namespace Pyrrho.Common
             for (var f=content.First();f!= null;f=f.Next())
             {
                 sb.Append(comma); comma = ", ";
+                var tv = f.value();
                 TDocument.Field((""+f.key(),f.value()), sb);
             }
             sb.Append(']');

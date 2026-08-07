@@ -4265,7 +4265,7 @@ namespace Pyrrho.Level3
             }
             else
             {
-                var sb = new StringBuilder('[');
+                var sb = new StringBuilder('{');
                 var cc = "\r\n";
                 for (var c = cx.db.catalog.First(); c != null; c = c.Next())
                 {
@@ -4274,9 +4274,10 @@ namespace Pyrrho.Level3
                     {
                         sb.Append(cc); cc = ",\r\n";
                         sb.Append("GraphType: { ");
-                        sb.Append("Iri : "); sb.Append(tg.iri); 
+                        sb.Append("Iri : "); sb.Append(tg.iri);
                         var st = new StringBuilder();
-                        var cm = "\r\n\tTables: [\r\n";
+                        var cs = "";
+                        var cm = "\r\n\tTables: {\r\n";
                         for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
                             if (cx.db.objects[b.value()] is Table t && t is not NodeType && t.defpos > 0)
                             {
@@ -4284,9 +4285,9 @@ namespace Pyrrho.Level3
                                 t.SchemaJson(cx, st, 2);
                             }
                         if (st.Length > 0)
-                            st.Append(']');
+                        { st.Append('}'); sb.Append(cs); cs = ","; sb.Append(st); }
                         var sn = new StringBuilder();
-                        cm = "\r\n\tNodes: [\r\n";
+                        cm = "\r\n\tNodes: {\r\n";
                         for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
                             if (cx.db.objects[b.value()] is NodeType t && t is not EdgeType && t.defpos > 0)
                             {
@@ -4294,9 +4295,9 @@ namespace Pyrrho.Level3
                                 t.SchemaJson(cx, sn, 2);
                             }
                         if (sn.Length > 0)
-                            sn.Append(']');
+                        {  sn.Append('}'); sb.Append(cs); cs = ","; sb.Append(sn); }
                         var se = new StringBuilder();
-                        cm = "\r\n\tEdges: [\r\n";
+                        cm = "\r\n\tEdges: {\r\n";
                         for (var b = cx.role.edgeTypes.First(); b != null; b = b.Next())
                             if (cx.db.objects[b.value()] is EdgeType t && t.defpos > 0)
                             {
@@ -4304,16 +4305,7 @@ namespace Pyrrho.Level3
                                 t.SchemaJson(cx, se, 2);
                             }
                         if (se.Length > 0)
-                            se.Append(']');
-                        if (st.Length + sn.Length + se.Length > 0)
-                            sb.Append(',');
-                        sb.Append(st);
-                        if (st.Length > 0 && sn.Length + se.Length > 0)
-                            sb.Append(',');
-                        sb.Append(sn);
-                        if (sn.Length > 0 && se.Length > 0)
-                            sb.Append(',');
-                        sb.Append(se);
+                        {  se.Append('}'); sb.Append(cs); sb.Append(se); }
                         sb.Append('}');
                     }
                     else if (ob is Schema sc)
@@ -4335,7 +4327,7 @@ namespace Pyrrho.Level3
                         sb.Append(']');
                     }
                 }
-                sb.Append("]\r\n");
+                sb.Append("}\r\n");
                 ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
                         new TRow(ers, new TChar(cx.db.name), new TChar(sb.ToString()))));
             }

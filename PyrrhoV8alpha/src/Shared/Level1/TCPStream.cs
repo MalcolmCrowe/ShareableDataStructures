@@ -295,7 +295,7 @@ namespace Pyrrho.Level1
                     case Qlx.DOCARRAY:
                     case Qlx.DOCUMENT:
                     case Qlx.CHAR:
-                        return b + tv.ToString();;
+                        return b + tv.ToString();
                     case Qlx.REF:
                         return b+DBObject.Uid(tv.ToLong() ?? 0L);
                     case Qlx.DATE:
@@ -581,9 +581,9 @@ namespace Pyrrho.Level1
                 throw new PEException("PE0012");
             if (debug != null)
                 Console.WriteLine(debug + value.ToString("X"));
-            if (wcount < bSize-1)
+            if (wcount < bSize)
                 wbuf.bytes[wcount++] = value;
-            if (wcount >= bSize - 1)
+            if (wcount >= bSize)
             {
                 // update ncells
                 if (ncells != 1)
@@ -595,7 +595,6 @@ namespace Pyrrho.Level1
                 }
                 WriteBuf();
                 ncells = 1;
-                wbuf.bytes[wcount++] = value;
             }
         }
         public void Write(Protocol p)
@@ -1016,8 +1015,8 @@ namespace Pyrrho.Level1
                 int m = result.display;
                 if (m == 0)
                     m = result.Length;
-                if (result.Length == 1 && cx.obs[result.First()?.value() ?? -1L] is SqlCall sc
-                    && cx.obs[sc.queryResult] is ProcRowSet ps)
+                if (result.Length == 1 && result.First()?.value() is long pr 
+                    && cx.obs[pr] is SqlCall sc && cx.obs[sc.queryResult] is ProcRowSet ps)
                 {
                     result = ps;
                     dt = ps.rowType;

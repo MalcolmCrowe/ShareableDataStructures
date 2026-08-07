@@ -137,7 +137,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the current character in the input string
         /// </summary>
-		char ch,pushCh;
+		public char ch,pushCh;
         /// <summary>
         /// The current token's identifier
         /// </summary>
@@ -148,6 +148,7 @@ namespace Pyrrho.Level4
         public long tga;
         public bool tex = false; // expecting a type?
         public bool cat = false; // for GQL catalog parent (case sensitive, / and . in identifiers)
+        public bool json = false; // sloppy Json (quotes optional, [ and { as trigger for sublexing)
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
@@ -177,10 +178,24 @@ namespace Pyrrho.Level4
             AddResWd(Qlx.SET);
             AddResWd(Qlx.TIMESTAMP);
         }
+        static int GetHashCode(string s)
+        {
+            int r = 0;
+            var n = s.Length;
+            if (n > 10) // remember s is a reserved word or being tested against reserved words
+                n =10;
+            for (var i=0;i<s.Length;i++)
+            {
+                var c = (int)s[i]; // guaranteed non-negative
+                var b = (c >> i) | (c << (10 - i));
+                r += b;
+            }
+            return r & 0x7ff;
+        }
         static void AddResWd(Qlx t)
         {
             string s = t.ToString();
-            var h = s.GetHashCode() & 0x7ff;
+            var h = GetHashCode(s);
             while (resWds[h] != null)
                 h = (h + 1) & 0x7ff;
             resWds[h] = new ResWd(t, s);
@@ -193,7 +208,7 @@ namespace Pyrrho.Level4
         /// <returns>true if it is a reserved word</returns>
 		internal bool CheckResWd(string s)
 		{
-			int h = s.GetHashCode() & 0x7ff;
+			int h = GetHashCode(s);
 			for(;;)
 			{
 				ResWd r = resWds[h];
@@ -209,7 +224,7 @@ namespace Pyrrho.Level4
 		}
         internal static bool IsResWd(string s)
         {
-            int h = s.GetHashCode() & 0x7ff;
+            int h = GetHashCode(s);
             for (; ; )
             {
                 ResWd r = resWds[h];
@@ -218,7 +233,6 @@ namespace Pyrrho.Level4
                 h = (h + 1) & 0x7ff;
             }
         }
-        internal object Diag { get { return (val == TNull.Value) ? tok : val; } }
        /// <summary>
         /// Constructor: Start a new lexer
         /// </summary>
@@ -417,8 +431,58 @@ namespace Pyrrho.Level4
             }
             return tok;
         }
+        CList<(string,TypedValue)> JsonContents()
+        {
+            var oj = json;
+            json = true;
+            var r = CList<(string,TypedValue)>.Empty;
+            for (; ; )
+            {
+                Next();
+                var k = val;
+                if (char.IsWhiteSpace(ch))
+                    Advance();
+                if (ch!=':')
+                    throw new DBException("42000");
+                Advance();
+                Next();
+                if (char.IsWhiteSpace(ch))
+                    Advance();
+                r += (k.ToString(), val);
+                if (ch!= ',')
+                    break;
+                Next();
+            }
+            json = oj;
+            if (ch == '}')
+                Next();
+            else
+                throw new Exception("42000");
+            return r;
+        }
+        BList<TypedValue> JsonArray()
+        {
+            var r = BList<TypedValue>.Empty;
+            var oj = json;
+            json = true;
+            for (; ; )
+            {
+                Next();
+                r += val;
+                if (ch != ',')
+                    break;
+                Next();
+            }
+            json = oj;
+            if (ch == ']')
+                Next();
+            else
+                throw new DBException("42000");
+            return r;
+        }
         /// <summary>
         /// Advance to the next token in the input.
+        /// according to SQL/GQL syntax.
         /// tok and val are set for the new token
         /// </summary>
         /// <returns>The new value of tok</returns>
@@ -438,65 +502,15 @@ namespace Pyrrho.Level4
             prevval = val;
             prevPos = pos;
             val = TNull.Value;
+            var jq = false;
             while (char.IsWhiteSpace(ch))
                 Advance();
-            start = pos;
-            if (char.IsLetter(ch) || (cat && (ch=='/'||ch=='.')))
+            if (json && ch == '"')
             {
-                char c = ch;
+                jq = true;
                 Advance();
-                if (c == 'X' && ch == '\'')
-                {
-                    int n = 0;
-                    if (Hexit(Advance()) >= 0)
-                        n++;
-                    while (ch != '\'')
-                        if (Hexit(Advance()) >= 0)
-                            n++;
-                    n /= 2;
-                    byte[] b = new byte[n];
-                    int end = pos;
-                    pos = start + 1;
-                    for (int j = 0; j < n; j++)
-                    {
-                        while (Hexit(Advance()) < 0)
-                            ;
-                        int d = Hexit(ch) << 4;
-                        d += Hexit(Advance());
-                        b[j] = (byte)d;
-                    }
-                    while (pos != end)
-                        Advance();
-                    tok = Qlx.BLOBLITERAL;
-                    val = new TBlob(b);
-                    Advance();
-                    MaybeSuffix();
-                    return tok;
-                }
-                while (char.IsLetterOrDigit(ch) || ch == '_'
-                    || (cat && (ch=='/'||ch=='.')))
-                    Advance();
-                string s0 = new(input, start, pos - start);
-                string s = (caseSensitive||cat)?s0:s0.ToUpper();
-                if (CheckResWd(s))
-                {
-                    switch (tok)
-                    {
-                        case Qlx.TRUE: val = TBool.True; return Qlx.BOOLEANLITERAL;
-                        case Qlx.FALSE: val = TBool.False; return Qlx.BOOLEANLITERAL;
-                        case Qlx.NULL: val = TNull.Value; return Qlx.NULL;
-                        case Qlx.UNKNOWN: val = TNull.Value; return Qlx.BOOLEANLITERAL;
-                        case Qlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
-                        case Qlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
-                        case Qlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
-                    }
-                    return tok;
-                }
-                val = new TChar(s);
-                tok = Qlx.Id;
-                MaybePrefix(s);
-                return tok;
             }
+            start = pos;
             string str;
             char minusch = ' '; // allow negative number?
             if (char.IsDigit(ch) || (allowminus && ch == '-'))
@@ -551,14 +565,90 @@ namespace Pyrrho.Level4
                 return tok;
             }
         uminus:
+            if ((json || char.IsLetter(ch) || (cat && (ch == '/' || ch == '.')))
+                && ch != ',' && ch != '{' && ch != '}' && ch != '[' && ch != ']' && ch!=':'
+                && ch != '\0')
+            {
+                char c = ch;
+                Advance();
+                if ((!json) && c == 'X' && ch == '\'')
+                {
+                    int n = 0;
+                    if (Hexit(Advance()) >= 0)
+                        n++;
+                    while (ch != '\'')
+                        if (Hexit(Advance()) >= 0)
+                            n++;
+                    n /= 2;
+                    byte[] b = new byte[n];
+                    int end = pos;
+                    pos = start + 1;
+                    for (int j = 0; j < n; j++)
+                    {
+                        while (Hexit(Advance()) < 0)
+                            ;
+                        int d = Hexit(ch) << 4;
+                        d += Hexit(Advance());
+                        b[j] = (byte)d;
+                    }
+                    while (pos != end)
+                        Advance();
+                    tok = Qlx.BLOBLITERAL;
+                    val = new TBlob(b);
+                    Advance();
+                    MaybeSuffix();
+                    return tok;
+                }
+                while ((json || char.IsLetterOrDigit(ch) || ch=='_' || cat)
+                && ch != ',' && ch != '{' && ch != '}' && ch != '[' && ch != ']' && ch!=':'
+                && ch != '\0' && !char.IsWhiteSpace(ch))
+                    Advance();
+                string s0 = new(input, start, pos - start);
+                string s = (caseSensitive||cat)?s0:s0.ToUpper();
+                if ((!json) && CheckResWd(s.ToUpper()))
+                {
+                    switch (tok)
+                    {
+                        case Qlx.TRUE: val = TBool.True; return Qlx.BOOLEANLITERAL;
+                        case Qlx.FALSE: val = TBool.False; return Qlx.BOOLEANLITERAL;
+                        case Qlx.NULL: val = TNull.Value; return Qlx.NULL;
+                        case Qlx.UNKNOWN: val = TNull.Value; return Qlx.BOOLEANLITERAL;
+                        case Qlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
+                        case Qlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
+                        case Qlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
+                    }
+                    return tok;
+                }
+                val = new TChar(s);
+                tok = Qlx.Id;
+                MaybePrefix(s);
+                return tok;
+            }
             switch (ch)
             {
-                case '[': Advance(); return tok = Qlx.LBRACK;
+                case '{':
+                    {
+                        Advance(); 
+                        if (!json)
+                            return tok = Qlx.LBRACE;
+                        var jd = JsonContents();
+                        val = new TDocument(jd,CTree<string,int>.Empty);
+                        return tok = Qlx.DOCUMENT;
+                    }
+                case '[':
+                    {
+                        Advance();
+                        if (!json)
+                            return tok = Qlx.LBRACK;
+                        var jc = JsonArray();
+                        val = new TDocArray(Domain.DocArray,jc);
+                        return tok = Qlx.DOCARRAY;
+                    }
                 case ']': Advance(); 
                     if (ch=='-')
                     {
                         Advance();
-                        LinkLabel('-');
+                        EdgeArrow('-');
                         if (ch=='>')
                         {
                             Advance();
@@ -568,7 +658,7 @@ namespace Pyrrho.Level4
                     } else if (ch=='~')
                     {
                         Advance();
-                        LinkLabel('~');
+                        EdgeArrow('~');
                         if (ch == '>')
                         {
                             Advance();
@@ -579,7 +669,6 @@ namespace Pyrrho.Level4
                         return tok = Qlx.RBRACK;
                 case '(': Advance(); return tok = Qlx.LPAREN;
                 case ')': Advance(); return tok = Qlx.RPAREN;
-                case '{': Advance(); return tok = Qlx.LBRACE;
                 case '}': Advance(); return tok = Qlx.RBRACE;
                 case '+': Advance(); return tok = Qlx.PLUS;
                 case '*': Advance(); return tok = Qlx.TIMES;
@@ -600,7 +689,7 @@ namespace Pyrrho.Level4
                 case '~':
                     {
                         Advance();
-                        LinkLabel('~');
+                        EdgeArrow('~');
                         if (ch == '>')
                         {
                             Advance();
@@ -636,7 +725,7 @@ namespace Pyrrho.Level4
                         Advance();
                     else
                         ch = minusch;
-                    LinkLabel('-');
+                    EdgeArrow('-');
                     if (ch=='>')
                     {
                         Advance();
@@ -676,7 +765,7 @@ namespace Pyrrho.Level4
                     if (ch=='-')
                     {
                         Advance();
-                        LinkLabel('-');
+                        EdgeArrow('-');
                         if (ch=='[')
                         {
                             Advance();
@@ -699,7 +788,7 @@ namespace Pyrrho.Level4
                         return tok = Qlx.GEQ;
                     }
                     return tok = Qlx.GTR;
-                case '"':   // delimited identifier if caseSensitive is false
+                case '"':   
                     {
                         start = pos;
                         while (Advance() != '"')
@@ -798,7 +887,42 @@ namespace Pyrrho.Level4
             }
             throw new DBException("42101", ch).Mix();
         }
-        void LinkLabel(char m)
+        internal Qlx DocumentString(Qlx r)
+        {
+            var br = 1;
+            var bk = 0;
+            var sq = false;
+            var dq = false;
+            for (; ;Advance())
+                switch (ch)
+                {
+                    case '\0': return tok = Qlx.EOF;
+                    case '\'': sq = !sq; break;
+                    case '"': dq = !dq; break;
+                    case '[': bk++; break;
+                    case ']':
+                        if (bk == 0) return tok = r;
+                        if ((!sq)&&(!dq))
+                            bk--; 
+                        break;
+                    case '{': br++; break;
+                    case '}': 
+                        if ((!sq)&&(!dq))
+                            br--;
+                        if (br == 0)
+                        {
+                            Advance();
+                            return tok = r;
+                        }
+                        break;
+                    default: break;
+                }
+        }
+        internal Qlx DocArrayString()
+        {
+            return tok = Qlx.RBRACK;
+        }
+        void EdgeArrow(char m)
         {
             var ls = pos;
             if (ch == '"')
