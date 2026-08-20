@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
         /// <param name="dt">the object type</param>
         public TableColumn(Table tb, PColumn c, Domain dt,Context cx)
             : base(c.defpos, _TableColumn(c,dt,cx)+(_Table, tb.defpos) + (LastChange, c.ppos)
-                     + (Owner, cx.user?.defpos ?? -501L)  
+                     + (Owner, cx.user?.defpos ?? -501L)
                      + (KeyMap,(tb.mem[c.refindex] as CTree<int,long>)??c.keymap))
         {
             var lp = cx.names[c.name].Item1;
@@ -341,29 +341,6 @@ namespace Pyrrho.Level3
         {
             cx.values += (defpos, v);
         }
- /*       internal override void Note(Context cx, StringBuilder sb, string pre = "  ")
-        {
-            sb.Append(pre);
-            for (var b=cs.First();b!=null;b=b.Next())
-                if (b.value() is TConnector cc)
-                    switch (cc.q)
-                    {
-                        case Qlx.ID:
-                        case Qlx.FROM:
-                        case Qlx.WITH:
-                        case Qlx.TO:
-                            sb.Append(' '); sb.Append(cc.q); break;
-                    }
-            if (pre == "  ")
-            {
-                domain.FieldType(cx, sb);
-                for (var c = checks.First(); c != null; c = c.Next())
-                    if (cx._Ob(c.key()) is Check ck)
-                        ck.Note(cx, sb, pre);
-            }
-            else
-                sb.Append("\r\n");
-        }*/
         /// <summary>
         /// a readable version of the table column
         /// </summary>
@@ -399,7 +376,10 @@ namespace Pyrrho.Level3
         internal void JsonSchema(Context cx, StringBuilder sb)
         {
             sb.Append(NameFor(cx)); sb.Append(':');// sb.Append("{Name:'"); sb.Append(NameFor(cx)); sb.Append('\'');
-            domain.FieldJson(cx, sb);
+            if (domain.kind == Qlx.REF && domain.elType is Domain rt)
+                rt.FieldJson(cx, sb);
+            else
+                domain.FieldJson(cx, sb);
             infos[cx.role.defpos]?.metadata.JsonSchema(cx, sb);
             sb.Append('}');
         }
@@ -416,7 +396,7 @@ namespace Pyrrho.Level3
     internal class ColumnPath : TableColumn
     {
         internal const long
-            Prev = -321; // TableColumn
+            Prev = -326; // TableColumn
         /// <summary>
         /// The prefix Selector
         /// </summary>

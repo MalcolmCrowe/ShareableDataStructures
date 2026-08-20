@@ -349,13 +349,11 @@ namespace Pyrrho.Level2
             x = x.AddRows(tb, cx); // ??
             cx.Install(x);
             var cs = CList<long>.Empty;
-    //        var fl = false;
             for (var b = x.keys.First(); b != null; b = b.Next())
                 if (b.value() is long tc && cx.db.objects[tc] is TableColumn c)
                 {
                     cs += tc - Domain.Optional;
                     cx.Add(c);
-     //               fl = c.cs is TConnector cc && cc.q == Qlx.ID;
                 } 
             var dp = defpos;
             tb = tb + (DBObject.LastChange, defpos);

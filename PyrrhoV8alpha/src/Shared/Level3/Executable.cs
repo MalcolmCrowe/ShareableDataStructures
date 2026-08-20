@@ -2,8 +2,6 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System.Reflection.Metadata;
-using System.Runtime.Intrinsics.Arm;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
@@ -4232,6 +4230,7 @@ namespace Pyrrho.Level3
         internal QlValue q1;
         internal QlValue q2;
         internal long pos = 0;
+        internal bool expects = false;
         internal SchemaStatement(long dp, Context cx, BTree<long, object>? m = null)
             : base(dp, m)
         {
@@ -4262,6 +4261,21 @@ namespace Pyrrho.Level3
                         done += (nt, true);
                         ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++, _Row(nt, cx)));
                     }
+            }
+            else if (expects)
+            {
+                var sb = new StringBuilder('{');
+                var cc = "\r\n";
+                if (cx.db.objects[cx.role.dbobjects[graph]] is GraphType gt)
+                    for(var b=gt.scenarii.First();b!=null;b=b.Next())
+                        if (cx.db.objects[b.key()] is Expectation e)
+                        {
+                            sb.Append(cc); cc = ",\r\n";
+                            sb.Append(e.Show(cx));
+                        }
+                sb.Append('}');
+                ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
+                    new TRow(ers, new TChar(cx.db.name), new TChar(sb.ToString()))));
             }
             else
             {

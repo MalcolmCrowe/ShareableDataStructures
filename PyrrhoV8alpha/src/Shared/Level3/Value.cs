@@ -2094,7 +2094,6 @@ namespace Pyrrho.Level3
                 case Qlx.EQL: dm = Domain.Bool; break;
                 case Qlx.EXCEPT: dm = dl; break;
                 case Qlx.GTR: dm = Domain.Bool; break;
-                case Qlx.ID: dm = Domain.Int; break;
                 case Qlx.INTERSECT: dm = dl; break;
                 case Qlx.LOWER: dm = Domain.Int; break; // JavaScript >> and >>>
                 case Qlx.LSS: dm = Domain.Bool; break;
@@ -2461,7 +2460,6 @@ namespace Pyrrho.Level3
                 case Qlx.EQL: dm = Domain.Bool; break;
                 case Qlx.EXCEPT: dm = dl; break;
                 case Qlx.GTR: dm = Domain.Bool; break;
-                case Qlx.ID: dm = Domain.Int; break;
                 case Qlx.INTERSECT: dm = dl; break;
                 case Qlx.LABELS: dm = Domain.SetType; break;
                 case Qlx.LOWER: dm = Domain.Int; break; // JavaScript >> and >>>
@@ -7326,6 +7324,7 @@ namespace Pyrrho.Level3
                         return d;
                     }
                 case Qlx.ANY: return Domain.Bool;
+                case Qlx.AT: return Domain.Timestamp;
                 case Qlx.AVG: return Domain._Numeric;
                 case Qlx.ARRAY: return Domain.Collection;
                 case Qlx.CARDINALITY: return Domain.Int;
@@ -7360,6 +7359,8 @@ namespace Pyrrho.Level3
                 case Qlx.OCTET_LENGTH: return Domain.Int;
                 case Qlx.OVERLAY: return Domain.Char;
                 case Qlx.PARTITION: return Domain.Char;
+                case Qlx.PERCENT: return Domain.Real;
+                case Qlx.PERIOD: return Domain.Period;
                 case Qlx.REF: return Domain.Ref;
                 case Qlx.POWER: return Domain.Real;
                 case Qlx.RANK: return Domain.Int;
@@ -7545,6 +7546,25 @@ namespace Pyrrho.Level3
                             ar += d.key();
                         fc.acc = ar;
                         return fc.acc;
+                    }
+                 case Qlx.AT:
+                    {
+                        var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1984");
+                        var vcx = new Context(cx);
+                        if (vl is not null)
+                        {
+                            vcx.result = cx.obs[vl.defpos] as RowSet;
+                            return new TRvv("");
+                        }
+                        vcx.result = cx.obs[from] as RowSet;
+                        var p = -1L;
+                        for (var b = cx.CurrentGraph().nodes.First();b is not null; b = b.Next())
+                            if (b.value() is TNode t)
+                                if (t.tableRow.time > p)
+                                    p = t.tableRow.time;
+                        if (p != -1L)
+                            return new TDateTime(new DateTime(p));
+                        return TNull.Value;
                     }
                 case Qlx.AVG:
                     {
@@ -7780,20 +7800,9 @@ namespace Pyrrho.Level3
                 case Qlx.FUSION:
                     if (fc == null || fc.mset == null) break;
                     return domain.Coerce(cx, fc.mset);
-          /*      case Qlx.ID:
-                    {
-                        TypedValue? a = cx.obs[val]?.Eval(cx);
-                        return (a is TNode n) ? n.id : a ?? TNull.Value;
-                    } */
                 case Qlx.INTERSECTION:
                     if (fc == null || fc.mset == null) break;
                     return domain.Coerce(cx, fc.mset);
-         /*       case Qlx.JSON:
-                    {
-                        var sb = new StringBuilder();
-                        (cx.obs[val] ?? SqlNull.Value).ValueJson(cx,sb);
-                        return new TChar(sb.ToString());
-                    } */
                 case Qlx.LABELS:
                     {
                         TypedValue? a = cx.obs[val]?.Eval(cx);
@@ -7892,6 +7901,49 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.PARTITION:
                     return TNull.Value;
+                case Qlx.PERCENT:
+                    {
+                        var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1984");
+                        var vcx = new Context(cx);
+                        if (vl is not null)
+                        {
+                            vcx.result = cx.obs[vl.defpos] as RowSet;
+                            return new TRvv("");
+                        }
+                        vcx.result = cx.obs[from] as RowSet;
+                        var p = 1.0D;
+                        for (var b = cx.CurrentGraph().scenarii.First();
+                            b is not null; b = b.Next())
+                            if (cx.db.objects[b.key()] is Expectation e)
+                                p *= e.confidence;
+                        return new TReal(p);
+                    }
+                case Qlx.PERIOD:
+                    {
+                        var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1984");
+                        var vcx = new Context(cx);
+                        if (vl is not null)
+                        {
+                            vcx.result = cx.obs[vl.defpos] as RowSet;
+                            return new TRvv("");
+                        }
+                        vcx.result = cx.obs[from] as RowSet;
+                        var p = -1L;
+                        var q = -1L;
+                        for (var b = cx.CurrentGraph().nodes.First();
+                            b is not null; b = b.Next())
+                        {
+                            var t = b.value();
+                            if (p==-1L || t.tableRow.time < p)
+                                p = t.tableRow.time;
+                            if (q == -1L || t.tableRow.time > p)
+                                q = t.tableRow.time;
+                        }
+                        if (p != -1L && q != -1L)
+                            return new TPeriod(Domain.Period,
+                                new Period(new TDateTime(new DateTime(p)),new TDateTime(new DateTime(q))));
+                        return TNull.Value;
+                    }
                 case Qlx.REF:
                     {
                         if (cx.values[val] is TNode n)

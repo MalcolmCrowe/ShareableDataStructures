@@ -2,9 +2,8 @@
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Data.SqlTypes;
-using System.Reflection.Metadata;
 using System.Text;
+using System.Xml;
 
 namespace Pyrrho.Level5
 {
@@ -1478,17 +1477,23 @@ namespace Pyrrho.Level5
     }
     /// <summary>
     /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
+    /// Contains results of compiling temporal statements
     /// </summary>
     internal class GraphType : Domain
     {
         internal const long
             Iri = -147, // string
             ElementTypes = -289, // CTree<long,object> Table
+            Scenarii = -472, // CTree<long,bool> Expectation
             _Schema = -450; // long
         internal CTree<long,bool> elTypes => 
             (CTree<long,bool>)(mem[ElementTypes] ?? CTree<long,bool>.Empty);
+        internal CTree<long, bool> scenarii =>
+            (CTree<long, bool>)(mem[Scenarii] ?? CTree<long, bool>.Empty);
         internal long schema => (long)(mem[_Schema] ?? -1L);
         internal string iri => (string)(mem[Iri] ?? "");
+        internal static GraphType Empty = new();
+        GraphType() : base(--_uid, BTree<long, object>.Empty) { }
         internal GraphType(PGraphType pg, Context cx, long ap)
             : this(pg.ppos, _Mem(pg, cx, ap))
         {
@@ -1547,6 +1552,18 @@ namespace Pyrrho.Level5
         {
             return new GraphType(dp, m);
         }
+        internal override void SaveFocusedObject(string cr, Context cx)
+        {
+            var nl = CTree<string, long>.Empty;
+            for (var b = elTypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is DBObject e)
+                    nl += (e.NameFor(cx), e.defpos);
+            if (cx.Add(new PGraphType(cx.db.nextPos, cr, nl, cx)) is GraphType nt)
+            {
+                nt = nt + (ElementTypes, elTypes) + (Scenarii, scenarii);
+                cx.db += nt;
+            }
+        }
     }
     /// <summary>
     /// A Graph is a named DBObject set of TNodes/TEdges
@@ -1558,7 +1575,11 @@ namespace Pyrrho.Level5
             Nodes = -499; // CTree<long,TNode> and edges
         internal CTree<long, TNode> nodes =>
                 (CTree<long, TNode>)(mem[Nodes] ?? CTree<long, TNode>.Empty);
+        internal CTree<long, bool> scenarii =>
+            (CTree<long, bool>)(mem[GraphType.Scenarii] ?? CTree<long, bool>.Empty);
         internal long schema => (long)(mem[GraphType._Schema] ?? -1L);
+        internal static Graph Empty = new();
+        Graph() : base(--_uid, BTree<long, object>.Empty) { }
         public Graph(PGraph p,Context cx) 
             : this(p.ppos,new BTree<long,object>(ObInfo.Name,p.name))
         {
@@ -1589,6 +1610,14 @@ namespace Pyrrho.Level5
                     return false;
             return true;
         }
+        internal override void SaveFocusedObject(string cr, Context cx)
+        {
+            if (cx.Add(new PGraph(cx.db.nextPos, cr, cx)) is Graph ng)
+            {
+                ng = ng + (Nodes, nodes) + (GraphType.Scenarii,scenarii);
+                cx.db += ng;
+            }
+        }
         public override string ToString()
         {
             var sb = new StringBuilder("Graph ");
@@ -1599,6 +1628,37 @@ namespace Pyrrho.Level5
                 sb.Append(cm); cm = ','; sb.Append(Uid(b.key()));
             }
             sb.Append(']');
+            return sb.ToString();
+        }
+    }
+    internal class Expectation : DBObject
+    {
+        internal const long
+            Confidence = -416, // long QlValue (Real)
+            Because = -417,    // long MatchPattern
+            Expect = 418;     // long MatchPattern
+        public long confidence => (long?)mem[Confidence] ?? -1L;
+        public long because => (long?)mem[Because] ?? -1L;
+        public long expect => (long?)mem[Expect] ?? -1L;
+        public Expectation(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new Expectation(dp,m);
+        }
+        internal string Show(Context cx)
+        {
+            var sb = new StringBuilder(" Expect: ");
+            if (cx.obs[expect] is MatchPattern e)
+                sb.Append(e);
+            if (cx.obs[because] is MatchPattern b)
+            {
+                sb.Append(" Because: "); sb.Append(b);
+            }
+            if (cx.obs[confidence] is QlValue c && c.Eval(cx) is TypedValue v && v!=TNull.Value)
+            {
+                sb.Append(" Confidence: "); sb.Append(v);
+            }
             return sb.ToString();
         }
     }
@@ -1619,7 +1679,9 @@ namespace Pyrrho.Level5
             (string)(mem[GraphType.Iri] ?? "");
         internal static Schema Empty = new(); 
         Schema() : base(--_uid,new BTree<long,object>(Infos,
-            new BTree<long,ObInfo>(-502,new ObInfo(".",Grant.AllPrivileges))))
+            new BTree<long,ObInfo>(-502,new ObInfo("/",Grant.AllPrivileges)))
+            +(DefaultGraphType,GraphType.Empty.defpos)
+            +(DefaultGraph,Graph.Empty.defpos))
         { }
         public Schema (PSchema ps,Context cx)
             :base(ps.ppos,_Mem(cx,ps))

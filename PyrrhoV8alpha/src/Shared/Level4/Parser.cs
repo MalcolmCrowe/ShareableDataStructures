@@ -5,6 +5,7 @@ using Pyrrho.Level5;
 using System.Collections;
 using System.Globalization;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.Arm;
 using System.Security.Cryptography;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -475,6 +476,7 @@ namespace Pyrrho.Level4
                             return (Executable)cx.Add(new QueryStatement(lp,
                                 new BTree<long, object>(QueryStatement.Result, tb.RowSets(tn, cx, tb, -1L, 0L).defpos)));
                         }
+                    case Qlx.EXPECT: ParseExpectation(m); return Executable.Empty;
                     case Qlx.UNION: return ParseCompositeQueryStatement(m);
                     case Qlx.UPDATE: (cx, var ue) = ParseSqlUpdate(m); return ue;
                     case Qlx.USE:
@@ -495,7 +497,7 @@ namespace Pyrrho.Level4
                                 Mustbe(Qlx.Id);
                                 ug = sn.ident;
                             }
-                            var sa = ParseStatement(m+(DBObject._Domain, xp));
+                            var sa = ParseStatement(m+(DBObject._Domain, xp)+(Executable.UseGraph,ug));
                             return (Executable)cx.Add(sa + (Executable.UseGraph, ug));
                         }
                     case Qlx.VALUE: goto case Qlx.BINDING;
@@ -507,9 +509,36 @@ namespace Pyrrho.Level4
                 }
             throw new DBException("42000");
         }
+
+        internal Expectation ParseExpectation(BTree<long, object> m)
+        {
+            Next();
+            var gi = (string?)m[Executable.UseGraph] ?? "/";
+            var g = cx.db.objects[cx.role.dbobjects[gi]] as GraphType;
+            var lp = LexDp();
+            var e = ParseStatement(m);
+            Mustbe(Qlx.BECAUSE);
+            Next();
+            var b = ParseStatement(m);
+            var c = ParseSqlValue(m + (DBObject._Domain, Domain.Real));
+            if (tok != Qlx.EOF)
+                throw new DBException("42000");
+            var ne = new Expectation(cx.GetUid(), new BTree<long, object>(Expectation.Expect, e)
+                + (Expectation.Because, b) + (Expectation.Confidence, c));
+            var ph = new PExpect(Physical.Type.Expect, cx.db.nextPos, cx, g.defpos, cx.db.nextStmt)
+            { graph = g.defpos, source=new (lxr.input,lxr.pos,lxr.pos-lxr.start)}; 
+            var ob = cx.Add(ph);
+            cx.db += g + (GraphType.Scenarii, g.scenarii + (ne.defpos, true));
+            cx.db += ne;
+            return ne;
+        }
+
         private Executable ParseSchemaStatement(BTree<long, object> m)
         {
             Next();
+            var e = false;
+            if (e = Match(Qlx.EXPECT))
+                Next();
             if (Match(Qlx.LPAREN))
             {
                 Next();
@@ -527,7 +556,7 @@ namespace Pyrrho.Level4
                     m += (MatchStatement.MatchList, svgs);
                 }
             }
-            return new SchemaStatement(cx.GetUid(),cx,m);
+            return new SchemaStatement(cx.GetUid(),cx,m) { expects = e };
         }
 
         bool StartStatement()
@@ -540,7 +569,8 @@ namespace Pyrrho.Level4
                 Qlx.LBRACE, Qlx.LEAVE, Qlx.LET,  Qlx.LIMIT, Qlx.LOOP, Qlx.MATCH, Qlx.NODETACH,
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
                 Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SCHEMA, Qlx.SELECT,
-                Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.UNION, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
+                Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.EXPECT,
+                Qlx.UNION, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
                 Qlx.VALUES, Qlx.WHEN, Qlx.WHERE, Qlx.WHILE, Qlx.WITH, Qlx.YIELD) || Match(Qlx.Id);
         }
         byte MustBeLevelByte()
@@ -1213,7 +1243,7 @@ namespace Pyrrho.Level4
                 }
                 Mustbe(Qlx.RBRACE);
             }
-            if (tok == Qlx.AS)
+            if (tok == Qlx.AS && lxr.ch!='/' && lxr.ch!='.') // catref
             {
                 Next(); Mustbe(Qlx.COPY); Next(); Mustbe(Qlx.OF);
                 var cs = ParseInsertGraph();
@@ -1238,7 +1268,7 @@ namespace Pyrrho.Level4
                 if (!replace)
                     throw new DBException("42104", cr.ToString());
             }
-            if (tok == Qlx.AS)
+            if (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.') // catref)
                 Next();
             if (tok == Qlx.COPY)
             {
@@ -3151,7 +3181,7 @@ namespace Pyrrho.Level4
             TMetadata sm = TMetadata.Empty;
             m = m + (Domain.Kind, Qlx.TYPE) + (DBObject.Definer, cx.role.defpos) + (DBObject._Ident, typename)
                 + (DBObject._Domain, dt) + (Domain.Under, supers) + (TableColumn._Table, tb.defpos);
-            if (tok == Qlx.AS || StartMetadata(Qlx.TYPE))
+            if (StartMetadata(Qlx.TYPE) || (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.')) // catref)
             {
                 if (tok == Qlx.AS)
                 {
@@ -3437,7 +3467,7 @@ namespace Pyrrho.Level4
         {
             var colname = new Ident(this);
             Mustbe(Qlx.Id);
-            if (tok == Qlx.AS)
+            if (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.') // catref)
                 Next();
             var type = ParseDataType();
             if (Match(Qlx.DEFAULT))
@@ -5774,6 +5804,13 @@ namespace Pyrrho.Level4
                     ns += (QueryStatement.Result, cx.result.defpos);
                 ls = ns;
             }
+            if (m[Executable.UseGraph] is long uql && cx.obs[uql] is DBObject uq 
+                && tok==Qlx.AS && (lxr.ch=='/' || lxr.ch=='.'))
+            {
+                lxr.cat = true;
+                Next();
+                uq.SaveFocusedObject(lxr.val.ToString(),cx);
+            }
             return (ls is EmptyStatement)?ls:(Executable)cx.Add(ls);
         }
         void BindingAggs(CList<long> s)
@@ -6592,13 +6629,14 @@ namespace Pyrrho.Level4
         {
             Next();
             MethodModes();
-            Match(Qlx.CONSTRUCTOR, Qlx.DOMAIN, Qlx.FUNCTION, Qlx.INSTANCE, Qlx.METHOD,
+            Match(Qlx.CONSTRUCTOR, Qlx.DOMAIN, Qlx.FUNCTION, Qlx.GRAPH, Qlx.INSTANCE, Qlx.METHOD,
                 Qlx.OVERRIDING, Qlx.PROCEDURE, Qlx.STATIC, Qlx.TABLE, Qlx.TYPE, Qlx.ROLE, Qlx.VIEW);
             switch (tok)
             {
                 case Qlx.CONSTRUCTOR: ParseMethodDefinition(); break;
                 case Qlx.DOMAIN: ParseAlterDomain(); break;
                 case Qlx.FUNCTION: ParseAlterProcedure(); break;
+                case Qlx.GRAPH: ParseAlterGraph(); break;
                 case Qlx.INSTANCE: ParseMethodDefinition(); break;
                 case Qlx.METHOD: ParseMethodDefinition(); break;
                 case Qlx.OVERRIDING: ParseMethodDefinition(); break;
@@ -6611,6 +6649,105 @@ namespace Pyrrho.Level4
                     throw new DBException("42125", tok).Mix();
             }
         }
+
+        private void ParseAlterGraph()
+        {
+            Next();
+            var t = false;
+            if (t=Match(Qlx.TYPE))
+                Next();
+            var id = lxr.val.ToString();
+            Mustbe(Qlx.Id);
+            var ob = cx.db.objects[cx.role.dbobjects[id]] as DBObject;
+            var m = BTree<long, object>.Empty;
+            if (ob!=null)
+                m += (Executable.UseGraph,ob);
+            DBObject? nb = null;
+            var op = Mustbe(Qlx.ADD,Qlx.SET,Qlx.REMOVE);
+            var s = StartStatement();
+            var e = Executable.Empty;
+            string? ni = null;
+            if (Match(Qlx.Id))
+            {
+                ni = lxr.val.ToString();
+                Next();
+                s = StartStatement();
+            }
+            if (s)
+                e = ParseStatement(m);
+            if (t && ob is GraphType gt)
+            {
+                var ts = gt.elTypes;
+                var tl = CTree<string, long>.Empty;
+                if (cx.db.objects[nb?.defpos ?? -1L] is Domain nt)
+                    switch (op)
+                    {
+                        case Qlx.ADD: ts += (nt.defpos, true); break;
+                        case Qlx.REMOVE: ts -= nt.defpos; break;
+                    }
+                else
+                {
+                    if (Match(Qlx.LBRACE))
+                    {
+                        tl = ParseNestedGraphTypeSpecification(tl);
+                        if (op == Qlx.SET)
+                            ts = CTree<long, bool>.Empty;
+                        for (var b = tl.First(); b != null; b = b.Next())
+                            switch (op)
+                            {
+                                case Qlx.SET:
+                                case Qlx.ADD: ts += (b.value(), true); break;
+                                case Qlx.REMOVE: ts -= b.value(); break;
+                            }
+                    }
+                    else
+                    {
+                        var dp = ParseElementTypeSpec(tl);
+                        if (cx.db.objects[dp] is Domain nd)
+                            switch (op)
+                            {
+                                case Qlx.SET:
+                                case Qlx.ADD: ts += (nd.defpos, true); break;
+                                case Qlx.REMOVE: ts -= nd.defpos; break;
+                            }
+                    }
+                }
+                cx.Add(gt+ (GraphType.ElementTypes, ts));
+                return;
+            }
+            if (ob is not Graph gr) return;
+            var nl = gr.nodes;
+            if (ni != null && cx.db.objects[cx.names[ni].Item2] is GqlNode gn && gn.Eval(cx) is TNode tn)
+                switch (op)
+                {
+                    case Qlx.SET:
+                    case Qlx.ADD: nl += (tn.defpos, tn); break;
+                    case Qlx.REMOVE: nl -= tn.defpos; break;
+                }
+            else if (ParseStatement(m) is MatchStatement ms)
+            {
+                var pi = new Ident("_p", cx.GetUid());
+                var gp = new TGParam(pi.uid, "_p", Domain.PathType, TGParam.Type.Path, ms.defpos);
+                lxr.tgs += (pi.uid, gp);
+                var qi = cx.Add(new QlValue(pi, new BList<Ident>(pi), cx, Domain.PathType));
+                cx.Add(pi.ident, pi.lp, qi);
+                cx.bindings += (pi.uid, qi.domain);
+                if (ms._Obey(cx) is Context nc && nc.obs[ms.bindings] is ExplicitRowSet es
+                    && qi is QlValue q)
+                {
+                    for (var b=es.First(nc);b!=null;b=b.Next(nc))
+                        if (q.Eval(cx) is TNode n)
+                            switch(op)
+                            {
+                                case Qlx.SET:
+                                case Qlx.ADD: nl += (n.defpos, n); break;
+                                case Qlx.REMOVE: nl -= n.defpos; break;
+                            }
+                }
+            }
+            cx.Add(gr + (Graph.Nodes, nl));
+        }
+
         /// <summary>
         /// id AlterTable { ',' AlterTable } 
         /// </summary>
@@ -7280,19 +7417,6 @@ namespace Pyrrho.Level4
                 else if (tok == Qlx.SET)
                 {
                     Next();
-                    if (tok == Qlx.ID) // special cases for the typed graph model
-                    {
-                        var k = lxr.val.ToString();
-                        if (k == "ID")
-                        {
-
-                        }
-                        else if (k == "LEAVING")
-                        { }
-                        else if (k == "ARRIVING")
-                        { }
-                        else throw new DBException("42161", "ID,LEAVING or ARRIVING");
-                    }
                     Mustbe(Qlx.DEFAULT);
                     var st = lxr.start;
                     dv = lxr.val;
@@ -7363,7 +7487,7 @@ namespace Pyrrho.Level4
         bool StartStdFunctionRefs()
         {
             return Match(Qlx.COLLECT, Qlx.CURRENT, Qlx.DESCRIBE, Qlx.ELEMENT, Qlx.ELEMENTID, Qlx.EVERY,
-    Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.FUSION, Qlx.GROUPING, Qlx.HTTP, Qlx.ID, Qlx.JSON,
+    Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.FUSION, Qlx.GROUPING, Qlx.HTTP, Qlx.JSON,
     Qlx.LABELS, Qlx.LAST_VALUE, Qlx.LAST_DATA, Qlx.PARTITION, Qlx.UNNEST,
     Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.REF, Qlx.ROW_NUMBER, Qlx.SOME, 
     Qlx.SPECIFICTYPE, Qlx.SUBSTRING, Qlx.COLLECT, Qlx.INTERSECTION, Qlx.ROWS,
@@ -8394,7 +8518,7 @@ namespace Pyrrho.Level4
                 if (q >= 0)
                     v = (QlValue)v.AddFrom(cx, q);
             }
-            if (tok == Qlx.AS)
+            if (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.') // catref)
             {
                 Next();
                 alias = new Ident(this);
@@ -8698,7 +8822,7 @@ namespace Pyrrho.Level4
                 }
                 Mustbe(Qlx.RPAREN);
                 Match(Qlx.COMMA, Qlx.CROSS, Qlx.NATURAL, Qlx.JOIN, Qlx.INNER, Qlx.LEFT, Qlx.RIGHT, Qlx.FULL);
-                if (tok == Qlx.Id || tok == Qlx.AS)
+                if (tok == Qlx.Id || (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.')) // catref)
                 {
                     if (tok == Qlx.AS)
                         Next();
@@ -8813,7 +8937,7 @@ namespace Pyrrho.Level4
                 string? a = null;
                 Match(Qlx.COMMA, Qlx.CROSS, Qlx.DO, Qlx.NATURAL, Qlx.JOIN, Qlx.INNER, Qlx.LEFT, 
                     Qlx.RIGHT, Qlx.FULL,Qlx.VALUES, Qlx.ON, Qlx.FETCH);
-                if (tok == Qlx.Id || tok == Qlx.AS)
+                if (tok == Qlx.Id || (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.')) // catref)
                 {
                     if (tok == Qlx.AS)
                         Next();
@@ -8991,7 +9115,7 @@ namespace Pyrrho.Level4
         /// <returns>The correlation info</returns>
 		ObInfo? ParseCorrelation(Domain xp)
         {
-            if (tok == Qlx.Id || tok == Qlx.AS)
+            if (tok == Qlx.Id || (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.')) // catref)
             {
                 if (tok == Qlx.AS)
                     Next();
@@ -9466,7 +9590,7 @@ namespace Pyrrho.Level4
             cx.defs += (lp, cx.names);
             cx.names = cx.anames;
             Mustbe(Qlx.Id);
-            if (tok == Qlx.AS)
+            if (tok == Qlx.AS && lxr.ch != '/' && lxr.ch != '.') // catref)
                 Next();
             if (tok == Qlx.Id)
             {
@@ -10358,7 +10482,7 @@ namespace Pyrrho.Level4
             {
                 return (QlValue)cx.Add(new SqlLiteral(LexDp(), TLevel.New(MustBeLevel())));
             }
-            Match(Qlx.SCHEMA, Qlx.LABELS, Qlx.ELEMENTID, Qlx.ID, Qlx.TYPE, // we may get these non-reserved words
+            Match(Qlx.SCHEMA, Qlx.LABELS, Qlx.ELEMENTID, Qlx.TYPE, // we may get these non-reserved words
                 Qlx.TABLE, Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.GROUPING, Qlx.HTTP, Qlx.LAST_VALUE, Qlx.LAST_DATA,Qlx.RANK,
     Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.REF, Qlx.ROW_NUMBER, Qlx.SUBSTRING, Qlx.COLLECT, Qlx.INTERSECTION,
     Qlx.ELEMENT, Qlx.USER, Qlx.VERSIONING, Qlx.MULTISET, Qlx.LIST, Qlx.VALUES);
@@ -11019,7 +11143,6 @@ namespace Pyrrho.Level4
                         Next();
                         return (QlValue)cx.Add(new ColumnFunction(lp, ParseIDList()));
                     }
-                case Qlx.ID: goto case Qlx.ELEMENTID;
                 case Qlx.INTERSECT: goto case Qlx.COUNT;
                 case Qlx.LABELS: goto case Qlx.ELEMENTID;
                 case Qlx.LN: goto case Qlx.ABS;

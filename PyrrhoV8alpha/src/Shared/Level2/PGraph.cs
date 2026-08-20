@@ -11,6 +11,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Text;
+using System.Xml;
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -212,12 +213,12 @@ namespace Pyrrho.Level2
                 return sb.ToString();
             }
         } */
-    internal class PGraphType : Defined
+    internal class PGraphType : Compiled
     {
         public string iri = "";
         public CTree<string, long> types = CTree<string, long>.Empty;
         public PGraphType(long pp,  string s, CTree<string,long> ts, Context cx)
-            : base(Type.PGraphType, pp, cx, s, Grant.Privilege.NoPrivilege)
+            : base(Type.PGraphType, pp, cx, s, -1L, Domain.GraphSpec, cx.db.nextStmt)
         {
             iri = s;
             types = ts;
@@ -292,10 +293,10 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
     }
-    internal class PGraph : Defined
+    internal class PGraph : Compiled
     {
         public PGraph(long pp, string s, Context cx) 
-            : base(Type.PSchema, pp, cx, s, Grant.Privilege.NoPrivilege)
+            : base(Type.PSchema, pp, cx, s, Domain.GraphSpec, cx.db.nextStmt)
         {
             name = s;
         }
@@ -332,8 +333,8 @@ namespace Pyrrho.Level2
         public long graph;
         public long table;
         public long node; // + or - 
-        public EditGraph(long pp,long g, long t, long n, Context cx)
-            :base(Type.EditGraph,pp,cx.db)
+        public EditGraph(long pp, long g, long t, long n, Context cx)
+            : base(Type.EditGraph, pp, cx.db)
         {
             graph = g;
             table = t;
@@ -352,7 +353,7 @@ namespace Pyrrho.Level2
             if (cx.db.objects[graph] is Graph g && cx.db.objects[table] is Table t)
             {
                 if (node > 0 && t.tableRows[node] is TableRow tr)
-                    g += (Graph.Nodes, g.nodes + (node, new TNode(cx,tr)));
+                    g += (Graph.Nodes, g.nodes + (node, new TNode(cx, tr)));
                 else
                     g += (Graph.Nodes, g.nodes - (-node));
                 cx.db += g;
@@ -360,48 +361,6 @@ namespace Pyrrho.Level2
             return base.Install(cx);
         }
     }
-    /*
-    internal class PSchema : Defined
-    {
-        public PSchema(long pp, string s, Context cx) 
-            : base(Type.PSchema, pp, cx, s, Grant.Privilege.NoPrivilege)
-        {
-            name = s;
-        }
-        public PSchema(Reader rdr) : base(Type.PSchema, rdr)
-        { }
-        public PSchema(PSchema x, Writer wr) : base(x, wr)
-        { }
-
-        protected override Physical Relocate(Writer wr)
-        {
-            return new PSchema(this, wr);
-        }
-
-        internal override DBObject? Install(Context cx)
-        {
-            var g = new Schema(this,cx);
-            var ro = cx.role;
-            ro += (Role.SchemaNames, ro.schemas + (name, ppos));
-            cx.db += g;
-            cx.db += ro;
-            cx.db += (Database.Role, ro);
-            cx.Add(ro);
-            cx.Add(g);
-            cx.ownerRole = g;
-            return g;
-        }
-        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
-        {
-            if (name.StartsWith("http")) // do not commit
-                return (tr, this);
-            return base.Commit(wr, tr);
-        }
-        public override string ToString()
-        {
-            return "PSchema "+name;
-        }
-    } */
     internal class PSchema : Physical
     {
         public string name = ""; // may begin with http:// etc
@@ -452,6 +411,78 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             return "PSchema " + name;
+        }
+    }
+    internal class PExpect : Compiled
+    {
+        public long graph; // or graph type
+        public string source = "";  // (2 patterns) includes becuase clause 
+        public string confidence = ""; // expression depending on binding names
+        public Expectation? temp = null;
+        internal PExpect(Type tp, long pp, Context cx, long g, long ns) 
+            : base(tp, pp, cx, "", g, Domain.GraphSpec, ns) { }
+        protected PExpect(Type tp, Reader rdr) : base(tp, rdr)  { }
+        protected PExpect(PExpect ph, Writer wr) : base(ph, wr)
+        {
+            graph = wr.cx.Fix(ph.graph);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            graph = rdr.GetLong();
+            name = rdr.GetString();
+            source = rdr.GetString();
+            confidence = rdr.GetString();
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.PutLong(graph);
+            wr.PutString(name);
+            wr.PutString(source);
+            wr.PutString(confidence);
+            base.Serialise(wr);
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            var r = base.Commit(wr, tr);
+            wr.cx.instDFirst = -1L;
+            return r;
+        }
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        {
+            switch (that.type)
+            {
+                case Type.Expect:
+                    if (graph == ((PExpect)that).graph)
+                        return new DBException("40039", graph, that, ct);
+                    break;
+            }
+            return base.Conflicts(db, cx, that, ct);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(GetType().Name);
+            sb.Append(' '); sb.Append(DBObject.Uid(graph));
+            sb.Append(' '); sb.Append(source);
+            return sb.ToString();
+        }
+        internal override DBObject? Install(Context cx)
+        {
+
+            return base.Install(cx);
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            var psr = new Parser(rdr.context, source);
+            psr.cx.defs = BTree<long, Names>.Empty;
+            psr.cx.obs = ObTree.Empty;
+            psr.cx.depths = BTree<int, ObTree>.Empty;
+            psr.cx.parse = ExecuteStatus.Parse;
+            if (psr.ParseExpectation(BTree<long, object>.Empty) is Expectation p)
+            {
+                framing = new Framing(psr.cx, nst);
+                rdr.context.Add(p);
+            }
         }
     }
 }

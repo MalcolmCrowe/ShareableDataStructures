@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Data.SqlTypes;
 using System.Net;
 using System.Runtime.InteropServices.Marshalling;
@@ -2715,6 +2716,56 @@ namespace Pyrrho.Level4
             }
             return rp;
         }
+        /// <summary>
+        /// Make a new Graph whose nodes are the given by the current binding
+        /// and whose scenarii are those of the current graphtype and current graph
+        /// </summary>
+        /// <returns></returns>
+        internal Graph CurrentGraph()
+        {
+            if (exec?.graph is string gn)
+            {
+                var ss = gn.Split('/');
+                var n = ss.Length;
+                Schema? schema = null;
+                if (n > 1 && ss[1] != "")
+                    schema = db.objects[role.dbobjects[ss[1]]] as Schema;
+                if (schema == null)
+                {
+                    if (db.schemas == null)
+                    {
+                        var sp = --Basis._uid;
+                        var ns = new Schema(sp, sp);
+                        db += (Database.DefaultSchema, sp);
+                        db += (Database.Schemas, new CTree<long, bool>(ns.defpos, true));
+                        lock (Database.databases)
+                        {
+                            Database.databases += (db.name, db);
+                        }
+                    }
+                    schema = db.defaultSchema;
+                }
+                for (var b = 2; b < n; b++)
+                {
+                    var ob = db.objects[role.dbobjects[ss[b]]];
+                    if (ob is Schema)
+                        schema = (Schema)ob;
+                    if (ob is GraphType)
+                        graphType = (GraphType)ob;
+                    if (ob is Graph)
+                        graph = (Graph)ob;
+                }
+            }
+            graphType ??= db.objects[schema?.defaultGraphType??-1L] as GraphType??GraphType.Empty;
+            graph ??= db.objects[schema?.defaultGraph ?? -1L] as Graph??Graph.Empty;
+            var nodes = CTree<long, TNode>.Empty;
+            for (var c = this; c != null; c = c.next)
+                for (var b = c.binding.First(); b != null; b = b.Next())
+                    if (b.value() is TNode t)
+                        nodes += (t.defpos, t);
+            return new Graph(GetUid(), new BTree<long, object>(Graph.Nodes,nodes)
+                    + (GraphType.Scenarii,graphType.scenarii+graph.scenarii));
+        }
         // debugging
         public override string ToString()
         {
@@ -3360,7 +3411,7 @@ namespace Pyrrho.Level4
         internal Framing(Context cx,long nst) : base(_Mem(cx,nst))
         { }
         static BTree<long, object> _Mem(Context cx,long nst)
-        {
+        { 
             var r = BTree<long, object>.Empty;
             if (cx.result is RowSet rs)
                 r += (Executable.ValueType, rs);

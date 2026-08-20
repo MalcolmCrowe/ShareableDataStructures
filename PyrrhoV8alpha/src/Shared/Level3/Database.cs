@@ -143,6 +143,7 @@ namespace Pyrrho.Level3
         internal const long
             Catalog = -247, // CTree<string,long> DBObject
             Curated = -53, // long
+            DefaultSchema = -320, // long Schema
             Format = -54,  // int (50 for Pyrrho v5,v6; 52 for Pyrrho v7; 53 for Pyrrhov8)
             Guest = -55, // long: a role holding all grants to PUBLIC
   //          JoinedTypes = -430,// CTree<CTree<Domain,bool>,long> 
@@ -187,6 +188,9 @@ namespace Pyrrho.Level3
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
         internal User? user => (User?)mem[User];
+        internal CTree<long, bool> schemas => 
+            (CTree<long, bool>)(mem[Schemas] ?? CTree<long, bool>.Empty);
+        internal Schema? defaultSchema = null;
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);

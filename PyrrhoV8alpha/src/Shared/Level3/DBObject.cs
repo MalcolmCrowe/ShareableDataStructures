@@ -98,6 +98,7 @@ namespace Pyrrho.Level3
         internal Framing framing =>
             (Framing?)mem[_Framing] ?? Framing.Empty;
         internal Ident? id => (Ident?)mem[_Ident];
+        internal DateTime? valid = null;
         internal virtual bool Defined() => domain.kind != Qlx.CONTENT;
         protected DBObject(long pp, long dp, BTree<long, object>? m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp))
@@ -423,6 +424,7 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
+        internal virtual void SaveFocusedObject(string s, Context cx) { }
         internal virtual CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
         {
             var os = Operands(cx) - ag;

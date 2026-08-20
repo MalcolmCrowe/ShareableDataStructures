@@ -47,7 +47,7 @@ namespace Pyrrho.Level2
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
             PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType, // 76-80
             Record4, Update2, Delete2, PSchema, PGraph, PGraphType, // 81-86 
-            PType2, PUnion, EditGraph // 87-89 
+            PType2, PUnion, EditGraph, Expect // 87-90 
         };
         /// <summary>
         /// The Physical.Type of the Physical
