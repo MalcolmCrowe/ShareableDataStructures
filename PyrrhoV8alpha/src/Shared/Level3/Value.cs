@@ -7558,7 +7558,7 @@ namespace Pyrrho.Level3
                         }
                         vcx.result = cx.obs[from] as RowSet;
                         var p = -1L;
-                        for (var b = cx.CurrentGraph().nodes.First();b is not null; b = b.Next())
+                        for (var b = cx.Nodes().First();b is not null; b = b.Next())
                             if (b.value() is TNode t)
                                 if (t.tableRow.time > p)
                                     p = t.tableRow.time;
@@ -7912,7 +7912,7 @@ namespace Pyrrho.Level3
                         }
                         vcx.result = cx.obs[from] as RowSet;
                         var p = 1.0D;
-                        for (var b = cx.CurrentGraph().scenarii.First();
+                        for (var b = cx.Scenarii().First();
                             b is not null; b = b.Next())
                             if (cx.db.objects[b.key()] is Expectation e)
                                 p *= e.confidence;
@@ -7930,7 +7930,7 @@ namespace Pyrrho.Level3
                         vcx.result = cx.obs[from] as RowSet;
                         var p = -1L;
                         var q = -1L;
-                        for (var b = cx.CurrentGraph().nodes.First();
+                        for (var b = cx.Nodes().First();
                             b is not null; b = b.Next())
                         {
                             var t = b.value();

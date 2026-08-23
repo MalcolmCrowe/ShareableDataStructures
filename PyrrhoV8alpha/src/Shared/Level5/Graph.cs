@@ -1483,7 +1483,7 @@ namespace Pyrrho.Level5
     {
         internal const long
             Iri = -147, // string
-            ElementTypes = -289, // CTree<long,object> Table
+            ElementTypes = -289, // CTree<long,bool> Table
             Scenarii = -472, // CTree<long,bool> Expectation
             _Schema = -450; // long
         internal CTree<long,bool> elTypes => 

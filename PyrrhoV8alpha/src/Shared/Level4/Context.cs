@@ -2743,7 +2743,29 @@ namespace Pyrrho.Level4
                             Database.databases += (db.name, db);
                         }
                     }
-                    schema = db.defaultSchema;
+                    schema = db.defaultSchema??Schema.Empty;
+                    graphType ??= db.objects[schema.defaultGraphType] as GraphType ?? GraphType.Empty;
+                    graph ??= db.objects[schema.defaultGraph] as Graph ?? Graph.Empty;
+                    var es = graphType.elTypes;
+                    var ee = graphType.scenarii;
+                    var ge = graph.scenarii;
+                    for (var b = role.dbobjects.First(); b != null; b = b.Next())
+                    {
+                        es += (b.value(), true);
+                        if (db.objects[b.value()] is GraphType gt)
+                        {
+                            ee += gt.scenarii;
+                            ge += gt.scenarii;
+                        }
+                    }
+                    graphType += (GraphType.ElementTypes, es);
+                    graphType += (GraphType.Scenarii, ee);
+                    db += graphType;
+                    graph += (GraphType.Scenarii, ge);
+                    db += graph;
+                    schema += (Schema.DefaultGraphType, graphType.defpos);
+                    schema += (Schema.DefaultGraph, graph.defpos);
+                    db += schema;
                 }
                 for (var b = 2; b < n; b++)
                 {
@@ -3321,6 +3343,27 @@ namespace Pyrrho.Level4
                     t = t-k+(nk,b.value());
             }
             return t;
+        }
+
+        internal CTree<long,TNode> Nodes()
+        {
+            var g = CurrentGraph();
+            var ns = g.nodes;
+            for (var b = cursors.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.Value() is TNode n)
+                        ns += (n.defpos, n);
+                    else if (c.Value() is TRef r
+                        && db.objects[r.elType.defpos] is Table t
+                        && r.ToLong() is long p
+                        && t.tableRows[p] is TableRow q)
+                        ns += (p, new TNode(this, q));
+            return ns;
+        }
+
+        internal CTree<long,bool> Scenarii()
+        {
+            return CurrentGraph().scenarii;
         }
     }
 

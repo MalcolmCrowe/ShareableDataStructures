@@ -513,8 +513,7 @@ namespace Pyrrho.Level4
         internal Expectation ParseExpectation(BTree<long, object> m)
         {
             Next();
-            var gi = (string?)m[Executable.UseGraph] ?? "/";
-            var g = cx.db.objects[cx.role.dbobjects[gi]] as GraphType;
+            cx.graph = cx.CurrentGraph();
             var lp = LexDp();
             var e = ParseStatement(m);
             Mustbe(Qlx.BECAUSE);
@@ -525,10 +524,9 @@ namespace Pyrrho.Level4
                 throw new DBException("42000");
             var ne = new Expectation(cx.GetUid(), new BTree<long, object>(Expectation.Expect, e)
                 + (Expectation.Because, b) + (Expectation.Confidence, c));
-            var ph = new PExpect(Physical.Type.Expect, cx.db.nextPos, cx, g.defpos, cx.db.nextStmt)
-            { graph = g.defpos, source=new (lxr.input,lxr.pos,lxr.pos-lxr.start)}; 
-            var ob = cx.Add(ph);
-            cx.db += g + (GraphType.Scenarii, g.scenarii + (ne.defpos, true));
+            var ph = new PExpect(Physical.Type.Expect, cx.db.nextPos, cx, cx.graph.defpos, cx.db.nextStmt)
+            { graph = cx.graph.defpos, source=new (lxr.input,lxr.pos,lxr.pos-lxr.start)}; 
+            cx.db += cx.graph + (GraphType.Scenarii, cx.graph.scenarii + (ne.defpos, true));
             cx.db += ne;
             return ne;
         }
@@ -5871,7 +5869,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// parse a dotted identifier chain. Watch for pseudo TableColumns
-        /// CHECK ROW PARTITION VERSIONING PROVENANCE TYPE_URI SYSTEM_TIME
+        /// CHECK ROW PARTITION VERSIONING PROVENANCE TYPE_URI SYSTEM_TIME PERCENT AT PERIOD
         /// The valueType will get classified as variable or ident
         /// during the Analysis stage Selects when things get setup
         /// </summary>
@@ -5893,7 +5891,7 @@ namespace Pyrrho.Level4
                 return (QlValue)cx.Add(new SqlFunction(ap,sp, cx, Qlx.SECURITY, null, null, null, Qlx.NO));
             }
             if (Match(Qlx.PARTITION, Qlx.REF, Qlx.VERSIONING, Qlx.CHECK,
-                Qlx.SYSTEM_TIME, Qlx.LAST_DATA))
+                Qlx.SYSTEM_TIME, Qlx.LAST_DATA, Qlx.AT, Qlx.PERCENT, Qlx.PERIOD))
             {
                 QlValue ps = new SqlFunction(ap,LexDp(), cx, tok, null, null, null, Qlx.NO);
                 Next();
@@ -5916,7 +5914,7 @@ namespace Pyrrho.Level4
                 return (QlValue)cx.Add(ps);
             }
             var ttok = tok;
-            var (ic, il) = ParseIdentChain(true);
+            var (ic, il) = ParseIdentChain(true); // stopping at VERSIONING
             var lp = LexDp();
             if (tok == Qlx.LPAREN)
             {
@@ -5989,7 +5987,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// In graph dotted expressions we can't have more than one (top) unknown/unbound identifier:
-        /// anything else will be field names (when eventually matched) or already known. 
+        /// anything else will be field names (when eventually matched), a pseudo, or already known. 
         /// When we get to field subtypes this could be found at match time. 
         /// In LET expressions, the top can be a new unbound variable, 
         /// then all must be field names of known or to be matched types. 
