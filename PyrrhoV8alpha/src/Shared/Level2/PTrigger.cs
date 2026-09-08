@@ -227,7 +227,7 @@ namespace Pyrrho.Level2
                 sb.Append(')');
             }
             sb.Append(" on ");
-            sb.Append(Pos(target));
+            sb.Append(Ref(target));
             if (oldRow != null) Add("old row ", oldRow.ToString(), sb);
             if(newRow is not null) Add("new row ", newRow.ident, sb);
             if(oldTable is not null) Add("old table ", oldTable.ToString(), sb);

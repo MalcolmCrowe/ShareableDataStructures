@@ -24,6 +24,6 @@ and should run on Windows, Linux, and MacOS with DotNet.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-23 August 2026
+08 Sept 2026
 
 

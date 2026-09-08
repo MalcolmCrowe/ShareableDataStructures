@@ -33,7 +33,7 @@ namespace Pyrrho.Level4
         {
             var lx = psr.lxr;
             uid = psr.LexDp();
-            lp = (uid>=Transaction.Executables&&uid<Transaction.HeapStart)?lx.pos:lx.Position;
+            lp = (uid>=Transaction.Executables&&uid<Transaction.HeapStart)?lx.pos:lx.Rowid;
             ident = ((lx.tok == Qlx.Id && lx.val is not null)? lx.val.ToString() : DBObject.Uid(uid));
             if (psr.cx.parsingGQL!=Context.ParsingGQL.No && lx.tgs[uid] is TGParam gp && !psr.cx.anames.Contains(ident))
                 lx.tgs += (lp, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));
@@ -149,7 +149,7 @@ namespace Pyrrho.Level4
         public bool tex = false; // expecting a type?
         public bool cat = false; // for GQL catalog parent (case sensitive, / and . in identifiers)
         public bool json = false; // sloppy Json (quotes optional, [ and { as trigger for sublexing)
-        public long Position => offset + start;
+        public long Rowid => offset + start;
         /// <summary>
         /// The current token's value
         /// </summary>
@@ -332,14 +332,14 @@ namespace Pyrrho.Level4
                 {
                     case Qlx.LPAREN:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node | tgg, tga);
+                            var tg = new TGParam(Rowid, vo, gd, TGParam.Type.Node | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     case Qlx.ARROWBASE:
                     case Qlx.RARROW:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge | tgg, tga);
+                            var tg = new TGParam(Rowid, vo, gd, TGParam.Type.Edge | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
@@ -355,14 +355,14 @@ namespace Pyrrho.Level4
                     case Qlx.COLON:
                     case Qlx.VBAR:
                         {
-                            var tg = new TGParam(Position, vo, gc,
+                            var tg = new TGParam(Rowid, vo, gc,
                                 (tex ? TGParam.Type.Type : TGParam.Type.Value) | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     default:
                         {
-                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None | tgg, tga);
+                            var tg = new TGParam(Rowid, vo, gc, TGParam.Type.None | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }

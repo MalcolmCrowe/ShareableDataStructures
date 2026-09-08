@@ -99,7 +99,7 @@ namespace Pyrrho.Level2
         /// <returns>A string representation</returns>
 		public override string ToString() 
 		{ 
-			return "Change "+Pos(defpos)+" to "+name; 
+			return "Change "+Ref(defpos)+" to "+name; 
 		}
         /// <summary>
         /// During the validation step of the transaction, we review Physical records that

@@ -18,7 +18,7 @@ namespace Pyrrho.Level3
     /// The domain is adopted from the pv.viewdef immediately.
     /// Immutable
     /// However, we want to optimise queries deribed from views, so
-    /// we use the second constructor to make a private immutable copy
+    /// we use the _inner constructor to make a private immutable copy
     /// of the committed version.
     /// 
     /// </summary>
@@ -160,7 +160,7 @@ namespace Pyrrho.Level3
             ts = ts.Apply(m, cx);
             return ts;
         }
-        /// <summary>
+/*        /// <summary>
         /// API development support: generate the C# information for a Role$Class description
         /// </summary>
         /// <param name="from">the From</param>
@@ -202,11 +202,11 @@ namespace Pyrrho.Level3
             sb.Append("\r\n/* \r\n * Class "); sb.Append(mi.name); sb.Append(".java\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
             sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(')');
-            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */");
+            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n *"+"/");
             sb.Append("\r\n * from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
             if (mi.description != "")
                 sb.Append(" * " + mi.description + "\r\n");
-            sb.Append(" */\r\n");
+            sb.Append(" *"+"/\r\n");
             sb.Append("public class " + mi.name + " extends Versioned {\r\n");
             DisplayJType(cx,md, sb);
             sb.Append("}\r\n");
@@ -214,7 +214,7 @@ namespace Pyrrho.Level3
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
-        }
+        } 
         /// <summary>
         /// API development support: generate the Python information for a Role$Python description
         /// </summary>
@@ -276,7 +276,7 @@ namespace Pyrrho.Level3
                 {
                     var tn = ci.name;
                     if (tn != null)
-                        sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");
+                        sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else *"+"/\r\n");
                     else
                         tn += "_T" + i;
                     sb.Append("  public class " + tn + " extends Versioned {\r\n");
@@ -311,7 +311,7 @@ namespace Pyrrho.Level3
                     }
                     sb.Append("  self." + n + " = " + cd.defaultValue + "\r\n");
                 }
-        }
+        } */
         internal override void Modify(Context cx, Modify m)
         {
             if (cx.db == null)
@@ -554,7 +554,7 @@ namespace Pyrrho.Level3
         {
             base._ReadConstraint(cx, cu);
         }
-        /// <summary>
+ /*       /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition,
         /// and computes navigation properties
         /// </summary>
@@ -618,7 +618,7 @@ namespace Pyrrho.Level3
             sb.Append("}\r\n");
             return new TRow(from, new TChar(md.name??""), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());

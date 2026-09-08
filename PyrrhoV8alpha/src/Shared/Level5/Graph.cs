@@ -901,7 +901,7 @@ namespace Pyrrho.Level5
             {
                 var ep = ro.edgeTypes[nm];
                 var ed = cx._Ob(ep) as Domain;
-                if (ep ==0L || ed?.kind == Qlx.NODETYPE) // second term here is for Metadata.EdgeType
+                if (ep ==0L || ed?.kind == Qlx.NODETYPE) // _inner term here is for Metadata.EdgeType
                 {
                     cx.db += ro;
                     cx.db += (Database.Role, ro);
@@ -1497,9 +1497,9 @@ namespace Pyrrho.Level5
         internal GraphType(PGraphType pg, Context cx, long ap)
             : this(pg.ppos, _Mem(pg, cx, ap))
         {
-            cx.db += (Database.Catalog, cx.db.catalog + (pg.name, pg.ppos));
+            cx.graphType = new TTypeSpec(pg.name, pg.dataType);
+            cx.db += (Database.Catalog, cx.db.catalog + (pg.name, cx.graphType));
             cx.db += this;
-            cx.graphType = this;
         }
         public GraphType(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -1521,10 +1521,6 @@ namespace Pyrrho.Level5
         public static GraphType operator +(GraphType et, (long, object) x)
         {
             return (GraphType)et.New(et.defpos, et.mem + x);
-        }
-        public static GraphType operator +(GraphType g, TNode r)
-        {
-            return new GraphType(g.defpos, g.mem + (Nodes, g.nodes + (r.tableRow.defpos, true)));
         }
         public override int CompareTo(object? obj)
         {
@@ -1565,6 +1561,7 @@ namespace Pyrrho.Level5
             }
         }
     }
+    /*
     /// <summary>
     /// A Graph is a named DBObject set of TNodes/TEdges
     /// without constraints on connections or graphtype 
@@ -1572,24 +1569,37 @@ namespace Pyrrho.Level5
     internal class Graph : DBObject
     {
         internal const long
-            Nodes = -499; // CTree<long,TNode> and edges
-        internal CTree<long, TNode> nodes =>
-                (CTree<long, TNode>)(mem[Nodes] ?? CTree<long, TNode>.Empty);
+            Nodes = -499; // CTree<long,CTree<long,bool>> Domain,TableRecord
+        internal CTree<long, CTree<long,bool>> nodes =>
+                (CTree<long, CTree<long,bool>>)(mem[Nodes] ?? CTree<long, CTree<long,bool>>.Empty);
         internal CTree<long, bool> scenarii =>
             (CTree<long, bool>)(mem[GraphType.Scenarii] ?? CTree<long, bool>.Empty);
-        internal long schema => (long)(mem[GraphType._Schema] ?? -1L);
+        internal string iri => (string)(mem[GraphType.Iri] ?? "");
         internal static Graph Empty = new();
         Graph() : base(--_uid, BTree<long, object>.Empty) { }
         public Graph(PGraph p,Context cx) 
-            : this(p.ppos,new BTree<long,object>(ObInfo.Name,p.name))
+            : this(p.ppos,_Mem(p,cx))
         {
-            cx.db += (Database.Catalog, cx.db.catalog + (p.name, p.ppos));
+            cx.graph = 
+            cx.db += (Database.Catalog, cx.db.catalog + (p.name, p.graph));
             cx.db += this;
             cx.graph = this;
         }
         public Graph(long dp, BTree<long, object> m)
             : base(dp, m)
         { }
+        static BTree<long, object> _Mem(PGraph pg, Context cx)
+        {
+            var r = BTree<long, object>.Empty;
+            r += (GraphType.Iri, pg.name);
+            var ix = pg.name.LastIndexOf('/');
+            var nm = pg.name[ix..];
+            var oi = new ObInfo(nm, Grant.AllPrivileges);
+            var ns = Names.Empty;
+            oi += (ObInfo._Names, ns);
+            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            return r;
+        }
         public static Graph operator +(Graph et, (long, object) x)
         {
             return (Graph)et.New(et.defpos, et.mem + x);
@@ -1630,7 +1640,7 @@ namespace Pyrrho.Level5
             sb.Append(']');
             return sb.ToString();
         }
-    }
+    } */
     internal class Expectation : DBObject
     {
         internal const long
@@ -1662,65 +1672,166 @@ namespace Pyrrho.Level5
             return sb.ToString();
         }
     }
-    internal class Schema : DBObject
+    /*    internal class Schema : DBObject
+        {
+            internal string directoryPath => 
+                (string)(mem[GraphType.Iri] ?? "");
+            internal static Schema Empty = new(); 
+            Schema() : base(--_uid,new BTree<long,object>(Infos,
+                new BTree<long,ObInfo>(-502,new ObInfo("/",Grant.AllPrivileges))))
+            { }
+            public Schema (PSchema ps,Context cx)
+                :base(ps.ppos,_Mem(cx,ps))
+            {
+                cx.db += (Database.Catalog, cx.db.catalog + (ps.name, ps.ppos));
+                cx.db += this;
+                cx.schema = this;
+            }
+            public Schema(long dp, BTree<long, object> m) : base(dp, m)
+            {  }
+            public Schema(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
+            {  }
+            static BTree<long,object> _Mem(Context cx,PSchema ps)
+            {
+                var r = BTree<long, object>.Empty;
+                r += (GraphType.Iri, ps.name);
+                var oi = new ObInfo(ps.name, Grant.AllPrivileges);
+                r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+                return r;
+            }
+            public static Schema operator +(Schema et, (long, object) x)
+            {
+                return (Schema)et.New(et.defpos, et.mem + x);
+            }
+            internal override DBObject New(long dp, BTree<long, object> m)
+            {
+                return new Schema(dp, m);
+            }
+            internal override string NameFor(Context cx)
+            {
+                return directoryPath;
+            }
+            public override string ToString()
+            {
+                var sb = new StringBuilder(base.ToString());
+                sb.Append(" DirectoryPath: ");sb.Append(directoryPath);
+                return sb.ToString();
+            } 
+        }  */
+    internal class TSchema : TypedValue
     {
-        internal const long
-            DefaultGraph = -322, // long
-            DefaultGraphType = -321, // long
-            Graphs = -362,    // CTree<long,bool> Graph
-            GraphTypes = -186; // CTree<long,bool> Graph
-        internal CTree<long,bool> graphs =>
-            (CTree<long, bool>)(mem[Graphs] ?? CTree<long, bool>.Empty);
-        internal CTree<long, bool> graphTypes =>
-            (CTree<long, bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
-        internal long defaultGraphType => (long)(mem[DefaultGraphType] ?? -1L);
-        internal long defaultGraph => (long)(mem[DefaultGraph] ?? -1L);
-        internal string directoryPath => 
-            (string)(mem[GraphType.Iri] ?? "");
-        internal static Schema Empty = new(); 
-        Schema() : base(--_uid,new BTree<long,object>(Infos,
-            new BTree<long,ObInfo>(-502,new ObInfo("/",Grant.AllPrivileges)))
-            +(DefaultGraphType,GraphType.Empty.defpos)
-            +(DefaultGraph,Graph.Empty.defpos))
-        { }
-        public Schema (PSchema ps,Context cx)
-            :base(ps.ppos,_Mem(cx,ps))
+        internal readonly Role definer;
+        internal readonly string[] path;
+        internal readonly CTree<string, TypedValue> directory;
+        internal readonly CTree<Domain, bool> elementTypes; // accumulated from hierarchy
+        public static readonly TSchema Empty = new ();
+        TSchema() : base(Domain.Null) 
         {
-            cx.db += (Database.Catalog, cx.db.catalog + (ps.name, ps.ppos));
-            cx.db += this;
-            cx.schema = this;
+            definer = Database.schemaRole;
+            directory = CTree<string, TypedValue>.Empty;
+            elementTypes = CTree<Domain, bool>.Empty;
+            path = Array.Empty<string>();
         }
-        public Schema(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
-        public Schema(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
-        {  }
-        static BTree<long,object> _Mem(Context cx,PSchema ps)
+        TSchema(Domain t,Role r, string[]p,CTree<string,TypedValue> d,CTree<Domain,bool> e) :base(t)
         {
-            var r = BTree<long, object>.Empty;
-            r += (GraphType.Iri, ps.name);
-            var oi = new ObInfo(ps.name, Grant.AllPrivileges);
-            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
-            return r;
+            definer = r; path = p; directory = d; elementTypes = e;
         }
-        public static Schema operator +(Schema et, (long, object) x)
+        internal TSchema(Context cx, string p, CTree<string, TypedValue>? d = null) : base(Dom(cx, cx.role))
         {
-            return (Schema)et.New(et.defpos, et.mem + x);
+            definer = cx.role;
+            directory = d ?? CTree<string, TypedValue>.Empty;
+            path = p.Split('/');
+            var es = CTree<Domain, bool>.Empty;
+            var cg = cx.db.catalog; // collect the elementTypes at this level or above
+            for (var i=0;cg!=CTree<string,TypedValue>.Empty && i<path.Length;i++)
+            {
+                var s = path[i];
+                for (var c = cg.First(); c != null; c = c.Next())
+                    if (c.value() is TTypeSpec t)
+                        es += (t._dataType, true);
+                if (cg[s] is TSchema ts)
+                    cg = ts.directory;
+            }
+            elementTypes = es;
+            cx.AddCatalog(p, this);
         }
-        internal override DBObject New(long dp, BTree<long, object> m)
+        static Domain Dom(Context cx, Role r)
         {
-            return new Schema(dp, m);
+            var a = CTree<Domain, bool>.Empty;
+            for (var b = r.dbobjects.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value()] is Table t)
+                    a += (t, true);
+            return new Domain(cx.GetUid(), a);
         }
-        internal override string NameFor(Context cx)
+        internal override TypedValue Fix(Context cx)
         {
-            return directoryPath;
+            var t = (Domain)dataType.Fix(cx);
+            var r = (Role)definer.Fix(cx);
+            var es = cx.FixTDb(elementTypes);
+            var d = cx.FixTsV(directory);
+            return (t==dataType && r==definer && es.CompareTo(elementTypes) == 0 
+                && directory.CompareTo(d)==0) ? this : new(t,r,path,d,es);
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" DirectoryPath: ");sb.Append(directoryPath);
+            var sb = new StringBuilder("Schema[");
+            var cm = "";
+            for (var b = directory.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(b.key());
+                sb.Append('='); sb.Append(b.value());
+            }
+            sb.Append(']');
             return sb.ToString();
-        } 
-    } 
+        }
+    }
+    internal class TGraph : TypedValue
+    {
+        internal readonly CTree<Domain,CTree<long,bool>> nodes;
+        internal readonly CTree<long, bool> scenarii;
+        internal readonly string? iri = null;
+        internal static TGraph Empty = new();
+        TGraph() : base(Domain.Null) { nodes = CTree<Domain,CTree<long,bool>>.Empty; scenarii = CTree<long, bool>.Empty; }
+        internal TGraph(Context cx, CTree<Domain,CTree<long,bool>> n, string? i = null, CTree<long, bool>? s = null) 
+            : base(Dom(cx, n))
+        {
+            nodes = n;
+            iri = i;
+            scenarii = s ?? CTree<long, bool>.Empty;
+        }
+        internal static TGraph? Make(PGraph pg,Context cx)
+        {
+            if (pg.graph != Empty)
+                return pg.graph;
+            var psr = new Parser(cx, pg.name);
+            var ex = psr.ParseStatements(BTree<long,object>.Empty);
+            return (cx.exec?._Obey(psr.cx)?.result as RowSet)?.MakeGraph(psr.cx,ex);
+        }
+        static Domain Dom(Context cx, CTree<Domain,CTree<long,bool>> n)
+        {
+            var a = CTree<Domain, bool>.Empty;
+            for (var b = n.First(); b != null; b = b.Next())
+                a += (b.key(), true);
+            return new Domain(cx.GetUid(), a);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("Graph[");
+            var cm = "";
+            for (var b = nodes.First(); b != null; b = b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(b.ToString()); }
+            sb.Append(']');
+            if (scenarii != CTree<long, bool>.Empty)
+            {
+                sb.Append(" Scenarii["); cm = "";
+                for (var b = scenarii.First(); b != null; b = b.Next())
+                { sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key())); }
+                sb.Append(']');
+            }
+            return sb.ToString();
+        }
+    }
+
     internal class TNode : TypedValue
     {
         protected readonly TableRow _tableRow;

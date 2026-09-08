@@ -238,7 +238,7 @@ namespace Pyrrho.Level3
                 throw new PEException("PE47152");
             w.WriteStartElement("Table");
             w.WriteAttributeString("Name", tb.name);
-            w.WriteAttributeString("Pos", tab.ToString());
+            w.WriteAttributeString("Ref", tab.ToString());
             w.WriteAttributeString("Schema", schema.ToString());
             w.WriteAttributeString("Dels", dels.ToString());
             w.WriteAttributeString("Ckix", ckix.ToString());
@@ -271,7 +271,7 @@ namespace Pyrrho.Level3
                 while(r.MoveToNextAttribute())
                     switch (r.Name)
                     {
-                        case "Pos": tab = long.Parse(r.Value); break;
+                        case "Ref": tab = long.Parse(r.Value); break;
                             // don't bother with Name
                         case "Schema": schema = bool.Parse(r.Value); break;
                         case "Dels": dels = int.Parse(r.Value); break;

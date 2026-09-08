@@ -996,7 +996,7 @@ namespace Pyrrho.Common
 
     /// <summary>
     /// Supports the SQL2011 Interval object type. 
-    /// Note that Intervals cannot have both year-month and day-second fields.
+    /// Note that Intervals cannot have both year-month and day-_inner fields.
     /// Shareable
     /// </summary>
 	internal class Interval : IComparable

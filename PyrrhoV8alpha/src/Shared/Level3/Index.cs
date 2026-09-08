@@ -21,7 +21,6 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class Index : DBObject 
     {
-        static long _uniq = 0;
         internal const long
             Adapter = -157, // long Procedure 
             Keys = -159, // Domain

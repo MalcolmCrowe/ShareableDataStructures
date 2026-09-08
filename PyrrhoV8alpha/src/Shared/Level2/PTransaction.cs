@@ -136,8 +136,8 @@ namespace Pyrrho.Level2
 		public override string ToString()
 		{
             var cu = Thread.CurrentThread.CurrentUICulture;
-			return "PTransaction for "+nrecs+" Role="+Pos(ptrole.defpos)
-                +" User="+Pos(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime).ToString(cu);
+			return "PTransaction for "+nrecs+" Role="+Ref(ptrole.defpos)
+                +" User="+Ref(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime).ToString(cu);
 		}
         internal override DBObject? Install(Context cx)
         {

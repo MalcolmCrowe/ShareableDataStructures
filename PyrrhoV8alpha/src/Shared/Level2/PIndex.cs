@@ -146,14 +146,14 @@ namespace Pyrrho.Level2
         /// Constructor: A new PIndex request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
-        /// <param name="pos">Position in the buffer</param>
+        /// <param name="pos">Rowid in the buffer</param>
         public PIndex(Reader rdr) : base(Type.PIndex, rdr) { }
         /// <summary>
         /// Constructor: A new PIndex request from the buffer
         /// </summary>
         /// <param name="t">The PIndex type</param>
         /// <param name="bp">The buffer</param>
-        /// <param name="pos">Position in the buffer</param>
+        /// <param name="pos">Rowid in the buffer</param>
         public PIndex(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex(PIndex x, Writer wr) : base(x, wr)
         {
@@ -408,7 +408,7 @@ namespace Pyrrho.Level2
         /// Constructor: A new PIndex request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
-        /// <param name="pos">Position in the buffer</param>
+        /// <param name="pos">Rowid in the buffer</param>
         public PIndex1(Reader rdr) : base(Type.PIndex1, rdr) { }
         protected PIndex1(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex1(PIndex1 x, Writer wr) : base(x, wr)
@@ -466,7 +466,7 @@ namespace Pyrrho.Level2
         /// Constructor: A new PIndex request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
-        /// <param name="pos">Position in the buffer</param>
+        /// <param name="pos">Rowid in the buffer</param>
         public PIndex2(Reader rdr) : base(Type.PIndex2, rdr) { }
         protected PIndex2(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex2(PIndex2 x, Writer wr) : base(x, wr)
@@ -583,7 +583,7 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return "RefAction " + Pos(index) + " " + ctype.ToString();
+            return "RefAction " + Ref(index) + " " + ctype.ToString();
         }
     }
 

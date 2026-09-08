@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -157,7 +158,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "Grant "+priv.ToString()+" on "+Pos(obj)+" to "+((grantee>0)?Pos(grantee):"PUBLIC");
+			return "Grant "+priv.ToString()+" on "+Ref(obj)+" to "+((grantee>0)?Ref(grantee):"PUBLIC");
 		}
         /// <summary>
         /// Update the Database with this grant information

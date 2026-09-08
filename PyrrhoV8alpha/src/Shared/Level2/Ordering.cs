@@ -138,7 +138,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             return "Ordering for " + domain.name +
-                flags + Pos(funcdefpos);
+                flags + Ref(funcdefpos);
         }
         /// <summary>
         /// Update the Database or Transaction with the new information

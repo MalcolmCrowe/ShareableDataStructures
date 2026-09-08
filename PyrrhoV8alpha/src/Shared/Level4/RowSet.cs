@@ -46,7 +46,7 @@ namespace Pyrrho.Level4
     /// </summary>
     internal abstract class RowSet : Domain
     {
-        /// <summary>
+ /*       /// <summary>
         /// ResultType: (None,General, Empty, Aggregation, Scalar). 
         /// The different shapes of the current table depend on the syntactically-defined 
         /// numbers of rows or keymap: The number of rows is 0 for an empty valueType, 
@@ -56,7 +56,7 @@ namespace Pyrrho.Level4
         /// is 1 for a scalar valueType 
         /// (e.g. null, true or false, or some other single value of a known type).
         /// </summary>
-        public enum ResultType { None, General, Empty, Aggregation, Scalar };
+        public enum ResultType { None, General, Empty, Aggregation, Scalar }; */
         internal readonly static BTree<long, object> E = BTree<long, object>.Empty;
         internal const long
             AggDomain = -465, // Domain temporary during SplitAggs
@@ -127,7 +127,7 @@ namespace Pyrrho.Level4
         internal CTree<long, long> rsTargets =>
             (CTree<long, long>)(mem[RSTargets] ?? CTree<long, long>.Empty);
         //    internal long selectDepth => (long)(mem[QlValue.SelectDepth] ?? -1L);
-        internal long source => (long)(mem[_Source] ?? -1L);
+        internal new long source => (long)(mem[_Source] ?? -1L);
         internal bool distinct => (bool)(mem[Distinct] ?? false);
         internal CTree<UpdateAssignment, bool> assig =>
             (CTree<UpdateAssignment, bool>)(mem[Assig]
@@ -736,6 +736,9 @@ namespace Pyrrho.Level4
                     if (v == TNull.Value && sce[p] is TypedValue tv
                         && tv != TNull.Value)
                         v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
+                    if (v is TRef tr && cx.db.objects[tr.elType.defpos] is Table rt
+                        && rt.tableRows[tr.ToLong() ?? -1L] is TableRow r)
+                        vs += r.vals;
                     vs += (p, v);
                 }
             cx.values = oc;
@@ -1363,6 +1366,19 @@ namespace Pyrrho.Level4
                 }
                 sb.Append(')');
             }
+        }
+        internal TGraph MakeGraph(Context cx,Executable? e=null)
+        {
+            var ns = CTree<Domain,CTree<long,bool>>.Empty;
+            for (var c = First(cx); c != null; c = c.Next(cx))
+                for (var b = c.values.First(); b != null; b = b.Next())
+                    if (b.value() is TNode n)
+                    {
+                        var ts = ns[n.dataType] ?? CTree<long, bool>.Empty;
+                        ns += (n.dataType,ts+(n.defpos, true));
+                    }
+            var dp = cx.GetUid();
+            return new TGraph(cx,ns,e?.graph);
         }
         public override string ToString()
         {
@@ -3120,7 +3136,7 @@ namespace Pyrrho.Level4
             if (pk.Length!=0)
                 m += (Level3.Index.Keys, pk);
             m += (Table.Indexes, xs);
-            if (rt==CTree<int,long>.Empty) // add POSITION
+            if (rt==CTree<int,long>.Empty) // add REF
             {
                 var ps = new SqlFunction(ap, cx.GetUid(), cx, Qlx.REF, null, null, null, Qlx.NO);
                 ps += (_From, dp);
@@ -3657,8 +3673,10 @@ namespace Pyrrho.Level4
                 }
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
                 {
+                    if (_cx.graph is TGraph g && g.nodes[table]?.Contains(b.key())!=true)
+                            continue;
                     var rec = b.value();
-//#if MANDATORYACCESSCONTROL
+                    //#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         (_cx.db.user == null || (_cx.db.user.defpos != table.definer
                          && _cx.db.user.defpos != _cx.db.owner
@@ -3687,13 +3705,15 @@ namespace Pyrrho.Level4
                     for (var bmk = t.PositionAt(key, 0); bmk != null; bmk = bmk.Previous())
                         if (bmk.Value() is long q && table.tableRows[q] is TableRow rec)
                         {
-//#if MANDATORYACCESSCONTROL
-                        if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer
-                            && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
-                            continue;
-//#endif
+                            if (_cx.graph is TGraph g && g.nodes[table]?.Contains(rec.defpos)!=true)
+                                continue;
+                            //#if MANDATORYACCESSCONTROL
+                            if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
+                                && (_cx.db.user == null || (_cx.db.user.defpos != table.definer
+                                && _cx.db.user.defpos != _cx.db.owner
+                                && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
+                                continue;
+                            //#endif
                             var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                             if (rb.Matches(_cx))
                             {
@@ -3704,6 +3724,8 @@ namespace Pyrrho.Level4
                 }
                 for (var b = table.tableRows.Last(); b != null; b = b.Previous())
                 {
+                    if (_cx.graph is TGraph g && g.nodes[table]?.Contains(b.key())!=true)
+                        continue;
                     var rec = b.value();
 //#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
@@ -4487,7 +4509,7 @@ namespace Pyrrho.Level4
             internal readonly TSet _ms;
             internal readonly IBookmark<TypedValue> _mb;
             SetCursor(Context cx, SetRowSet mrs, TSet ms, IBookmark<TypedValue> mb)
-                : base(cx, mrs, (int)mb.Position(), E, (TRow)mb.Value())
+                : base(cx, mrs, (int)mb.Rowid(), E, (TRow)mb.Value())
             {
                 _mrs = mrs; _ms = ms; _mb = mb;
             }
@@ -4572,7 +4594,7 @@ namespace Pyrrho.Level4
             internal readonly TMultiset _ms;
             internal readonly IBookmark<TypedValue> _mb;
             MultisetCursor(Context cx,MultisetRowSet mrs,TMultiset ms,IBookmark<TypedValue> mb)
-                : base(cx,mrs,(int)mb.Position(),E,(TRow)mb.Value())
+                : base(cx,mrs,(int)mb.Rowid(),E,(TRow)mb.Value())
             {
                 _mrs = mrs; _ms = ms; _mb = mb;
             }
@@ -7366,7 +7388,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42131", "" + td).Mix();
             cx.Add(tb);
             var rt = BList<DBObject>.Empty;
-            rt += new SqlFormal(cx, "Pos", Ref);
+            rt += new SqlFormal(cx, "Ref", Ref);
             rt += new SqlFormal(cx, "Action", Char);
             rt += new SqlFormal(cx, "DefPos", Ref);
             rt += new SqlFormal(cx, "Transaction", Ref);
@@ -7566,7 +7588,7 @@ namespace Pyrrho.Level4
                 ?? throw new PEException("PE1502");
             cx.Add(tb);
             var rt = BList<DBObject>.Empty;
-            rt += new SqlFormal(cx, "Pos", Char);
+            rt += new SqlFormal(cx, "Ref", Char);
             rt += new SqlFormal(cx, "Value", Char);
             rt += new SqlFormal(cx, "StartTransaction", Char);
             rt += new SqlFormal(cx, "StartTimestamp", Timestamp);
@@ -7751,7 +7773,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal long left => (long)(mem[_Left] ?? -1L);
         /// <summary>
-        /// The second operand of the merge operation
+        /// The _inner operand of the merge operation
         /// </summary>
         internal long right => (long)(mem[_Right] ?? -1L);
         /// <summary>

@@ -21,7 +21,7 @@ namespace Pyrrho.Common
         IBookmark<V>? Next(); // null if none
         IBookmark<V>? Previous(); 
         V Value();
-        long Position();
+        long Rowid();
     }
     /// <summary>
     /// An Exception class for reporting internal errors :(

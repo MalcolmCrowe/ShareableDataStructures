@@ -74,7 +74,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "PCheck " +name+" ["+Pos(ckobjdefpos)+"]: "+check;
+			return "PCheck " +name+" ["+Ref(ckobjdefpos)+"]: "+check;
 		}
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -235,7 +235,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "PCheck2 " +name+" ["+Pos(ckobjdefpos)+":"+Pos(subobjdefpos)+"]: "+check;
+			return "PCheck2 " +name+" ["+Ref(ckobjdefpos)+":"+Ref(subobjdefpos)+"]: "+check;
 		}
         /// <summary>
         /// Serialise this Physical to the PhysBase

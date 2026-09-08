@@ -991,7 +991,6 @@ namespace Pyrrho.Common
     {
         readonly BList<TypedValue> content = BList<TypedValue>.Empty;
         internal long Count => content.Count;
-        int nbytes = 0;
         internal static TDocArray Null = new();
         internal TDocArray() : base(Domain.DocArray)
         {

@@ -141,9 +141,8 @@ namespace Pyrrho.Level3
         internal readonly long length;
         public override long lexeroffset => length;
         internal const long
-            Catalog = -247, // CTree<string,long> DBObject
+            Catalog = -247, // CTree<string,TypedValue> 
             Curated = -53, // long
-            DefaultSchema = -320, // long Schema
             Format = -54,  // int (50 for Pyrrho v5,v6; 52 for Pyrrho v7; 53 for Pyrrhov8)
             Guest = -55, // long: a role holding all grants to PUBLIC
   //          JoinedTypes = -430,// CTree<CTree<Domain,bool>,long> 
@@ -162,7 +161,6 @@ namespace Pyrrho.Level3
             Role = -285, // Role: the current role (e.g. an executable's definer)
             Roles = -60, // CTree<string,long>
             OwnerRole = -291, // long: the owner role for the database
-            Schemas = -290, // CTree<long,bool> Schema
             Suffixes = -376, // CTree<string,long> UDT
             Types = -61, // CTree<Domain,long> for system types and unnamed structured types
             UnlabelledNodeTypes = -237, // CTree<TMetadata,long> Unlabelled NodeType and EdgeType by propertyset
@@ -171,8 +169,8 @@ namespace Pyrrho.Level3
         internal virtual long uid => -1;
         public string name => (string)(mem[ObInfo.Name]??throw new PEException("PE1001"));
         internal FileStream df => dbfiles[name]??throw new PEException("PE1002");
-        internal CTree<string, long> catalog =>
-            (CTree<string, long>)(mem[Catalog] ?? new CTree<string, long>("/",0L));
+        internal CTree<string, TypedValue> catalog =>
+            (CTree<string, TypedValue>)(mem[Catalog] ?? new CTree<string, TypedValue>("/",TNull.Value));
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
@@ -188,9 +186,6 @@ namespace Pyrrho.Level3
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
         internal User? user => (User?)mem[User];
-        internal CTree<long, bool> schemas => 
-            (CTree<long, bool>)(mem[Schemas] ?? CTree<long, bool>.Empty);
-        internal Schema? defaultSchema = null;
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
@@ -559,7 +554,7 @@ namespace Pyrrho.Level3
             for (var b = d.objects.PositionAt(p.ppos); b != null; b = b.Next())
                 d -= b.key();
             if (PyrrhoStart.VerboseMode)
-                Console.WriteLine("Database " + name + " loaded to " + rdr.Position);
+                Console.WriteLine("Database " + name + " loaded to " + rdr.Rowid);
             lock (_lock)
                 databases += (name, d);
             return d;
@@ -589,7 +584,7 @@ namespace Pyrrho.Level3
             {
                 var rdr = new Reader(this, pp);
                 var ph = rdr.Create();
-                pp = (int)rdr.Position;
+                pp = (int)rdr.Rowid;
                 if (ph is EndOfFile)
                     return (null, -1L);
                 return (ph, pp);
@@ -604,7 +599,7 @@ namespace Pyrrho.Level3
             {
                 var rdr = new Reader(this, pp);
                 var ph = rdr.Create();
-                var ppos = rdr.Position;
+                var ppos = rdr.Rowid;
                 return (ph,ppos);
             }
             catch (Exception)

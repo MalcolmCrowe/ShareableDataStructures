@@ -1,13 +1,14 @@
-using System.Data.Common;
-using System.Data.SqlTypes;
-using System.Net;
-using System.Runtime.InteropServices.Marshalling;
-using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Data.Common;
+using System.Data.SqlTypes;
+using System.Net;
+using System.Runtime.InteropServices.Marshalling;
+using System.Runtime.Intrinsics.Arm;
+using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -87,9 +88,9 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, CTree<string, Qlx>>> model = CTree<long, CTree<long, CTree<string, Qlx>>>.Empty; // ad-hoc graph model
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
-        internal Schema? schema = null; // current ownerRole, set by USE or CREATE
-        internal GraphType? graphType = null; // current graph type, set by USE or CREATE
-        internal Graph? graph = null; // current graph, set by USE or CREATE
+        internal TSchema? schema = null; // current ownerRole, set by USE or CREATE
+        internal TGraph? graph = null; // current graph, set by USE or CREATE
+        internal TTypeSpec? graphType = null; // current graph type, set by USE or CREATE
         internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4, Yes = 5 };
         internal ParsingGQL parsingGQL = ParsingGQL.No;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
@@ -154,10 +155,10 @@ namespace Pyrrho.Level4
             next = null;
             cxid = db.lexeroffset;
             conn = cx.conn;
-            if (conn.props["Schema"] is string sn)
-                cx.schema = cx._Ob(cx.db.catalog[sn]) as Schema;
+         /*   if (conn.props["Schema"] is string sn)
+                cx.schema = cx._Ob(cx.db.catalog[sn]) as Schema; */
             if (conn.props["Graph"] is string gn)
-                cx.graphType = cx._Ob(cx.db.catalog[gn]) as GraphType;
+                cx.graphType = cx.db.catalog[gn] as TTypeSpec;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
             toFix = cx.toFix;
@@ -353,13 +354,10 @@ namespace Pyrrho.Level4
                 else
                     schema = null;
             }
-            else if (db.objects[db.catalog[n]] is Graph gn)
-            { graph = gn; schema = db.objects[gn.schema] as Schema; }
-            else if (db.objects[db.catalog[n]] is GraphType gt)
-            { graphType = gt; schema = db.objects[gt.schema] as Schema; }
-            else if (db.objects[db.catalog[n]] is Schema sc)
-            { schema = sc; graphType = db.objects[sc.defaultGraphType] as GraphType; 
-                graph = db.objects[sc.defaultGraph] as Graph;  }
+            else if (db.catalog[n] is TGraph gn)
+                 graph = gn;
+            else if (db.catalog[n] is TTypeSpec gt)
+                graphType = gt;
         }
         internal CTree<long, bool> Needs(CTree<long, bool> nd,
         RowSet rs, Domain dm)
@@ -1686,7 +1684,6 @@ namespace Pyrrho.Level4
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Replaced((long)v); break;
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
-                        case Schema.Graphs: v = ReplacedTlb((CTree<long,bool>)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
                         case CompositeRowSet._Right: v = Replaced((long)v); break;
                         case QlValue.Right: v = Replaced((long)v); break;
@@ -1873,7 +1870,6 @@ namespace Pyrrho.Level4
                         case SqlInsert.ForNode: v = Fix((long)v); break;
                         case DBObject._From: v = Fix((long)v); break;
                         case GraphInsertStatement.GraphExps: v = FixBO((BList<ObTree>)v); break;
-                        case Schema.Graphs: v = FixTlb((CTree<long, bool>)v); break;
                         case RowSet.Group: v = Fix((long)v); break;
                         case RowSet.GroupCols: v = ((Domain)v).Fix(this); break;
                         case RowSet.Groupings: v = FixLl((CList<long>)v); break;
@@ -1927,7 +1923,6 @@ namespace Pyrrho.Level4
                         case RestView.NamesMap: v = FixTls((CTree<long, string>)v); break;
                         case Trigger.NewRow: v = Fix((long)v); break;
                         case Trigger.NewTable: v = Fix((long)v); break;
-                        case Domain.Nodes: v = FixTlb((CTree<long, bool>)v); break;
                         case Role.NodeTypes: v = FixTsl((CTree<string, long>)v); break;
                         case NullPredicate.NVal: v = Fix((long)v); break;
                         case Trigger.OldRow: v = Fix((long)v); break;
@@ -2035,7 +2030,7 @@ namespace Pyrrho.Level4
                         case SqlFunction.Window: v = Fix((long)v); break;
                         case WindowRowSet.Window: v = Fix((long)v); break;
                         case SqlFunction.WindowId: v = Fix((long)v); break;
-                        case Executable.Worker: v = Fix((long)v); break;
+                        case QlValueQuery.Worker: v = Fix ((long)v); break;
                         case WindowSpecification.WQuery: v = Fix((long)v); break;
                         default: break;
                     }
@@ -2716,77 +2711,108 @@ namespace Pyrrho.Level4
             }
             return rp;
         }
+        internal TypedValue CatalogLookup(string sg)
+        {
+            var ss = sg.Split('/');
+            var n = ss.Length;
+            var dir = db.catalog;
+            var i = 0;
+            for (; dir != CTree<string, TypedValue>.Empty && i < n - 1 && ss[i] != ""; i++)
+                if (dir[ss[i]] is TSchema s)
+                {
+                    dir = s.directory;
+                    schema = s;
+                }
+                else break;
+            if (i < n - 1)
+                throw new DBException("42107", ss[i]);
+            return dir[ss[i]]?? throw new DBException("42104", sg);
+        }
+        internal void AddCatalog(string sg, TypedValue v)
+        {
+            db += (Database.Catalog, AddCatalog(db.catalog, sg.Split('/'), 0, v));
+        }
+        CTree<string,TypedValue> AddCatalog(CTree<string,TypedValue> c,string[] s,int i,TypedValue v)
+        {
+            if (i == s.Length - 1)
+                return c + (s[i], v);
+            if (c[s[i]] is not TSchema ts) throw new DBException("42000");
+            var sg = (v is TGraph g) ? g.iri : (v is TTypeSpec tt) ? tt.dataType.name : "";
+            if (sg ==null || sg=="") throw new DBException("42000");
+            return c + (s[i], new TSchema(this,s[i],ts.directory+(sg,v)));
+        }
         /// <summary>
-        /// Make a new Graph whose nodes are the given by the current binding
+        /// Make a new TGraph whose nodes are the given by the current binding
         /// and whose scenarii are those of the current graphtype and current graph
         /// </summary>
         /// <returns></returns>
-        internal Graph CurrentGraph()
+        internal TGraph CurrentGraph()
         {
             if (exec?.graph is string gn)
             {
                 var ss = gn.Split('/');
                 var n = ss.Length;
-                Schema? schema = null;
-                if (n > 1 && ss[1] != "")
-                    schema = db.objects[role.dbobjects[ss[1]]] as Schema;
+                TSchema? schema = null;
+                var dir = db.catalog;
+                var i = 0;
+                for (; dir != CTree<string, TypedValue>.Empty && i < n - 1 && ss[i] != ""; i++)
+                    if (dir[ss[i]] is TSchema s)
+                    {
+                        dir = s.directory;
+                        schema = s;
+                    }
+                    else break;
+                if (i < n - 1)
+                    throw new DBException("42107", ss[i]);
+                if (dir[ss[i]] is not TGraph) // name already in use for something else
+                    throw new DBException("42104", gn);
+                gn = ss[i];
+                if (gn == "")
+                    throw new DBException("42000","Name cannot be empty");
                 if (schema == null)
                 {
-                    if (db.schemas == null)
-                    {
-                        var sp = --Basis._uid;
-                        var ns = new Schema(sp, sp);
-                        db += (Database.DefaultSchema, sp);
-                        db += (Database.Schemas, new CTree<long, bool>(ns.defpos, true));
-                        lock (Database.databases)
-                        {
-                            Database.databases += (db.name, db);
-                        }
-                    }
-                    schema = db.defaultSchema??Schema.Empty;
-                    graphType ??= db.objects[schema.defaultGraphType] as GraphType ?? GraphType.Empty;
-                    graph ??= db.objects[schema.defaultGraph] as Graph ?? Graph.Empty;
-                    var es = graphType.elTypes;
-                    var ee = graphType.scenarii;
-                    var ge = graph.scenarii;
+                    var es = graphType?._dataType.alts ?? CTree<Domain,bool>.Empty;
+                    var ee = (graphType?._dataType as GraphType)?.scenarii ?? CTree<long,bool>.Empty;
+                    var ge = graph?.scenarii ?? CTree<long,bool>.Empty;
                     for (var b = role.dbobjects.First(); b != null; b = b.Next())
                     {
-                        es += (b.value(), true);
+                        if (db.objects[b.value()] is Domain d)
+                            es += (d, true);
                         if (db.objects[b.value()] is GraphType gt)
                         {
                             ee += gt.scenarii;
                             ge += gt.scenarii;
                         }
                     }
-                    graphType += (GraphType.ElementTypes, es);
-                    graphType += (GraphType.Scenarii, ee);
-                    db += graphType;
-                    graph += (GraphType.Scenarii, ge);
-                    db += graph;
-                    schema += (Schema.DefaultGraphType, graphType.defpos);
-                    schema += (Schema.DefaultGraph, graph.defpos);
-                    db += schema;
-                }
-                for (var b = 2; b < n; b++)
-                {
-                    var ob = db.objects[role.dbobjects[ss[b]]];
-                    if (ob is Schema)
-                        schema = (Schema)ob;
-                    if (ob is GraphType)
-                        graphType = (GraphType)ob;
-                    if (ob is Graph)
-                        graph = (Graph)ob;
+                    if (es != CTree<Domain, bool>.Empty || ee != CTree<long, bool>.Empty)
+                    {
+                        var dp = GetUid();
+                        if (graphType == null)
+                            graphType = new TTypeSpec(dp.ToString(),new Domain(GetUid(),es),ee);
+                        db += (Database.Catalog,db.catalog+(dp.ToString(),graphType));
+                    }
+                    if (ge != CTree<long, bool>.Empty)
+                    {
+                        if (graph == null)
+                            graph = new TGraph(this,CTree<Domain,CTree<long,bool>>.Empty,gn,ge);
+                        db += (Database.Catalog, db.catalog + ("", graph));
+                    }
                 }
             }
-            graphType ??= db.objects[schema?.defaultGraphType??-1L] as GraphType??GraphType.Empty;
-            graph ??= db.objects[schema?.defaultGraph ?? -1L] as Graph??Graph.Empty;
-            var nodes = CTree<long, TNode>.Empty;
+            var nodes = CTree<Domain,CTree<long,bool>>.Empty;
             for (var c = this; c != null; c = c.next)
                 for (var b = c.binding.First(); b != null; b = b.Next())
                     if (b.value() is TNode t)
-                        nodes += (t.defpos, t);
-            return new Graph(GetUid(), new BTree<long, object>(Graph.Nodes,nodes)
-                    + (GraphType.Scenarii,graphType.scenarii+graph.scenarii));
+                    {
+                        var ts = nodes[t.dataType] ?? CTree<long, bool>.Empty;
+                        nodes += (t.dataType,ts+(t.defpos, true));
+                    }
+            var sc = CTree<long, bool>.Empty;
+            if (graphType != null)
+                sc += graphType.scenarii;
+            if (graph != null)
+                sc += graph.scenarii;
+            return new TGraph(this,nodes,graph?.iri,sc);
         }
         // debugging
         public override string ToString()
@@ -3345,19 +3371,25 @@ namespace Pyrrho.Level4
             return t;
         }
 
-        internal CTree<long,TNode> Nodes()
+        internal CTree<Domain,CTree<long,bool>> Nodes()
         {
             var g = CurrentGraph();
             var ns = g.nodes;
             for (var b = cursors.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (c.Value() is TNode n)
-                        ns += (n.defpos, n);
+                    {
+                        var ts = ns[n.dataType] ?? CTree<long, bool>.Empty;
+                        ns += (n.dataType, ts + (n.defpos, true));
+                    }
                     else if (c.Value() is TRef r
                         && db.objects[r.elType.defpos] is Table t
                         && r.ToLong() is long p
-                        && t.tableRows[p] is TableRow q)
-                        ns += (p, new TNode(this, q));
+                        && t.tableRows[p] is TableRow tr)
+                    {
+                        var ts = ns[t] ?? CTree<long, bool>.Empty;
+                        ns += (t,ts+(p,true));
+                    }
             return ns;
         }
 
@@ -3929,7 +3961,7 @@ namespace Pyrrho.Level4
         /// </summary>
         public readonly QlValue? time1 = null;
         /// <summary>
-        /// The second point in time specified
+        /// The _inner point in time specified
         /// </summary>
         public readonly QlValue? time2 = null;
         internal PeriodSpec(string n,Qlx k,QlValue? t1,QlValue? t2)

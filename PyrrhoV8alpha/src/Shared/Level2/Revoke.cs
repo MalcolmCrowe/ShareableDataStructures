@@ -75,7 +75,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "Revoke "+priv.ToString()+" on "+Pos(obj)+" from "+Pos(grantee);
+			return "Revoke "+priv.ToString()+" on "+Ref(obj)+" from "+Ref(grantee);
 		}
 	}
 }

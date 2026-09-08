@@ -801,12 +801,12 @@ namespace Pyrrho.Level3
         /// The position of the bookmark in the tree
         /// </summary>
         /// <returns>The position in the tree (starting at 0)</returns>
-        public long Position()
+        public long Rowid()
         {
             return _pos;
         }
         /// <summary>
-        /// In join processing if there are ties in both first and second we
+        /// In join processing if there are ties in both first and _inner we
         /// often need to repeat groups of tied rows.
         /// </summary>
         /// <param name="depth"></param>

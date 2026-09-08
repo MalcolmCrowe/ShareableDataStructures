@@ -270,7 +270,7 @@ namespace Pyrrho.Level2
             cx.db += g;
             cx.db += g;
             cx.Add(g);
-            cx.graphType = g;
+            cx.graphType = new TTypeSpec(g.NameFor(cx),g);
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -295,12 +295,13 @@ namespace Pyrrho.Level2
     }
     internal class PGraph : Compiled
     {
+        public TGraph graph = TGraph.Empty;
         public PGraph(long pp, string s, Context cx) 
-            : base(Type.PSchema, pp, cx, s, Domain.GraphSpec, cx.db.nextStmt)
+            : base(Type.PGraph, pp, cx, s, Domain.GraphSpec, cx.db.nextStmt)
         {
             name = s;
         }
-        public PGraph(Reader rdr) : base(Type.PSchema, rdr)
+        public PGraph(Reader rdr) : base(Type.PGraph, rdr)
         { }
         public PGraph(PGraph x, Writer wr) : base(x, wr)
         { }
@@ -310,12 +311,12 @@ namespace Pyrrho.Level2
             return new PGraph(this, wr);
         }
 
-        internal override Graph? Install(Context cx)
+        internal override DBObject? Install(Context cx)
         {
-            var g = new Graph(this, cx);
-            cx.db += g;
-            cx.Add(g);
-            return g;
+            var g = TGraph.Make(this, cx);
+            if (g !=null)
+                cx.db += (Database.Catalog,cx.db.catalog+(name,graph));
+            return null;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
@@ -350,13 +351,32 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx)
         {
-            if (cx.db.objects[graph] is Graph g && cx.db.objects[table] is Table t)
+            TGraph? ng = null;
+            if (cx.db.objects[graph] is TGraph g && cx.db.objects[table] is Table t)
             {
                 if (node > 0 && t.tableRows[node] is TableRow tr)
-                    g += (Graph.Nodes, g.nodes + (node, new TNode(cx, tr)));
+                {
+                    var ts = g.nodes[t] ?? CTree<long, bool>.Empty;
+                    ng  = new TGraph(cx,g.nodes+(t,ts+(tr.defpos,true)),g.iri,g.scenarii);
+                }
+                else if (t.tableRows[-node] is TableRow rt)
+                {
+                    var ns = g.nodes[t]??CTree<long,bool>.Empty;
+                    ns -= rt.defpos;
+                    if (ns != CTree<long, bool>.Empty)
+                        ng = new TGraph(cx, g.nodes + (t, ns), g.iri, g.scenarii);
+                    else if (g.nodes[t]?.Count > 1)
+                        ng = new TGraph(cx, g.nodes - t, g.iri, g.scenarii);
+                    else
+                        ng = TGraph.Empty;
+                }
+                var ct = cx.db.catalog;
+                if (ng != TGraph.Empty && ng!=null && ng.iri!=null)
+                    cx.AddCatalog(ng.iri,ng);
                 else
-                    g += (Graph.Nodes, g.nodes - (-node));
-                cx.db += g;
+                    ct -= ppos.ToString();
+                cx.db += (Database.Catalog,ct);
+                cx.graph = ng;
             }
             return base.Install(cx);
         }
@@ -396,11 +416,10 @@ namespace Pyrrho.Level2
 
         internal override DBObject? Install(Context cx)
         {
-            var g = new Schema(this, cx);
-            cx.db += g;
-            cx.Add(g);
+            var g = new TSchema(cx,name);
+            cx.AddCatalog(name,g);
             cx.schema = g;
-            return g;
+            return null;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
@@ -415,20 +434,20 @@ namespace Pyrrho.Level2
     }
     internal class PExpect : Compiled
     {
-        public long graph; // or graph type
+        public long graphType; 
         public string source = "";  // (2 patterns) includes becuase clause 
         public string confidence = ""; // expression depending on binding names
-        public Expectation? temp = null;
+        public Expectation? expect = null;
         internal PExpect(Type tp, long pp, Context cx, long g, long ns) 
             : base(tp, pp, cx, "", g, Domain.GraphSpec, ns) { }
         protected PExpect(Type tp, Reader rdr) : base(tp, rdr)  { }
         protected PExpect(PExpect ph, Writer wr) : base(ph, wr)
         {
-            graph = wr.cx.Fix(ph.graph);
+            graphType = wr.cx.Fix(ph.dataType.defpos);
         }
         public override void Deserialise(Reader rdr)
         {
-            graph = rdr.GetLong();
+            graphType = rdr.GetLong();
             name = rdr.GetString();
             source = rdr.GetString();
             confidence = rdr.GetString();
@@ -436,7 +455,7 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(graph);
+            wr.PutLong(graphType);
             wr.PutString(name);
             wr.PutString(source);
             wr.PutString(confidence);
@@ -450,20 +469,15 @@ namespace Pyrrho.Level2
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            switch (that.type)
-            {
-                case Type.Expect:
-                    if (graph == ((PExpect)that).graph)
-                        return new DBException("40039", graph, that, ct);
-                    break;
-            }
+            // hard to have anything sensible here
             return base.Conflicts(db, cx, that, ct);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
-            sb.Append(' '); sb.Append(DBObject.Uid(graph));
+            sb.Append(' '); sb.Append(DBObject.Uid(graphType));
             sb.Append(' '); sb.Append(source);
+            sb.Append(' '); sb.Append(confidence);
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
@@ -481,6 +495,7 @@ namespace Pyrrho.Level2
             if (psr.ParseExpectation(BTree<long, object>.Empty) is Expectation p)
             {
                 framing = new Framing(psr.cx, nst);
+                expect = p;
                 rdr.context.Add(p);
             }
         }

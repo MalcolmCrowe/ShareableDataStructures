@@ -123,7 +123,7 @@ namespace Pyrrho.Level2
         /// <returns>The string representation</returns>
 		public override string ToString()
         {
-            return "Delete Record "+Pos(delpos);
+            return "Delete Record "+Ref(delpos);
         }
         /// <summary>
         /// During the validation step for the transaction, the engine

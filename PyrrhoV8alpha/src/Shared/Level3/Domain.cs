@@ -43,7 +43,6 @@ namespace Pyrrho.Level3
             Element = -77, // Domain
             End = -78, // Qlx (interval part)
             Kind = -80, // Qlx
-            Nodes = -260, // CTree<long,bool> GqlNode used for Match Return
             Optional = -81, // bool
             NullsFirst = -82, // bool
             _OrderCategory = -83, // OrderCategory
@@ -179,7 +178,6 @@ namespace Pyrrho.Level3
             (CTree<long, bool>?)mem[Aggs] ?? CTree<long, bool>.Empty;
         public CTree<Domain, bool> alts =>
             (CTree<Domain, bool>)(mem[Alts] ?? CTree<Domain, bool>.Empty);
-        public CTree<long, bool> nodes => (CTree<long, bool>)(mem[Nodes] ?? CTree<long, bool>.Empty);
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
         public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         internal CTree<long, CTree<long,bool>> colRefs => 
@@ -1590,10 +1588,10 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         }
         /// <summary>
         /// Compare two values of this type.
-        /// (v5.1 allow the second to have type Document in all cases)
+        /// (v5.1 allow the _inner to have type Document in all cases)
         /// </summary>
         /// <param name="a">the first value</param>
-        /// <param name="b">the second value</param>
+        /// <param name="b">the _inner value</param>
         /// <returns>-1,0,1 according as a LT,EQ,GT b</returns>
         public virtual int Compare(TypedValue a, TypedValue b)
         {
@@ -4042,7 +4040,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         /// </summary>
         /// <param name="a">The first object</param>
         /// <param name="op">The binary operation</param>
-        /// <param name="b">The second object</param>
+        /// <param name="b">The _inner object</param>
         /// <returns>The evaluated object</returns>
         public TypedValue Eval(long lp, Context cx, TypedValue a, Qlx op, TypedValue b) // op is + - * / so a and b should be compatible arithmetic types
         {
@@ -5110,7 +5108,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             }
             else
             {
-                lp = rd.Position;
+                lp = rd.Rowid;
                 var min = (byte)rd.ReadByte();
                 var max = (byte)rd.ReadByte();
                 var gps = BTree<string, bool>.Empty;
@@ -5335,7 +5333,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             _cx = cx;
             ch = (p < len) ? input[p] : '\0';
         }
-        internal long Position => tid + pos;
+        internal long Rowid => tid + pos;
         /// <summary>
         /// Consume one character
         /// </summary>
@@ -5662,7 +5660,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     r += d.FindProps(cx, ident);
             return r;
         }
-        /// <summary>
+ /*       /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition,
         /// and computes navigation properties
         /// </summary>
@@ -5782,7 +5780,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             }
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
   /*      public override int CompareTo(object? obj)
         {
             var c = base.CompareTo(obj);

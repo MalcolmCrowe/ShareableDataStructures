@@ -35,9 +35,8 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Label = -92, // string
-            UseGraph = -481, // long Graph
-            ValueType = -93, // Domain of val (a TypedValue)
-            Worker = -366; // long 
+            UseGraph = -481, // an iri
+            ValueType = -93; // Domain of val (a TypedValue)
         /// <summary>
         /// The label for the Executable
         /// </summary>
@@ -45,7 +44,6 @@ namespace Pyrrho.Level3
         internal Domain valueType => (Domain)(mem[ValueType] ?? Domain.Null);
         internal string graph => (string)(mem[UseGraph]??"/");
         internal string create => (string)(mem[Source] ?? "");
-        internal long worker => (long)(mem[Worker] ?? -1L);
         public static Executable Empty = new EmptyStatement(0);
         public Executable(Context cx, string cr)
             : this(cx.GetUid(), new BTree<long, object>(Source, cr)
@@ -74,8 +72,10 @@ namespace Pyrrho.Level3
         {
             var oc = cx;
             if (graph != "")
+            {
                 cx = new Context(cx);
-            cx.CatalogPath(graph);
+                cx.CatalogPath(graph);
+            }
             if (cx is Activation ax)
                 cx = _Obey(ax);
             else
@@ -1979,7 +1979,7 @@ namespace Pyrrho.Level3
                 rc += (b.key(), rp[b.value().Item2]);
             if (lc.CompareTo(rc) != 0) // the match is not exact
             {
-                // is it just the column positions? if so, change the second
+                // is it just the column positions? if so, change the _inner
                 if (li.CompareTo(ri) == 0)
                 {
                     rt = lt;
@@ -4281,9 +4281,16 @@ namespace Pyrrho.Level3
             {
                 var sb = new StringBuilder('{');
                 var cc = "\r\n";
-                for (var c = cx.db.catalog.First(); c != null; c = c.Next())
+                var es = CTree<long,bool>.Empty;
+                if (cx.graphType != null)
+                    es += (cx.graphType.dataType.defpos,true);
+                else
+                    for (var b = cx.db.types.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.value()] is Table t)
+                            es += (t.defpos, true);
+                for (var c = es.First(); c != null; c = c.Next())
                 {
-                    if (cx.db.objects[c.value()] is not DBObject ob) continue;
+                    if (cx.db.objects[c.key()] is not DBObject ob) continue;
                     if (ob is GraphType tg)
                     {
                         sb.Append(cc); cc = ",\r\n";
@@ -4309,7 +4316,7 @@ namespace Pyrrho.Level3
                                 t.SchemaJson(cx, sn, 2);
                             }
                         if (sn.Length > 0)
-                        {  sn.Append('}'); sb.Append(cs); cs = ","; sb.Append(sn); }
+                        { sn.Append('}'); sb.Append(cs); cs = ","; sb.Append(sn); }
                         var se = new StringBuilder();
                         cm = "\r\n\tEdges: {\r\n";
                         for (var b = cx.role.edgeTypes.First(); b != null; b = b.Next())
@@ -4319,27 +4326,22 @@ namespace Pyrrho.Level3
                                 t.SchemaJson(cx, se, 2);
                             }
                         if (se.Length > 0)
-                        {  se.Append('}'); sb.Append(cs); sb.Append(se); }
+                        { se.Append('}'); sb.Append(cs); sb.Append(se); }
                         sb.Append('}');
                     }
-                    else if (ob is Schema sc)
+                }
+                if (cx.graph is TGraph g)
+                {
+                    sb.Append(cc); cc = ",\r\n";
+                    sb.Append("Graph: { ");
+                    sb.Append("Name: "); sb.Append(name);
+                    sb.Append(" Nodes: ");
+                    var cm = '[';
+                    for (var b = g.nodes.First(); b != null; b = b.Next())
                     {
-                        sb.Append(cc); cc = ",\r\n";
-                        sb.Append("Schema: { ");
-                        sb.Append("Iri : "); sb.Append(sc.directoryPath); sb.Append('}');
-                    } else if (ob is Graph g)
-                    {
-                        sb.Append(cc); cc = ",\r\n";
-                        sb.Append("Graph: { "); 
-                        sb.Append("Name: "); sb.Append(name);
-                        sb.Append(" Nodes: ");
-                        var cm = '[';
-                        for (var b = g.nodes.First(); b != null; b = b.Next())
-                        {
-                            sb.Append(cm); cm = ','; sb.Append(Uid(b.key()));
-                        }
-                        sb.Append(']');
+                        sb.Append(cm); cm = ','; sb.Append(b.key().defpos);
                     }
+                    sb.Append(']');
                 }
                 sb.Append("}\r\n");
                 ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
@@ -4347,6 +4349,15 @@ namespace Pyrrho.Level3
             }
             cx.result = ers;
             return cx;
+        }
+    }
+    internal class BuildGraph : Executable
+    {
+        public BuildGraph(Context cx, string cr, MatchStatement? ms = null) : base(cx, cr)
+        {
+        }
+        internal BuildGraph(long dp, BTree<long, object>? m = null) : base(dp, m)
+        {
         }
     }
     internal class GraphInsertStatement : Executable
@@ -5496,22 +5507,34 @@ namespace Pyrrho.Level3
         TableRow? FindTableRow(Context cx, GqlNode x, long ct, long p)
         {
             var nt = cx._Ob(ct) as Table;
+            var gt = cx.graphType?.dataType as GraphType;
             if (x.domain.defpos > 0 && cx._Ob(x.domain.defpos) is Table xt)
             {
                 if (nt is not null && !xt.EqualOrStrongSubtypeOf(nt))
                     return null;
-                return xt.tableRows[p];
+                if (gt?.elTypes.Contains(xt.defpos)==true)
+                    return xt.tableRows[p];
             }
-            if (nt?.defpos > 0L)
+            if (nt?.defpos > 0L  && gt?.elTypes.Contains(nt.defpos)==true)
                 return nt.tableRows[p];
-            for (var b = cx.role.nodeTypes?.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()) is Table t
-                    && t.tableRows[p] is TableRow r)
-                    return r;
-            for (var b = cx.role.edgeTypes?.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()) is Table t
-                    && t.tableRows[p] is TableRow r)
-                    return r;
+            if (gt is not null)
+            {
+                for (var b = gt.elTypes.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.key()) is Table t
+                        && t.tableRows[p] is TableRow r)
+                        return r;
+            }
+            else
+            {
+                for (var b = cx.role.nodeTypes?.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.value()) is Table t
+                        && t.tableRows[p] is TableRow r)
+                        return r;
+                for (var b = cx.role.edgeTypes?.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.value()) is Table t
+                        && t.tableRows[p] is TableRow r)
+                        return r;
+            }
             return null;
         }
         bool Connects(TConnector ec,Qlx q)
@@ -5530,15 +5553,16 @@ namespace Pyrrho.Level3
             if (pn.defpos < 0 && xn.domain.kind == Qlx.UNION)
             {
                 for (var b = xn.domain.alts.First(); b != null; b = b.Next())
-                    if (b.key() is Table nl)
+                    if (b.key() is Table nl
+                       && (cx.graphType?.dataType as GraphType)?.elTypes.Contains(nl.defpos)==true)
                         ds = Traverse(cx, ms, xn, tr, cr, pd, nl, ctr, ds);
                 return ds;
             }
             var la = tr.Contains(Domain.TypeSpec.defpos) ? tr[Domain.TypeSpec.defpos].Item1 : int.MaxValue;
             for (var b = (cx.db.objects[pn.defpos] as Table)?.sindexes[pd.tableRow.defpos]?.First();
                  b != null; b = b.Next())
-                if (cx._Ob(b.key()) is TableColumn cc
-                    && cx._Ob(cc.tabledefpos) is Table rt)
+                if (cx._Ob(b.key()) is TableColumn cc && cx._Ob(cc.tabledefpos) is Table rt
+                   && (cx.graphType?.dataType as GraphType)?.elTypes.Contains(rt.defpos)==true)
                 {
                     if (xn.preCon is TConnector tc && tc.cp != cc.defpos)
                        continue;  
@@ -5882,10 +5906,6 @@ namespace Pyrrho.Level3
             if (size!=0)
             {
                 sb.Append(" size "); sb.Append(size);
-            }
-            if (worker>0)
-            {
-                sb.Append(" THEN "); sb.Append(Uid(worker));
             }
             return sb.ToString();
         }

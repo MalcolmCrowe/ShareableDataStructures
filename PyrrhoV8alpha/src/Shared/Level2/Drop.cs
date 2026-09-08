@@ -109,7 +109,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{ 
-			return GetType().Name+" ["+Pos(delpos)+"]"; 
+			return GetType().Name+" ["+Ref(delpos)+"]"; 
 		}
         /// <summary>
         /// During the validation step of Commit, all Physical objects committed

@@ -314,7 +314,7 @@ namespace Pyrrho.Level2
         }
         public override int ReadByte()
         {
-            if (Position >= limit)
+            if (Rowid >= limit)
                 return -1;
             if (buf.pos == buf.len)
             {
@@ -325,7 +325,7 @@ namespace Pyrrho.Level2
             }
             return buf.buf[buf.pos++];
         }
-        public long Position => buf.start + buf.pos;
+        public long Rowid => buf.start + buf.pos;
         /// <summary>
         /// Get the name and Domain for a given TableColumn defpos and ppos
         /// </summary>
@@ -444,7 +444,7 @@ namespace Pyrrho.Level2
         }
         protected bool EoF()
         {
-            return Position >= limit;
+            return Rowid >= limit;
         }
         internal void Set(Physical ph)
         {
@@ -498,7 +498,7 @@ namespace Pyrrho.Level2
         /// very long, we call this routine twice. The first time, the we do not lock
         /// the file, so we must accept that we may need to give up partway through the
         /// the last complete Physical (this is not a problem).
-        /// The second time GetAll is called, the file will already be locked and we want to 
+        /// The _inner time GetAll is called, the file will already be locked and we want to 
         /// restart from the last Physical boundary.This time if the record is incomplete
         /// we throw an exception.
         /// </summary>
@@ -508,13 +508,13 @@ namespace Pyrrho.Level2
             var r = BList<Physical>.Empty;
             try
             {
-                for (long p = Position; p < limit; p = Position) // will have moved on
+                for (long p = Rowid; p < limit; p = Rowid) // will have moved on
                     r += Create();
             }
             catch (Exception)
             {
                 if (locked)
-                    throw new Exception("GetAll " + Position);
+                    throw new Exception("GetAll " + Rowid);
             }
             return r;
         }

@@ -805,7 +805,7 @@ namespace Pyrrho.Level3
             sb.Append(s.AsSpan(1));
             return sb.ToString();
         }
-        /// <summary>
+/*        /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition,
         /// and computes navigation properties
         /// </summary>
@@ -852,7 +852,7 @@ namespace Pyrrho.Level3
             sb.Append("}\r\n");
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
         internal override void Note(Context cx, StringBuilder sb, string pre = "/// ")
         {
             if (infos[cx.role.defpos] is ObInfo ci && ci.name != null)
@@ -870,7 +870,7 @@ namespace Pyrrho.Level3
                         }
             }
         }
-        /// <summary>
+ /*       /// <summary>
         /// Generate a row for the Role$Java table: includes a Java class definition
         /// </summary>
         /// <param name="from">The query</param>
@@ -888,13 +888,13 @@ namespace Pyrrho.Level3
             sb.Append("/*\r\n * "); sb.Append(NameFor(cx)); sb.Append(".java\r\n *\r\n * Created on ");
             sb.Append(DateTime.Now);
             sb.Append("\r\n * from Database " + cx.db.name + ", Role "
-                + ro.name + "\r\n */\r\n");
+                + ro.name + "\r\n *"+"/\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
             var key = BuildKey(cx, out CTree<int, long> keys);
             sb.Append("\r\n@Schema("); sb.Append(lastChange); sb.Append(')');
-            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */\r\n");
+            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n *"+"/\r\n");
             if (mi.description != "")
-                sb.Append("/* " + mi.description + "*/\r\n");
+                sb.Append("/* " + mi.description + "*"=+"/\r\n");
             var su = new StringBuilder();
             var cm = "";
             for (var b = super.First(); b != null; b = b.Next())
@@ -926,7 +926,7 @@ namespace Pyrrho.Level3
             sb.Append("}\r\n");
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
         internal void SchemaJson(Context cx, StringBuilder sb)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
@@ -1032,8 +1032,6 @@ namespace Pyrrho.Level3
                         sl.Append(cn); cn = ", ";
                         var si = new StringBuilder();
                         si.Append(tc.NameFor(cx));
-                        if (tc.NameFor(cx).StartsWith("currency"))
-                            ;
                         si.Append(": ");
                         var sm = new StringBuilder();
                         ci.metadata.JsonSchema(cx, sm);
@@ -1111,7 +1109,7 @@ namespace Pyrrho.Level3
             if (m[q] is TInt ti) return ti.ToString();
             return d;
         }
-        /// <summary>
+ /*       /// <summary>
         /// Generate a row for the Role$Python table: includes a Python class definition
         /// </summary>
         /// <param name="from">The query</param>
@@ -1163,7 +1161,7 @@ namespace Pyrrho.Level3
             }
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
         internal virtual string BuildKey(Context cx, out CTree<int, long> keys)
         {
             keys = CTree<int, long>.Empty;
@@ -1182,7 +1180,7 @@ namespace Pyrrho.Level3
                     }
             return sk.ToString();
         }
-
+/*
         internal override TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is null
@@ -1204,7 +1202,7 @@ namespace Pyrrho.Level3
             sb.Append(cx.db.name); sb.Append('/'); sb.Append(ro.name); sb.Append('/'); sb.Append(name); sb.Append("'\r\n");
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
-        }
+        } */
         static Random ran = new(0);
         /// <summary>
         /// My current idea is that given a  single node n, Pyrrho should be able to compute a list of nearby nodes 
@@ -1231,7 +1229,7 @@ namespace Pyrrho.Level3
                 var tn = todo[0]; todo -= 0;
             }
             return (ntable, types);
-        }
+        } 
         internal virtual Table AddNodeOrEdgeType(Context cx)
         {
             var ro = cx.role;

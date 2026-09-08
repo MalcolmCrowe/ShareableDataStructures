@@ -256,7 +256,7 @@ namespace Pyrrho.Level2
         public override long defpos => _defpos;
         public override string ToString()
         {
-            return base.ToString() + " Prev:" + Pos(prev);
+            return base.ToString() + " Prev:" + Ref(prev);
         }
     }
     internal class Update1 : Update

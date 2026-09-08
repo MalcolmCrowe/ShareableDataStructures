@@ -619,47 +619,6 @@ namespace Pyrrho.Level3
             return this;
         }
         /// <summary>
-        /// Implementation of the Role$Class table: Produce a C# class corresponding to a Table or View
-        /// </summary>
-        /// <param name="from">A query</param>
-        /// <param name="_enu">An enumerator for the set of database objects</param>
-        /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleClassValue(Context cx,RowSet from,
-            ABookmark<long, object> _enu)
-        {
-            throw new NotImplementedException();
-        } 
-        /// <summary>
-        /// Implementation of the Role$Java table: Produce a Java class corresponding to a Table or View
-        /// </summary>
-        /// <param name="from">A query</param>
-        /// <param name="_enu">An enumerator for the set of database objects</param>
-        /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleJavaValue(Context cx, RowSet from, ABookmark<long, object> _enu)
-        {
-            throw new NotImplementedException();
-        }
-        /// <summary>
-        /// Implementation of the Role$Python table: Produce a Python class corresponding to a Table or View
-        /// </summary>
-        /// <param name="from">A query</param>
-        /// <param name="_enu">An enumerator for the set of database objects</param>
-        /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RolePythonValue(Context cx, RowSet from, ABookmark<long, object> _enu)
-        {
-            throw new NotImplementedException();
-        }
-        /// <summary>
-        /// Implementation of the Role$SQL table: Produce SQL for a RestView corresponding to a Table or similar
-        /// </summary>
-        /// <param name="from">A query</param>
-        /// <param name="_enu">An enumerator for the set of database objects</param>
-        /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
-        {
-            throw new NotImplementedException();
-        }
-        /// <summary>
         /// Issues here: This object may not have been committed yet
         /// We only want to record audits in the PhysBase for committed obs
         /// </summary>
@@ -723,7 +682,7 @@ namespace Pyrrho.Level3
                 return "";
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
                 ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Qlx.OBJECT);
-            return ci.name??""; 
+            return ci.name ?? name;
         }
         internal virtual CTree<Domain,bool> _NodeTypes(Context cx)
         {

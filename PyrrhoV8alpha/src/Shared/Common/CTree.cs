@@ -1,5 +1,7 @@
-﻿using Pyrrho.Level3;
+﻿using Pyrrho.Level2;
+using Pyrrho.Level3;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -15,11 +17,11 @@ namespace Pyrrho.Common
     /// </summary>
     /// <typeparam name="K">The Key type - may be a set type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
-    internal class CTree<K, V> : BTree<K, V>,IComparable
+    internal class CTree<K, V> : BTree<K, V>, IComparable
     where K : IComparable where V : IComparable
     {
-        public new static CTree<K, V> Empty = new ();
-        protected CTree():base() {}
+        public new static CTree<K, V> Empty = new();
+        protected CTree() : base() { }
         /// <summary>
         /// Constructor
         /// </summary>
@@ -76,7 +78,7 @@ namespace Pyrrho.Common
         /// <returns>The new CTree</returns>
         protected override ATree<K, V> Insert(K k, V v) // this does not contain k
         {
-            if (root==null || root.total == 0)  // empty BTree
+            if (root == null || root.total == 0)  // empty BTree
                 return new CTree<K, V>(new KeyValuePair<K, V>(k, v));
             if (root.count == Size)
                 return new CTree<K, V>(root.Split()).Add(k, v);
@@ -90,7 +92,7 @@ namespace Pyrrho.Common
         /// <returns>The new CTree</returns>
         internal override ATree<K, V> Update(K k, V v) // this Contains k
         {
-            if (!Contains(k) || root==null)
+            if (!Contains(k) || root == null)
                 throw new PEException("PE01");
             return new CTree<K, V>(root.Update(this, k, v));
         }
@@ -104,7 +106,7 @@ namespace Pyrrho.Common
         {
             if (!Contains(k))
                 return this;
-            if (root==null || root.total == 1) // empty index
+            if (root == null || root.total == 1) // empty index
                 return Empty;
             // note: we allow root to have 1 entry
             return new CTree<K, V>(root.Remove(this, k));
@@ -114,10 +116,10 @@ namespace Pyrrho.Common
         {
             if (obj == null)
                 return 1;
-            var that = (CTree<K,V>)obj??Empty;
+            var that = (CTree<K, V>)obj ?? Empty;
             var tb = that.First();
             var b = First();
-            for (;b is not null && tb is not null;b=b.Next(),tb=tb.Next())
+            for (; b is not null && tb is not null; b = b.Next(), tb = tb.Next())
             {
                 var c = b.key().CompareTo(tb.key());
                 if (c != 0)
@@ -126,18 +128,18 @@ namespace Pyrrho.Common
                 if (c != 0)
                     return c;
             }
-            return (b != null)? 1 : (tb is not null)?-1: 0;
+            return (b != null) ? 1 : (tb is not null) ? -1 : 0;
         }
 
         public static CTree<K, V> operator +(CTree<K, V> tree, (K, V) v)
         {
-            return (CTree<K,V>)tree.Add(v.Item1, v.Item2);
+            return (CTree<K, V>)tree.Add(v.Item1, v.Item2);
         }
         public static CTree<K, V> operator -(CTree<K, V> tree, K k)
         {
-            return (CTree<K,V>)tree.Remove(k);
+            return (CTree<K, V>)tree.Remove(k);
         }
-        public static CTree<K,V> operator-(CTree<K,V> tree,CTree<K,V>s)
+        public static CTree<K, V> operator -(CTree<K, V> tree, CTree<K, V> s)
         {
             for (var b = s.First(); b != null; b = b.Next())
                 tree -= b.key();
@@ -172,7 +174,7 @@ namespace Pyrrho.Common
         public int IndexOf(V v)
         {
             var i = 0;
-            for (var b = First(); b != null; b = b.Next(),i++)
+            for (var b = First(); b != null; b = b.Next(), i++)
                 if (v.CompareTo(b.value()) == 0)
                     return i;
             return -1;

@@ -259,7 +259,7 @@ namespace Pyrrho.Common
                 return ta.array[pos] ?? TNull.Value;
             throw new PEException("PE70731");
         }
-        public long Position()
+        public long Rowid()
         {
             return pos;
         }
@@ -283,7 +283,7 @@ namespace Pyrrho.Common
         {
             return parent.array[pos] ?? TNull.Value;
         }
-        public long Position()
+        public long Rowid()
         {
             return pos;
         }
@@ -1089,10 +1089,18 @@ namespace Pyrrho.Common
     {
         internal readonly Domain _dataType;
         internal readonly string name;
-        internal TTypeSpec(string n, Domain t) : base(Domain.TypeSpec)
+        internal readonly CTree<long, bool> scenarii;
+        internal TTypeSpec(string n, Domain t, CTree<long,bool>? ee = null) : base(Domain.TypeSpec)
         {
             _dataType = t;
             name = n;
+            ee ??= CTree<long, bool>.Empty;
+            if (t is GraphType gt)
+                ee += gt.scenarii;
+            for (var b=t.alts.First();b!=null;b=b.Next())
+                if (b.key() is GraphType g)
+                    ee += g.scenarii;
+            scenarii = ee;
         }
         internal override TypedValue Fix(Context cx)
         {
@@ -1705,7 +1713,7 @@ namespace Pyrrho.Common
                 if (bmk == null) return null;
                 return new SetBookmark(_set, _pos + 1, bmk);
             }
-            public long Position()
+            public long Rowid()
             {
                 return _pos;
             }
@@ -1729,7 +1737,7 @@ namespace Pyrrho.Common
         /// Creator: forms the result of two sets
         /// </summary>
         /// <param name="a">A first set</param>
-        /// <param name="b">A second set</param>
+        /// <param name="b">A _inner set</param>
         /// <returns>a new Multiset</returns>
         internal static TSet? Union(TSet? a, TSet? b)
         {
@@ -1747,7 +1755,7 @@ namespace Pyrrho.Common
         /// Creator: forms the intersection of two sets
         /// </summary>
         /// <param name="a">A first multiset</param>
-        /// <param name="b">A second multiset</param>
+        /// <param name="b">A _inner multiset</param>
         /// <returns>a new Multiset</returns>
         internal static TSet? Intersect(TSet? a, TSet? b)
         {
@@ -1769,7 +1777,7 @@ namespace Pyrrho.Common
         /// Creator: forms the difference of two sets
         /// </summary>
         /// <param name="a">A first set</param>
-        /// <param name="b">A second set</param>
+        /// <param name="b">A _inner set</param>
         /// <returns>a new Multiset</returns>
         internal static TSet Except(TSet a, TSet b)
         {
@@ -1942,7 +1950,7 @@ namespace Pyrrho.Common
             {
                 throw new NotImplementedException();
             }
-            public long Position()
+            public long Rowid()
             {
                 return _pos;
             }
@@ -1996,7 +2004,7 @@ namespace Pyrrho.Common
         /// Creator: forms the result of two Multisets, optionally removing duplicates
         /// </summary>
         /// <param name="a">A first multiset</param>
-        /// <param name="b">A second multiset</param>
+        /// <param name="b">A _inner multiset</param>
         /// <param name="all">true if duplicates are not to be removed</param>
         /// <returns>a new Multiset</returns>
         internal static TMultiset? Union(TMultiset? a, TMultiset? b, bool all)
@@ -2030,7 +2038,7 @@ namespace Pyrrho.Common
         /// Creator: forms the intersection of two Multisets, optionally removing duplicates
         /// </summary>
         /// <param name="a">A first multiset</param>
-        /// <param name="b">A second multiset</param>
+        /// <param name="b">A _inner multiset</param>
         /// <param name="all">true if duplicates are not to be removed</param>
         /// <returns>a new Multiset</returns>
         internal static TMultiset? Intersect(TMultiset? a, TMultiset? b, bool all)
@@ -2060,7 +2068,7 @@ namespace Pyrrho.Common
         /// Creator: forms the difference of two Multisets, optionally removing duplicates
         /// </summary>
         /// <param name="a">A first multiset</param>
-        /// <param name="b">A second multiset</param>
+        /// <param name="b">A _inner multiset</param>
         /// <param name="all">true if duplicates are not to be removed</param>
         /// <returns>a new Multiset</returns>
         internal static TMultiset Except(TMultiset a, TMultiset b, bool all)

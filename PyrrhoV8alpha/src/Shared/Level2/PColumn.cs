@@ -308,7 +308,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder(GetType().Name);
             sb.Append(' '); sb.Append(name); sb.Append(" for ");
-            sb.Append(Pos(tabledefpos));
+            sb.Append(Ref(tabledefpos));
             sb.Append('('); sb.Append(seq); sb.Append(")[");
             if (domdefpos >= 0)
                 sb.Append(DBObject.Uid(domdefpos));

@@ -691,7 +691,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// A base class for join bookmarks. A join bookmark is composite: it contains bookmarks for left and right.
     /// If there are no ties, all is simple.
-    /// But if there are ties on both first and second we need to ensure that
+    /// But if there are ties on both first and _inner we need to ensure that
     /// all tying values of right must be used with each tying value of left.
     /// We discover there is a tie when the MTreeBookmark is over-long or has pmk nonnull.
     /// With joins we always have MTree for both left and right (from Indexes or from Ordering)

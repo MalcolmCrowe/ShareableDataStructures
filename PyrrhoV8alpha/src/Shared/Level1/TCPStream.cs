@@ -1034,7 +1034,7 @@ namespace Pyrrho.Level1
                 var j = 0;
                 if (m == 0)
                 {
-                    PutString("POSITION");
+                    PutString("REF");
                     PutString("INTEGER");
                     PutInt(1);
                 }

@@ -77,7 +77,7 @@ namespace Pyrrho.Level2
         protected Physical(Type tp, Reader rdr)
         {
             type = tp;
-            ppos = rdr.Position - 1;
+            ppos = rdr.Rowid - 1;
             db = rdr.context.db;
             rdr.Set(this);
         }
@@ -176,7 +176,7 @@ namespace Pyrrho.Level2
         }
         public virtual long _table => -1L;
         public override string ToString() { return type.ToString(); }
-        protected static string Pos(long p)
+        protected static string Ref(long p)
         {
             return DBObject.Uid(p);
         }

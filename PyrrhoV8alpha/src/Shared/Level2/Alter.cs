@@ -100,7 +100,7 @@ namespace Pyrrho.Level2
         /// <returns>a string representation</returns>
         public override string ToString()
         {
-            return "Alter TableColumn  [" + Pos(defpos) + "] to " + base.ToString();
+            return "Alter TableColumn  [" + Ref(defpos) + "] to " + base.ToString();
         }
     }
     /// <summary>

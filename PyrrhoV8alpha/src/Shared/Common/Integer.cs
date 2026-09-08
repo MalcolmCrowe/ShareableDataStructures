@@ -1,8 +1,5 @@
 using Pyrrho.Level3;
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Security.Cryptography;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -990,7 +987,7 @@ namespace Pyrrho.Common
         /// Addition of two Decimals
         /// </summary>
         /// <param name="a">The first Decimal</param>
-        /// <param name="b">The second Decimal</param>
+        /// <param name="b">The _inner Decimal</param>
         /// <returns>The sum (a new Decimal)</returns>
 		public static Numeric operator+(Numeric a,Numeric b)
 		{
@@ -1012,7 +1009,7 @@ namespace Pyrrho.Common
         /// Subtraction of two Decimals
         /// </summary>
         /// <param name="a">The first Decimal</param>
-        /// <param name="b">The second Decimal</param>
+        /// <param name="b">The _inner Decimal</param>
         /// <returns>The difference (a new Decimal)</returns>
 		public static Numeric operator-(Numeric a,Numeric b)
 		{
@@ -1022,7 +1019,7 @@ namespace Pyrrho.Common
         /// Multiplication of two Decimals
         /// </summary>
         /// <param name="a">The first Decimal</param>
-        /// <param name="b">The second Decimal</param>
+        /// <param name="b">The _inner Decimal</param>
         /// <returns>The product (a new Decimal)</returns>
 		public static Numeric operator*(Numeric a,Numeric b)
 		{

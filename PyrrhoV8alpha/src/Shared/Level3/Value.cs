@@ -174,8 +174,6 @@ namespace Pyrrho.Level3
         }
         internal virtual bool KnownBy(Context cx,RowSet q,bool ambient = false)
         {
-            if (q.mem[Domain.Nodes] is CTree<long,bool> xs && xs.Contains(defpos))
-                return true;
             return q.Knows(cx, defpos, ambient);
         }
         internal virtual bool KnownBy<V>(Context cx,CTree<long,V> cs,bool ambient = false) 
@@ -5731,13 +5729,15 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class QlValueQuery : QlValue
     {
+        internal const long
+                        Worker = -366; // long 
         /// <summary>
         /// the subquery
         /// </summary>
-        public long worker =>(long)(mem[Executable.Worker]??-1L);
+        public long worker =>(long)(mem[Worker]??-1L);
         public QlValueQuery(long dp,Context cx,Domain r,Domain xp,long ss)
             : base(dp, _Mem(cx,ss) + (_Domain,r) + (Domain.Aggs,r.aggs)
-                  + (Executable.Worker, ss))// + (RowSet._Scalar,xp.kind!=Qlx.TABLE))
+                  + (Worker, ss))// + (RowSet._Scalar,xp.kind!=Qlx.TABLE))
         {
             r += (cx,SelectRowSet.ValueSelect, dp);
             cx.Add(r);
@@ -5749,7 +5749,8 @@ namespace Pyrrho.Level3
                 d = Math.Max(d, e.depth + 1);
             return new BTree<long, object>(_Depth, d);
         }
-        protected QlValueQuery(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected QlValueQuery(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
         public static QlValueQuery operator +(QlValueQuery et, (long, object) x)
         {
             var d = et.depth;
@@ -5817,7 +5818,7 @@ namespace Pyrrho.Level3
             var ne = cx.Fix(worker);
             if (ne != worker)
             {
-                r = cx.Add(r, Executable.Worker, ne);
+                r = cx.Add(r, Worker, ne);
                 r += (_Domain, cx.obs[ne] ?? Domain.Null);
             }
             return r;
@@ -5827,7 +5828,7 @@ namespace Pyrrho.Level3
             var r = (QlValueQuery)base._Replace(cx, so, sv);
             var ne = cx.Replaced(worker);
             if (ne != worker)
-                r +=(cx, Executable.Worker, ne);
+                r +=(cx, Worker, ne);
             return r;
         }
         internal override QlValue Having(Context c, Domain dm, long ap)
@@ -7559,9 +7560,11 @@ namespace Pyrrho.Level3
                         vcx.result = cx.obs[from] as RowSet;
                         var p = -1L;
                         for (var b = cx.Nodes().First();b is not null; b = b.Next())
-                            if (b.value() is TNode t)
-                                if (t.tableRow.time > p)
-                                    p = t.tableRow.time;
+                            if (b.key() is Table tt)
+                            for (var c = b.value().First();c!=null;c=c.Next())
+                                if (tt.tableRows[c.key()] is TableRow t)
+                                if (t.time > p)
+                                    p = t.time;
                         if (p != -1L)
                             return new TDateTime(new DateTime(p));
                         return TNull.Value;
@@ -7930,15 +7933,16 @@ namespace Pyrrho.Level3
                         vcx.result = cx.obs[from] as RowSet;
                         var p = -1L;
                         var q = -1L;
-                        for (var b = cx.Nodes().First();
-                            b is not null; b = b.Next())
-                        {
-                            var t = b.value();
-                            if (p==-1L || t.tableRow.time < p)
-                                p = t.tableRow.time;
-                            if (q == -1L || t.tableRow.time > p)
-                                q = t.tableRow.time;
-                        }
+                        for (var b = cx.Nodes().First(); b is not null; b = b.Next())
+                            if (b.key() is Table qt)
+                                for (var c = b.value().First(); c != null; c = c.Next())
+                                    if (qt.tableRows[c.key()] is TableRow qr)
+                                    {
+                                        if (p == -1L || qr.time < p)
+                                            p = qr.time;
+                                        if (q == -1L || qr.time > p)
+                                            q = qr.time;
+                                    }
                         if (p != -1L && q != -1L)
                             return new TPeriod(Domain.Period,
                                 new Period(new TDateTime(new DateTime(p)),new TDateTime(new DateTime(q))));
@@ -11740,6 +11744,7 @@ cx.obs[high] is not QlValue hi)
         }
         protected static Domain _Type(Domain? dm, Context cx, CTree<string, QlValue> d, BTree<long, object>? m)
         {
+            m ??= BTree<long,object>.Empty;
             if (dm is Table nt && dm.defpos >= 0)
             {
                 var st = dm; // If a supertype is newer than nt we want to add the new properties to it instead
@@ -11834,29 +11839,36 @@ cx.obs[high] is not QlValue hi)
         {
             var v = Eval(cx);
             if (cx.db.objects[v.dataType.defpos] is NodeType nt) // or EdgeType
-                return nt.For(cx, ms, xn, ds);
+                if (cx.graphType?.dataType is GraphType gt && !gt.elTypes.Contains(v.dataType.defpos))
+                    return ds ?? BTree<long, TableRow>.Empty;
+               else 
+                    return nt.For(cx, ms, xn, ds);
             var r = BTree<long, TableRow>.Empty;
             if (v is TTypeSpec)
             {
                 if (xn.domain.kind == Qlx.UNION)
                 {
                     for (var b = domain.alts.First(); b != null; b = b.Next())
-                        if (cx.db.objects[b.key().defpos] is Table at)
-                            r += at.For(cx, ms, xn, ds);
+                        if (cx.db.objects[b.key().defpos] is Table at
+                            && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(at.defpos)))
+                                r += at.For(cx, ms, xn, ds);
                     return r;
                 }
                 var dm = cx.db.objects[domain.defpos] as Domain ?? throw new DBException("42107",cx.NameFor(domain.defpos)??"");
                 if (dm.defpos > 0)
                     return dm.For(cx, ms, xn, ds);
                 for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.value()] is Table n)
+                    if (cx.db.objects[b.value()] is Table n
+                      && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(n.defpos)))
                         r += n.For(cx, ms, xn, ds);
             }
             if (v.dataType.kind==Qlx.UNION)
             for (var b=v.dataType.alts.First();b!=null;b=b.Next())
-                if (b.key() is Table t)
+                if (b.key() is Table t
+                   && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(t.defpos)))
                         r += t.For(cx, ms, xn, ds);
-            if (r == BTree<long, TableRow>.Empty)
+            if (r == BTree<long, TableRow>.Empty
+               && (cx.graphType?.dataType is not GraphType gu || gu.elTypes.Contains(domain.defpos)))
                 return domain.For(cx, ms, xn, ds);
             return r;
         }
@@ -12205,7 +12217,7 @@ cx.obs[high] is not QlValue hi)
     /// and at most one new edge type will be required at a given point in the Insert.
     /// When we first encounter an Edge, a connection will be specified 
     /// (and we check the EdgeType has this sort of connector). As we continue parsing the pattern,
-    /// a second connection to this Edge will appear. (Later GqlReferences may have their own connectors.)
+    /// a _inner connection to this Edge will appear. (Later GqlReferences may have their own connectors.)
     /// We allow a new named connector we have not yet seen, and the EdgeType itself may also be new.
     /// If the connector is named, the name must match a column in the linked GqlNode if there
     /// is more than one possible connection of the appropriate edge type.
