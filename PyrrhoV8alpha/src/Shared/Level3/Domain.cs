@@ -179,7 +179,6 @@ namespace Pyrrho.Level3
         public CTree<Domain, bool> alts =>
             (CTree<Domain, bool>)(mem[Alts] ?? CTree<Domain, bool>.Empty);
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
-        public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         internal CTree<long, CTree<long,bool>> colRefs => 
             (CTree<long, CTree<long,bool>>)(mem[ColRefs] ?? CTree<long, CTree<long, bool>>.Empty);
         internal CTree<string,CTree<Qlx, long>> model =>
@@ -194,12 +193,6 @@ namespace Pyrrho.Level3
         { }
         internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, CTree<int,long> rt, int ds = 0)
             : this(dp, _Mem(cx, t, rs, rt, ds))
-        {
-            cx.Add(this);
-        }
-        internal Domain(long dp,Domain rd,Context cx)
-            : this (dp,BTree<long,object>.Empty+(Kind,Qlx.REF)+(Element,rd)+(Definer,cx.role.defpos)
-                  + (Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo("",Grant.AllPrivileges))))
         {
             cx.Add(this);
         }
@@ -383,6 +376,17 @@ namespace Pyrrho.Level3
             if (ch)
                 m = m + (RowType, rt) + (Display, ds);
             return (Domain)d.New(m);
+        }
+        internal static Domain FindOrCreateDomain(Context cx, Domain rd)
+        {
+            var np = cx.db.nextPos;
+            var dm = (cx.db.types[rd] is long rp && rp != 0L) ? cx._Ob(rp) as Domain :
+                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", rd.kind, rd.prec, rd.scale,
+                CharSet.UCS, rd.culture.Name, "", rd.elType, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
+            if (dm is null) throw new PEException("PE33611");
+            if (dm.defpos == np)
+                cx.Install(dm);
+            return dm;
         }
         internal virtual (CTree<int,long>, CTree<long, Domain>, CTree<int,long>, CTree<long, long>, Names, BTree<long, Names>)
 ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<int,long> sr, CTree<long, long> tr,

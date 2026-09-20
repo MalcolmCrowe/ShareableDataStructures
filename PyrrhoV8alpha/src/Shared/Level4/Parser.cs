@@ -2152,7 +2152,7 @@ namespace Pyrrho.Level4
                                 ac = new TConnector(nw, nn, dr, cc.defpos);
                             }
                         }
-                        if (!found)
+                        if (nn!=" Null" && !found)
                         {
                             var np = cx.db.nextPos;
                             cx.Add(new PColumn3((Table)rn.domain, nn, dr,
@@ -3770,6 +3770,8 @@ namespace Pyrrho.Level4
                 Next();
             }
             dom = type;
+            if (type.defpos == -1L)
+                type = Domain.FindOrCreateDomain(cx, type);
             if (Match(Qlx.ARRAY, Qlx.SET, Qlx.MULTISET, Qlx.LIST))
             {
                 dom = (Domain)cx.Add(new Domain(cx.GetUid(), tok, type));
@@ -3784,6 +3786,13 @@ namespace Pyrrho.Level4
             m += (DBObject.Defpos, tc.defpos);
             StartMetadata(Qlx.COLUMN);
             var (cms, cmd) = ParseMetadata(Qlx.COLUMN,m);
+            if (dom.kind == Qlx.Null // handle domain-less REFERENCES case
+                && (cx.db.objects[tb.defpos] as DBObject)?.infos[cx.role.defpos]?.metadata is TMetadata cm
+                && cm[Qlx.REF] is TTypeSpec ts)
+            {
+                dom = ts._dataType;
+                cmd += (Qlx.ACTION, cm[Qlx.ACTION]);
+            }
             if (cx.parse == ExecuteStatus.Obey || cx.parse == ExecuteStatus.Compile)
             {
                 var pc = new PColumn3(tb, colname.ident, dom, cms, cmd, nst, tc.defpos, cx);
@@ -4403,6 +4412,7 @@ namespace Pyrrho.Level4
         Table Reference(Table tb, CTree<int, long> refs, bool drop, Qlx s)
         {
             TConnector? tc = null;
+            Domain? rd = null;
             var md = TMetadata.Empty;
             var tr = cx.db as Transaction ?? throw new DBException("42105").Add(Qlx.TRANSACTION);
             var refname = new Ident(this);
@@ -4485,7 +4495,7 @@ namespace Pyrrho.Level4
                 {
                     if (cr.domain.kind == Qlx.Null)// make cr a new simple reference to rt
                     {
-                        var rd = Table.FindOrCreateRefDomain(cx, rt) ?? throw new DBException("42105");
+                        rd = Table.FindOrCreateRefDomain(cx, rt) ?? throw new DBException("42105");
                         cx.Add(cr + (DBObject._Domain, rd));
                         if (cx.db is Transaction ta && ta.physicals[p] is PColumn pc)
                         {
@@ -4515,7 +4525,8 @@ namespace Pyrrho.Level4
                     // if refs.Length==1 and tb[refs[0]].domain is Null, we are constructing a simple reference
                     // and we don't need refindex or keymap or pc
                     // we just need to create the ref domain rd and the connector we want is (cn,TO,rd,refs[0],false,{})
-                    if (refs.Count == 1L && refs[0] is long cp && !tb.representation.Contains(cp))
+                    if (refs.Count == 1L && refs[0] is long cp
+                        && (tb.representation[cp] is not Domain cd || cd.kind == Qlx.Null))
                     {
                         tc = new TConnector(Qlx.TO, cx.NameFor(cp) ?? "", rt, cp, false, md.ToString(), md);
                         if (cx.db.objects[cp] is TableColumn ac)
@@ -4524,9 +4535,11 @@ namespace Pyrrho.Level4
                             cx.db += ac;
                         }
                         if (tr.physicals[cp] is PColumn pc)
-                        {
                             pc.flags += (int)ct;
-                            tr += (Transaction.Physicals, tr.physicals + (pc.ppos, pc));
+                        else if (rd is not null)
+                        {
+                            mr += (Qlx.REF, new TTypeSpec("", rd));
+                            mr += (Qlx.ACTION, new TInt((int)ct));
                         }
                     }
                     else if (refs != CTree<int, long>.Empty) // have we a keyMap?
@@ -4535,7 +4548,7 @@ namespace Pyrrho.Level4
                         var km = new PIndex(rt.NameFor(cx), rt, refs, PIndex.ConstraintType.ForeignKey, cx.db.nextPos, cx.db);
                         cx.Add(km);
                         ri = km.ppos;
-                        if (cx.parse == ExecuteStatus.Obey || cx.parse==ExecuteStatus.Compile)
+                        if (cx.parse == ExecuteStatus.Obey || cx.parse == ExecuteStatus.Compile)
                         {
                             var dm = Table.FindOrCreateRefDomain(cx, rt);
                             var pc = new PColumn3(tb, refname.ident, dm, "", md, cx.db.nextStmt, cx.db.nextPos, cx)
@@ -4550,13 +4563,16 @@ namespace Pyrrho.Level4
                             // after the table display at the end of CreateTable parsing
                             var hs = mr[Qlx.TRIM] as TSet ?? new TSet(Domain.Int);
                             mr += (Qlx.TRIM, hs + new TInt(pc.defpos));
-                            var ts = mr[Qlx.REFERENCES] as TSet ?? new TSet(Domain.Connector);
-                            mr += (Qlx.REFERENCES, ts + tc);
-                            ti += (ObInfo._Metadata, mr);
-                            tb += (DBObject.Infos, tb.infos + (cx.role.defpos, ti));
-                            cx.Add(tb);
-                            cx.db += tb;
                         }
+                    }
+                    if (tc != null)
+                    {
+                        var ts = mr[Qlx.REFERENCES] as TSet ?? new TSet(Domain.Connector);
+                        mr += (Qlx.REFERENCES, ts + tc);
+                        ti += (ObInfo._Metadata, mr);
+                        tb += (DBObject.Infos, tb.infos + (cx.role.defpos, ti));
+                        cx.Add(tb);
+                        cx.db += tb;
                     }
                 }
             }
@@ -7578,8 +7594,8 @@ namespace Pyrrho.Level4
                 or Qlx.SIGNED or Qlx.UNSIGNED or Qlx.BINARY or Qlx.BLOB or Qlx.NCLOB or Qlx.UINT 
                 or Qlx.UINT8 or Qlx.UINT16 or Qlx.UINT32 or Qlx.UINT64 or Qlx.UINT128 or Qlx.UINT256 
                 or Qlx.CLOB or Qlx.DATE or Qlx.TIME or Qlx.TIMESTAMP or Qlx.INTERVAL or Qlx.DOCUMENT 
-                or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE or Qlx.ARRAY or Qlx.SET or Qlx.MULTISET 
-                or Qlx.DOCUMENT or Qlx.LIST or Qlx.VECTOR or Qlx.REF => true,
+                or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE  
+                or Qlx.DOCUMENT or Qlx.REF => true,
                 _ => false,
             };
             ;
@@ -11986,7 +12002,7 @@ namespace Pyrrho.Level4
         (Ident, QlValue) GetDocItem(long pa,Domain lb,bool sch=false)
         {
             if (!Match(Qlx.Id))
-                throw new DBException("42161", "Identifier");
+                throw new DBException("42161", "Identifier", lxr.val);
             Ident k = new(this);
             var ns = lb?.names??Names.Empty;
             if (lxr.caseSensitive && k.ident == "id")

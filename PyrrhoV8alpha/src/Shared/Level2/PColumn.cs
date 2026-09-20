@@ -580,7 +580,7 @@ namespace Pyrrho.Level2
         public PColumn3(Table pr, string nm, Domain dm, string ms, 
             TMetadata md, long nst, long pp, Context cx, bool ifN = false)
             : this(pr, nm, dm, _Meta(cx,pr is not UDType, ms,md), nst, pp, cx, ifN)
-        {  }
+        { }
         PColumn3(Table pr, string nm, Domain dm, 
             (string,bool,Generation,long,PIndex.ConstraintType,long,CTree<int,long>,int,TMetadata) xx, long nst, long pp, Context cx, bool ifN = false)
             : this(pr, nm, dm, xx.Item1, xx.Item2, xx.Item3, nst, pp, cx, ifN)
@@ -678,6 +678,7 @@ namespace Pyrrho.Level2
             long dv = md[Qlx.VALUE].ToLong() ?? -1L;
             md -= Qlx.VALUE;
             PIndex.ConstraintType flags = (PIndex.ConstraintType)(md[Qlx.ACTION].ToInt() ?? 0);
+            md -= Qlx.ACTION;
             long refType = md[Qlx.REFERENCING].ToLong() ?? -1L;
             md -= Qlx.REFERENCING;
             var keymap = CTree<int, long>.Empty;

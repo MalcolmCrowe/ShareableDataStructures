@@ -5505,13 +5505,23 @@ namespace Pyrrho.Level4
                                     {
                                         var cb = tc.keyMap.First();
                                         var ks = CTree<long, TypedValue>.Empty;
-                                        for (var c = px.keys.First(); cb != null && c != null; c = c.Next(), cb = cb.Next())
-                                            ks += (c.value(), vs[cb.value()] ?? TNull.Value);
-                                        if (px.MakeKey(ks) is CList<TypedValue> rk
-                                            && px.rows?.Get(rk, 0) is long lp)
-                                            v = new TRef(lp, rt);
+                                        if (v is TRef tr && ((Transaction)cx.db).physicals[tr.value] is Record r)
+                                        {
+                                            for (var c = px.keys.First(); c != null && cb != null; c = c.Next(), cb = cb.Next())
+                                                if (r.fields[c.value()] is TypedValue w)
+                                                    vs += (cb.value(), w);
+                                        }
                                         else
-                                            throw new DBException("23000");
+                                        {
+                                            for (var c = px.keys.First(); cb != null && c != null; c = c.Next(), cb = cb.Next())
+                                                ks += (c.value(), vs[cb.value()] ?? TNull.Value);
+
+                                            if (px.MakeKey(ks) is CList<TypedValue> rk
+                                                && px.rows?.Get(rk, 0) is long lp)
+                                                v = new TRef(lp, rt);
+                                            else
+                                                throw new DBException("23000");
+                                        }
                                     }
                                 }
                       /*          else if (cx.conn.refIdsToPos)

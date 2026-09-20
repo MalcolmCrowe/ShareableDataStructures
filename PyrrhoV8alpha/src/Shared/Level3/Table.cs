@@ -1382,7 +1382,6 @@ namespace Pyrrho.Level3
                 cx.Install(dm);
             return dm;
         }
-
         internal (Table, TypedValue) Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
      bool allowChange = false, long dp = -1L)
         {
@@ -1720,9 +1719,15 @@ namespace Pyrrho.Level3
             //       for (var b = super.First(); b != null; b = b.Next())
             //           if (b.key() is Table s && cx.names[s.NameFor(cx)].Item2 > (((SqlInsert?)cx.exec)?.forNode??e.defpos))
             //               return s.Check(cx, e, ap, allowExtras);
+            var nn = ni.names;
+            for (var b = nt.rowType.PositionAt(nt.display); b != null; b = b.Next())
+                if (cx.NameFor(b.key()) is string s)
+                nn += (s, (b.key(),b.key()));
             for (var b = e.docValue.First(); b != null; b = b.Next())
-                if (!(ni.names.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
+                if (!(nn.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
                 {
+                    if (ni.model.Contains(b.key()))
+                        continue;
                     var dm = (b.value() is SqlLiteral sl) ? sl.domain : b.value().domain;
                     if (b.value() is GqlNode gn)
                         dm = FindOrCreateRefDomain(cx, gn.domain);

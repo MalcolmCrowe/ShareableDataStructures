@@ -4447,13 +4447,16 @@ namespace Pyrrho.Level3
                                     else if (nc != null)
                                         (_, ls) = et.Connect(cx, nb, nc, gc, gt.preCon, ls);
                                 }
-                                else if (gt.before!=null && nb!=null && gt.domain.infos[cx.role.defpos] is ObInfo oi)
+                                else if (gt.before != null && nb != null && gt.domain.infos[cx.role.defpos] is ObInfo oi)
                                     for (var mb = oi.model.First(); mb != null; mb = mb.Next())
                                         for (var lb = mb.value().First(); lb != null; lb = lb.Next())
                                             if (cx.db.objects[lb.value()] is TableColumn tc
                                                 && tc.domain.elType is Domain lt
                                                 && nb.dataType.EqualOrStrongSubtypeOf(lt))
-                                                ls += (tc.NameFor(cx), new SqlLiteral(cx.GetUid(),new TRef(nb.defpos,nb.dataType)));
+                                            {
+                                                ls -= lt.name;
+                                                ls += (tc.NameFor(cx), new SqlLiteral(cx.GetUid(), new TRef(nb.defpos, nb.dataType)));
+                                            }
                                 gt += (_Domain, et);
                                 gt += (Scope, defpos);
                                 gt += (GqlNode.DocValue, ls);
