@@ -55,8 +55,7 @@ namespace Pyrrho.Level3
         /// <param name="dt">the object type</param>
         public TableColumn(Table tb, PColumn c, Domain dt,Context cx)
             : base(c.defpos, _TableColumn(c,dt,cx)+(_Table, tb.defpos) + (LastChange, c.ppos)
-                     + (Owner, cx.user?.defpos ?? -501L)
-                     + (KeyMap,(tb.mem[c.refindex] as CTree<int,long>)??c.keymap))
+                     + (Owner, cx.user?.defpos ?? -501L))
         {
             var lp = cx.names[c.name].Item1;
             cx.names += (c.name, (lp, c.defpos));
@@ -158,7 +157,9 @@ namespace Pyrrho.Level3
         {
             var ckp = 0L;
             (cx,var tc) = base.Add(cx,md);
+            var oc = tc;
             var table = cx._Ob(tabledefpos) as Table ?? throw new PEException("PE30331");
+            var ot = table;
             var tm = TMetadata.Empty; // this will become the new bits of metadata to add to the TableColumn 
             var oi = tc.infos[cx.role.defpos] ?? new ObInfo(name);
             var om = oi.metadata??TMetadata.Empty;
@@ -239,13 +240,19 @@ namespace Pyrrho.Level3
             }
             if (oi != tc.infos[cx.role.defpos])
                 tc += (Infos, tc.infos + (cx.role.defpos, oi));
-            cx.Add(tc);
-            cx.db += tc;
+            if (oc != tc)
+            {
+                cx.Add(tc);
+                cx.db += tc;
+            }
             //      cx.Install(table.Add(cx, s, tm) + (Infos, table.infos + (cx.role.defpos, ti))); 
             if (tm!=TMetadata.Empty)
                 cx.MetaPend(table.defpos, defpos, tm.ToString(), tm);
-            cx.Install(table);
-            cx.db += table;
+            if (ot != table)
+            {
+                cx.Install(table);
+                cx.db += table;
+            }
             return (cx,tc);
         }
 
@@ -366,6 +373,7 @@ namespace Pyrrho.Level3
                     sb.Append(b.value());
                 }
                 sb.Append(')'); }
+            if (hide) sb.Append(" hidden");
             if (refAction!=PIndex.ConstraintType.NoType)
             {
                 sb.Append(' ');sb.Append(refAction);

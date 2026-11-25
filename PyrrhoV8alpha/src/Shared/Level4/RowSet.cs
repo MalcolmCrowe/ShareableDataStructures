@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Runtime.Intrinsics.Arm;
 using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -736,7 +737,7 @@ namespace Pyrrho.Level4
                     if (v == TNull.Value && sce[p] is TypedValue tv
                         && tv != TNull.Value)
                         v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
-                    if (v is TRef tr && cx.db.objects[tr.elType.defpos] is Table rt
+                    if (v is TRef tr && cx.db.objects[tr.dataType.elType?.defpos??-1L] is Table rt
                         && rt.tableRows[tr.ToLong() ?? -1L] is TableRow r)
                         vs += r.vals;
                     vs += (p, v);
@@ -1378,7 +1379,7 @@ namespace Pyrrho.Level4
                         ns += (n.dataType,ts+(n.defpos, true));
                     }
             var dp = cx.GetUid();
-            return new TGraph(cx,ns,e?.graph);
+            return new TGraph(ns);
         }
         public override string ToString()
         {
@@ -3620,7 +3621,7 @@ namespace Pyrrho.Level4
                             ws += (p, v);
                         else if (cx.obs[p] is SqlFunction f && f.op == Qlx.REF
                             && cx._Ob(rw.tabledefpos) is Domain dd)
-                            ws += (p, new TRef(rw.defpos,dd));
+                            ws += (p, new TRef(rw.defpos,Table.FindOrCreateRefDomain(cx, dd)));
                 return new TRow(trs, ws);
             }
             internal static TableCursor? New(Context cx,TableRowSet trs,long defpos)
@@ -5499,7 +5500,7 @@ namespace Pyrrho.Level4
                             if (cx._Ob(tp) is TableColumn tc && tc.domain.kind == Qlx.REF
                                 && tc.domain.elType is Domain rd && cx.db.objects[rd.defpos] is Table rt)
                             {
-                                if (tc.keyMap != CTree<int,long>.Empty)
+                                if (tc.keyMap != CTree<int, long>.Empty)
                                 {
                                     if (rt.FindPrimaryIndex(cx) is Level3.Index px)
                                     {
@@ -5518,34 +5519,55 @@ namespace Pyrrho.Level4
 
                                             if (px.MakeKey(ks) is CList<TypedValue> rk
                                                 && px.rows?.Get(rk, 0) is long lp)
-                                                v = new TRef(lp, rt);
+                                                v = new TRef(lp, Table.FindOrCreateRefDomain(cx, rt));
                                             else
                                                 throw new DBException("23000");
                                         }
                                     }
                                 }
-                      /*          else if (cx.conn.refIdsToPos)
-                                {
-                                    if (cx.table.infos[cx.role.defpos] is ObInfo ti
-                                       && tc.NameFor(cx) is string cn)
-                                        for (var c = (ti.metadata[Qlx.REFERENCES] as TSet)?.First();
-                                               c != null; c = c.Next())
-                                        {
-                                            if (c.Value() is TConnector cc
-                                            && (cc.rd as Table)?.FindPrimaryIndex(cx) is Level3.Index px
-                                            && trc[p] !=TNull.Value
-                                         && px.rows?.Get(CList<TypedValue>.Empty+new TInt(long.Parse(trc[p].ToString())), 0) is long lp)
-                                                v = new TRef(lp, rt);
-                           //                 var tx = ((c.Value() as TConnector)?.rd as Table)?.FindPrimaryIndex(cx);
-                           //                 var rl = long.Parse(trc[p].ToString());
-                           //                 var tl = tx?.rows?.Get(CList<TypedValue>.Empty + new TInt(rl), 0);
-                                        }
-                                    else 
-                                        throw new DBException("23000");
-                                } */
+                                /*          else if (cx.conn.refIdsToPos)
+                                          {
+                                              if (cx.table.infos[cx.role.defpos] is ObInfo ti
+                                                 && tc.NameFor(cx) is string cn)
+                                                  for (var c = (ti.metadata[Qlx.REFERENCES] as TSet)?.First();
+                                                         c != null; c = c.Next())
+                                                  {
+                                                      if (c.Value() is TConnector cc
+                                                      && (cc.rd as Table)?.FindPrimaryIndex(cx) is Level3.Index px
+                                                      && trc[p] !=TNull.Value
+                                                   && px.rows?.Get(CList<TypedValue>.Empty+new TInt(long.Parse(trc[p].ToString())), 0) is long lp)
+                                                          v = new TRef(lp, rt);
+                                     //                 var tx = ((c.Value() as TConnector)?.rd as Table)?.FindPrimaryIndex(cx);
+                                     //                 var rl = long.Parse(trc[p].ToString());
+                                     //                 var tl = tx?.rows?.Get(CList<TypedValue>.Empty + new TInt(rl), 0);
+                                                  }
+                                              else 
+                                                  throw new DBException("23000");
+                                          } */
                                 else
-                                    v = Table.FindOrCreateRefDomain(cx,rt).Coerce(cx,v);
-                            } 
+                                    v = Table.FindOrCreateRefDomain(cx, rt).Coerce(cx, v);
+                            }
+                            else if (cx._Ob(tp) is TableColumn sc && sc.domain.kind == Qlx.SET
+                                && sc.domain.elType?.kind == Qlx.REF
+                                && sc.domain.elType?.elType is Domain sd && cx.db.objects[sd.defpos] is Table st
+                                &&  st.FindPrimaryIndex(cx) is Level3.Index px)
+                            {
+                                var cp = sc.keyMap.First()?.value() ?? -1L;
+                                var pp = px.keys.First()?.value() ?? -1L;
+                                var dr = Table.FindOrCreateRefDomain(cx, st);
+                                var w = new TSet(sc.domain);
+                                for (var d = (vs[cp] as TSet)?.First(); d != null; d = d.Next())
+                                    if (cp > 0)
+                                    {
+                                        var ks = new CTree<long, TypedValue>(pp, d.Value() ?? TNull.Value);
+                                        if (px.MakeKey(ks) is CList<TypedValue> rk
+                                            && px.rows?.Get(rk, 0) is long lp)
+                                            w += new TRef(lp,dr);
+                                    }
+                                    else
+                                        w += d.Value();
+                                v = w;
+                            }
                             cx.CheckMetadata(tp, v);
                             vs += (tp, v);
                         }
@@ -5568,8 +5590,8 @@ namespace Pyrrho.Level4
                                     cx.Add(tc.framing);
                                     var v = cx.obs[tc.colDefault]?.Eval(cx) ?? TNull.Value;
                                     if (v is TInt && v.ToLong() is long vp
-                                        && tc.domain.elType is Domain vd)
-                                        v = new TRef(vp, vd);
+                                        && tc.domain.elType is Table vd)
+                                        v = new TRef(vp, tc.domain);
                                     vs += (tc.defpos, v);
                                     cx.values += (tc.defpos, v);
                                     break;
@@ -5591,9 +5613,9 @@ namespace Pyrrho.Level4
                         {
                             if (tc.domain.kind == Qlx.REF)
                             {
-                                cx.checkEdges += (cx.db.nextPos, new TableRow(cx.db.nextPos, vs));
+                                cx.next.checkEdges += (cx.db.nextPos, new TableRow(cx.db.nextPos, vs));
                             }
-                            else
+                            else if (tc.domain.kind != Qlx.SET) // allow null for set (use cardinality check at commit)
                                 throw new DBException("22004", tc.NameFor(cx));
                         }
                         for (var cb = tc.checks?.First(); cb != null; cb = cb.Next())
@@ -7191,7 +7213,8 @@ namespace Pyrrho.Level4
         {
             if (Built(cx))
                 return this;
-            cx.values += (defpos, new TList(this));
+            var d = FindOrCreateDomain(cx, new Domain(-1L, Qlx.LIST, this));
+            cx.values += (defpos, new TList(d));
             var pos = 0;
             var a = (TList?)cx.values[defpos] ?? new TList(this);
             if (cx.obs[template] is RestRowSet rr && 
@@ -7261,7 +7284,7 @@ namespace Pyrrho.Level4
             return r;
         }
         /// <summary>
-        /// It makes no sense to use the RestView to alter the contents of the using table.
+        /// It makes no sense to use the RestView to alter the graphTypes of the using table.
         /// But the permission to insert remote rows may have been granted
         /// </summary>
         /// <param name="cx"></param>
@@ -7273,7 +7296,7 @@ namespace Pyrrho.Level4
             return ((RowSet?)cx.obs[template])?.Insert(cx, ts, rt) ?? throw new DBException("42105").Add(Qlx.INSERT);
         }
         /// <summary>
-        /// It makes no sense to use the RestView to alter the contents of the using table.
+        /// It makes no sense to use the RestView to alter the graphTypes of the using table.
         /// Lots of use cases suggest update of remote data will be useful.
         /// </summary>
         /// <param name="cx"></param>
@@ -7285,7 +7308,7 @@ namespace Pyrrho.Level4
             return ((RowSet?)cx.obs[template])?.Update(cx, fm) ?? throw new DBException("42105").Add(Qlx.UPDATE);
         }
         /// <summary>
-        /// It makes no sense to use the RestView to alter the contents of the using table.
+        /// It makes no sense to use the RestView to alter the graphTypes of the using table.
         /// But the permission to delete remote rows may have been granted.
         /// </summary>
         /// <param name="cx"></param>
@@ -7493,10 +7516,11 @@ namespace Pyrrho.Level4
                                 var rc = ph as Record;
                                 if (rc?.tabledefpos == lrs.targetTable)
                                     for (var c = lrs.rowType.First(); c != null; c = c.Next())
-                                        if (c.value() is long cp)
+                                        if (c.value() is long cp && cx.db.objects[lrs.targetTable] is Table tt)
                                             switch (c.key())
                                             {
-                                                case 0: vs += (cp, new TRef(p,cx._Ob(lrs.targetTable) as Domain??Ref)); break;
+                                                case 0: vs += (cp, 
+                                                        new TRef(p, Table.FindOrCreateRefDomain(cx,tt))); break;
                                                 case 1: vs += (cp, new TChar("Insert")); break;
                                                 case 2: vs += (cp, new TInt(rc.defpos)); break;
                                                 case 3: vs += (cp, new TInt(rc.trans)); break;
@@ -7514,10 +7538,10 @@ namespace Pyrrho.Level4
                                 var rc = ph as Record;
                                 if (rc?.tabledefpos==lrs.targetTable)
                                 for (var c = lrs.rowType.First(); c != null; c = c.Next())
-                                    if (c.value() is long cp)
+                                    if (c.value() is long cp && cx.db.objects[lrs.targetTable] is Table tt)
                                         vs += c.key() switch
                                         {
-                                            0 => (cp, new TRef(p,cx._Ob(lrs.targetTable) as Domain??Ref)),
+                                            0 => (cp, new TRef(p, Table.FindOrCreateRefDomain(cx, tt))),
                                             1 => (cp, new TChar("Update")),
                                             2 => (cp, new TInt(rc.defpos)),
                                             3 => (cp, new TInt(rc.trans)),
@@ -7533,10 +7557,10 @@ namespace Pyrrho.Level4
                                 (ph, _) = db._NextPhysical(b.key());
                                 if (ph is Delete rc && rc.tabledefpos == lrs.targetTable)
                                     for (var c = lrs.rowType.First(); c != null; c = c.Next())
-                                        if (c.value() is long cp)
+                                        if (c.value() is long cp && cx.db.objects[lrs.targetTable] is Table tt)
                                             vs += c.key() switch
                                             {
-                                                0 => (cp, new TRef(p, cx._Ob(lrs.targetTable) as Domain??Ref)),
+                                                0 => (cp, new TRef(p, Table.FindOrCreateRefDomain(cx, tt))),
                                                 1 => (cp, new TChar("Delete")),
                                                 2 => (cp, new TInt(rc.ppos)),
                                                 3 => (cp, new TInt(rc.trans)),
@@ -7696,9 +7720,9 @@ namespace Pyrrho.Level4
                     if (nx.Item1 is Record rc && lrs.logRow == rc.defpos && !rc.fields.Contains(tc))
                     {                    // may be an Update 
                         var b = lrs.rowType.First();
-                        if (b != null && b.value() is long p1)
+                        if (b != null && b.value() is long p1 && cx.db.objects[rc.tabledefpos] is Table tt)
                         {
-                            vs += (p1, new TRef(rc.ppos,cx._Ob(rc.tabledefpos) as Domain??Ref));
+                            vs += (p1, new TRef(rc.ppos, Table.FindOrCreateRefDomain(cx, tt)));
                             b = b.Next();
                         }
                         if (b != null && b.value() is long p2)

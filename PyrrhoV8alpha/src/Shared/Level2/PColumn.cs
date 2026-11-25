@@ -4,6 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.CodeDom.Compiler;
 using System.ComponentModel;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.Arm;
 using System.Text;
@@ -103,7 +104,7 @@ namespace Pyrrho.Level2
                 seq = x.seq;
                 domdefpos = x.domdefpos;
                 refindex = wr.cx.Fix(x.refindex);
-       //         keymap = wr.cx.FixTil(x.keymap); the keymap field has done its job in making the REF domain (in Dependent)
+                keymap = wr.cx.FixTil(x.keymap); 
                 flags = x.flags;
                 arrow = x.arrow;
             }
@@ -341,7 +342,6 @@ namespace Pyrrho.Level2
                 return null;
             var priv = oi.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
-            tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             cx.Add(tc);
             if (table.defpos < 0)
                 throw new DBException("42105").Add(Qlx.COLUMN_NAME);
@@ -354,29 +354,17 @@ namespace Pyrrho.Level2
                 tc -= TableColumn.KeyMap;
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             if (tc.domain.kind == Qlx.REF && tc.domain.elType is Table rt)
-                if (TCon(rt,!nf) is TConnector nc && rt.defpos > 0)
-                {
-                    table = table.Add(cx, nc);
-                    rt = cx.db.objects[rt.defpos] as Table ?? rt;
-                    var u = table.colRefs[rt.defpos] ?? CTree<long, bool>.Empty;
-                    table += (Domain.ColRefs, table.colRefs + (rt.defpos, u + (tc.defpos, true)));
-                    ti = table.infos[cx.role.defpos] ?? throw new PEException("47189");
-                    rt += (Table.RefCols, rt.refCols + (tc.defpos, true));
-                    keymap = rt.mem[refindex] as CTree<int, long> ?? CTree<int, long>.Empty;
-                    if (keymap == CTree<int, long>.Empty)
-                        tc -= TableColumn.KeyMap;
-                    else
-                        tc += (TableColumn.KeyMap, keymap);
-                    if (rt.mem[refindex - 1] is TypedValue tv && tv.ToInt() is int ac)
-                        tc += (QuerySearch.Action, (PIndex.ConstraintType)ac);
-                    cx.toFix += (rt.defpos, rt);
-                    cx.Add(rt);
-                    cx.db += rt;
-                }
+                if (TCon(rt, !nf) is TConnector nc && rt.defpos > 0)
+                    (rt,tc,oc) = AddConnector(cx, nc, ti, tc, oc, rt);
+            if (tc.domain.kind == Qlx.SET && tc.domain.elType is Domain rd
+                && rd.kind==Qlx.REF && rd.elType is Table ru)
+                if (TCon(ru, !nf) is TConnector nc && ru.defpos > 0)
+                    (ru, tc, oc) = AddConnector(cx, nc, ti, tc, oc, ru);
             if (flags != 0)
                 tc += (QuerySearch.Action, PIndex.ReferentialAction(tc.refAction,flags));
             if (tc.keyMap != CTree<int, long>.Empty)
                 tc += (TableColumn.Hide, true);
+            tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             table += (cx, tc);
             cx.db += tc;
             if (meta != TMetadata.Empty)
@@ -386,13 +374,20 @@ namespace Pyrrho.Level2
                 cx.db += tc;
             }
             var rw = table.rowType;
+            ti = table.infos[cx.role.defpos] ?? throw new PEException("PE41072");
             if (!tc.hide)
+            {
                 ti += (ObInfo._Names, ti.names + (name, (0L,ppos)));
+                var ds = 0;
+                for (var b = table.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value()] is TableColumn bc && !bc.hide)
+                        ds++;
+                table += (Domain.Display, ds);
+            }
             if (dataType.names is Names ss && ss!=Names.Empty)
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
             table += (ObInfo._Names, ti.names);
-            table += (Domain.Display, (int)ti.names.Count);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc = (TableColumn)tc.Apply(cx, table);
             cx.db += (tc.defpos, tc);
@@ -424,9 +419,54 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc);
             cx.db += table;
+            if (table.defpos>0)
+                cx.db += (Database.Types, cx.db.types + (table, table.defpos));
             cx._Add(table);
             cx.AddDefs(0L,table);
             return table;
+        }
+        /// <summary>
+        /// Add a connector
+        /// We don't bother to update the connector!
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="nc">The connector</param>
+        /// <param name="tc">The resulting TableColumn</param>
+        /// <param name="ci">The resulting TableColumn's ObInfo</param>
+        /// <param name="ru">The table of the target (nc.rd may be a set)</param>
+        /// <returns>The updated target table, the updated TableColumn and its ObInfo</returns>
+        /// <exception cref="PEException"></exception>
+        (Table,TableColumn,ObInfo) AddConnector(Context cx,TConnector nc,ObInfo ti,TableColumn tc,
+            ObInfo ci, Table ru)
+        {
+            if (table is null) throw new PEException("PE40460");
+            table = table.Add(cx, nc);
+            var rt = cx.db.objects[ru.defpos] as Table ?? throw new PEException("PE40461");
+            var u = table.colRefs[rt.defpos] ?? CTree<long, bool>.Empty;
+            table += (Domain.ColRefs, table.colRefs + (rt.defpos, u + (tc.defpos, true)));
+            ti ??= table.infos[cx.role.defpos] ?? throw new PEException("47189");
+            if (nc.cn != "" && !ti.names.Contains(nc.cn))
+                ti += (ObInfo._Names, ti.names + (nc.cn, (tc.defpos, tc.defpos)));
+      //      if (ru.NameFor(cx) is string n && !ti.names.Contains(n))
+      //          ti += (ObInfo._Names, ti.names + (n, (tc.defpos, tc.defpos)));
+            var ts = ti.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Domain.ConnectorSet);
+            table += (DBObject.Infos, table.infos + (cx.role.defpos,
+                ti + (ObInfo._Metadata, ti.metadata + (Qlx.REFERENCES, ts + nc))));
+            ci += (ObInfo._Metadata, (ci.metadata ?? TMetadata.Empty) + (Qlx.CONNECTING, nc));
+            rt += (Table.RefCols, table.refCols + (tc.defpos, true));
+            keymap = rt.mem[refindex] as CTree<int, long> ?? CTree<int, long>.Empty;
+            if (keymap == CTree<int, long>.Empty)
+                tc -= TableColumn.KeyMap;
+            else
+                tc += (TableColumn.KeyMap, keymap);
+            if (rt.mem[refindex - 1] is TypedValue tv && tv.ToInt() is int ac)
+                tc += (QuerySearch.Action, (PIndex.ConstraintType)ac);
+            cx.toFix += (table.defpos, table);
+            rt = (Table)cx.Add(rt);
+            cx.db += rt;
+            table = (Table)cx.Add(table);
+            cx.db += table;
+            return (rt, tc, ci);
         }
     }
     /// <summary>
@@ -690,11 +730,12 @@ namespace Pyrrho.Level2
                 for (var b = km.First(); b != null; b = b.Next())
                     keymap += (j++, b.Value().ToLong() ?? -1L);
             }
+            var refIndex = ((Table?)cx._Ob(refType))?.indexes[keymap]?.First()?.key()??-1L;  // MAYBE! TBD
             md -= Qlx.FOREIGN;
             if (md[Qlx.CONNECTING] is TConnector tc)
                 refType = tc.rd.defpos;
             md -= Qlx.CONNECTING;
-            return (ds, opt, g, dv, flags, refType, keymap, arrow, md);
+            return (ds, opt, g, dv, flags, refIndex, keymap, arrow, md);
         }
         internal override bool NeededFor(BTree<long, Physical> physicals)
         {

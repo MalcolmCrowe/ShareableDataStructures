@@ -88,9 +88,9 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, CTree<string, Qlx>>> model = CTree<long, CTree<long, CTree<string, Qlx>>>.Empty; // ad-hoc graph model
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
-        internal TSchema? schema = null; // current ownerRole, set by USE or CREATE
+        internal TSchema? schema = null; // current graph schema, set by USE or CREATE
         internal TGraph? graph = null; // current graph, set by USE or CREATE
-        internal TTypeSpec? graphType = null; // current graph type, set by USE or CREATE
+        internal TGraphType? graphType = null; // current graph type, set by USE or CREATE
         internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4, Yes = 5 };
         internal ParsingGQL parsingGQL = ParsingGQL.No;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
@@ -155,10 +155,10 @@ namespace Pyrrho.Level4
             next = null;
             cxid = db.lexeroffset;
             conn = cx.conn;
-         /*   if (conn.props["Schema"] is string sn)
-                cx.schema = cx._Ob(cx.db.catalog[sn]) as Schema; */
-            if (conn.props["Graph"] is string gn)
-                cx.graphType = cx.db.catalog[gn] as TTypeSpec;
+            if (conn.props["GraphType"] is string gn)
+                cx.graphType = cx.role.catalog[gn] as TGraphType;
+            if (conn.props["Graph"] is string g)
+                cx.graph = cx.role.catalog[g] as TGraph;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
             toFix = cx.toFix;
@@ -354,9 +354,9 @@ namespace Pyrrho.Level4
                 else
                     schema = null;
             }
-            else if (db.catalog[n] is TGraph gn)
+            else if (role.catalog[n] is TGraph gn)
                  graph = gn;
-            else if (db.catalog[n] is TTypeSpec gt)
+            else if (role.catalog[n] is TGraphType gt)
                 graphType = gt;
         }
         internal CTree<long, bool> Needs(CTree<long, bool> nd,
@@ -376,14 +376,6 @@ namespace Pyrrho.Level4
         {
             return "C_" + (++nid);
         }
-  /*      internal Iix Ix(long u)
-        {
-            return new Iix(u, this, u);
-        }
-        internal Iix Ix(long l, long d)
-        {
-            return new Iix(l, this, d);
-        } */
         internal CTree<long, bool> Needs(CTree<long, bool> nd, CList<long> rt)
         {
             for (var b = rt?.First(); b != null; b = b.Next())
@@ -755,6 +747,7 @@ namespace Pyrrho.Level4
                     depths += (oo.depth, de - ob.defpos);
             if (ob.defpos != -1L && obs[ob.defpos]?.dbg!=ob.dbg) 
                 _Add(ob);
+            db += ob;
             if (ob.defpos >= Transaction.HeapStart)
                 done += (ob.defpos, ob);
             if (ob is Executable e)
@@ -791,8 +784,13 @@ namespace Pyrrho.Level4
         /// <param name="ob"></param>
         internal void Install(DBObject ob)
         {
-            if (ob is Domain d && d.kind == Qlx.REF && d.elType is Domain rd)
-                db += (Database.RefTypes, db.refTypes + (rd, d.defpos));
+            if (ob is Domain d && d.defpos>0)
+            {
+                if (d.kind == Qlx.REF && d.elType is Domain rd
+                && (ob.defpos < Transaction.TransPos || db is Transaction))
+                    db += (Database.RefTypes, db.refTypes + (rd, d.defpos));
+                db += (Database.Types, db.types + (d,d.defpos));
+            }
             db += ob;
             Add(ob);
             if (ob.mem.Contains(DBObject._Framing))
@@ -1815,20 +1813,20 @@ namespace Pyrrho.Level4
                     {
                         case HandlerStatement.Action: v = Fix((long)v); break;
                         case Level3.Index.Adapter: v = Fix((long)v); break;
-                        case GqlNode.After: v = ((GqlNode)v).Fix(this); break;
+                        case GqlNode.After: v = FixTGq(v); break;
                         case RowSet.AggDomain: v = ((Domain)v).Fix(this); break;
                         case Domain.Aggs: v = FixTlb((CTree<long, bool>)v); break;
                         case Domain.Alts: v = FixTDb((CTree<Domain, bool>)v); break;
                         case SqlValueArray._Array: v = FixLl((CList<long>)v); break;
                         case SqlSelectArray.ArrayValuedQE: v = Fix((long)v); break;
                         case RowSet.Assig: v = FixTUb((CTree<UpdateAssignment, bool>)v); break;
-                        case GqlNode.Before: v = ((GqlNode)v).Fix(this); break;
+                        case GqlNode.Before: v = FixTGq(v); break;
                         case Procedure.Body: v = Fix((long)v); break;
                         case BindingRowSet.Builder: v = Fix((long)v); break;
                         case CallStatement.Call: v = Fix((long)v); break;
                         case SqlCaseSimple.CaseElse: v = Fix((long)v); break;
                         case SqlCaseSimple.Cases: v = FixBll((BList<(long, long)>)v); break;
-                        case Database.Catalog: v = FixTsl((CTree<string, long>)v); break;
+                        case Role.Catalog: v = FixTsl((CTree<string, long>)v); break;
                         case TableColumn.Checks: v = FixTlb((CTree<long, bool>)v); break;
                         case TransitionTable.ColIds: v = FixLl((CList<long>)v); break;
                         case Domain.ColRefs: v = FixTlTlb((CTree<long,CTree<long,bool>>)v); break;
@@ -1951,6 +1949,7 @@ namespace Pyrrho.Level4
                         case RowSet.Referenced: v = FixTlb((CTree<long, bool>)v); break;
                         case GqlReference.RefersTo: v = Fix((long)v); break;
                         case TableColumn.RefTable: v = Fix((long)v); break;
+                        case Database.RefTypes: v = v = FixTDl((CTree<Domain,long>)v); break;
                         case Domain.Representation: v = FixTlD((CTree<long, Domain>)v); break;
                         case RowSet.RestRowSetSources: v = FixTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Fix((long)v); break;
@@ -1969,7 +1968,6 @@ namespace Pyrrho.Level4
                         case Domain.RowType: v = FixTil((CTree<int, long>)v); break;
                         case RowSet.RSTargets: v = FixTll((CTree<long, long>)v); break;
                         case SqlDefaultConstructor.Sce: v = Fix((long)v); break;
-                        case GraphType._Schema: v = Fix((long)v); break;
                         case ConditionalStatement.Search: v = Fix((long)v); break;
                         case ForSelectStatement.Sel: v = Fix((long)v); break;
                         case QuantifiedPredicate._Select: v = Fix((long)v); break;
@@ -2097,18 +2095,6 @@ namespace Pyrrho.Level4
             }
             return ps;
         }
-        private CTree<long,Qlx> FixTlq(CTree<long, Qlx> ps)
-        {
-            for (var b = ps.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                var nk = Fix(k);
-                var v = b.value();
-                if (k != nk)
-                    ps = ps - k + (nk, v);
-            }
-            return ps;
-        }
         private CTree<Level,long> FixTLl(CTree<Level, long> ps)
         {
             for (var b = ps.First(); b != null; b = b.Next())
@@ -2137,21 +2123,6 @@ namespace Pyrrho.Level4
             }
             return ch?r:ps;
         }
-
-        private object FixTlG(CTree<long, GqlNode> ps)
-        {
-            for (var b = ps.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                var nk = Fix(k);
-                var v = b.value();
-                var nv = (GqlNode)v.Fix(this);
-                if (k!=nk || v != nv)
-                    ps = ps -k + (nk, nv);
-            }
-            return ps;
-        }
-
         private object FixTsQ(CTree<string, QlValue> ps)
         {
             for (var b = ps.First(); b != null; b = b.Next())
@@ -2294,6 +2265,59 @@ namespace Pyrrho.Level4
                         AddDefs(ap,cd);
                 defs += (dm.defpos, di.names);
             }
+        }
+        internal void AddCatalog(string cn,TypedValue v)
+        {
+            if (v is TNull || role.catalog[cn] == v)
+                return;
+            var ix = cn.LastIndexOf('/');
+            var lf = "";
+            var rg = cn;
+            if (ix>0)
+            {
+                lf = cn[0..ix];
+                rg = cn[ix..];
+            }
+            var w = AddCatalog(lf, rg, v) ?? throw new DBException("42000",cn,v);
+            var ro = role;
+            var ca = ro.catalog;
+            ca += (lf, w);
+            ca += (cn, v);
+            ro += (Role.Catalog, ca);
+            db += ro;
+        }
+        /// <summary>
+        /// We have been asked to enter lf/rg in the Catalog for object v.
+        /// rg does not contain /
+        /// lf may be empty: if not, we should prefix by cx.path/
+        /// (cx.path should begin with /)
+        /// Then if catalog[lf] is w, w should be a suitable parent for v
+        /// Return w += (rg,v) 
+        /// </summary>
+        /// <param name="lf"></param>
+        /// <param name="rg"></param>
+        /// <param name="v"></param>
+        TypedValue AddCatalog(string lf, string rg, TypedValue v)
+        {
+            if (lf == "")
+                lf = schema?.path??throw new DBException("42107",lf);
+            if (lf == "" || rg == "") throw new DBException("42107", lf, rg);
+            var w = role.catalog[lf];
+            if (w is TDirectory d && v is TSchema s)
+                return d + (rg, s);
+            else if (w is TSchema ws && v is TTypeSpec t)
+                return ws + (rg, t);
+            else if (w is TGraphType h && v is TGraph g)
+                return h + (rg, g);
+            else if (w is TGraph wg && v is TChar e)
+            {
+                var ee = nextHeap;
+                var psr = new Parser(this, new Ident(e.ToString(), nextHeap++));
+                psr.ParseExpectation(new BTree<long,object>(ee,wg)); // check syntax only
+                nextHeap = ee;
+                return e;
+            }
+            return TNull.Value;
         }
         /// <summary>
         ///  NOTE: We no longer try ensure that keymap all have different names
@@ -2711,36 +2735,6 @@ namespace Pyrrho.Level4
             }
             return rp;
         }
-        internal TypedValue CatalogLookup(string sg)
-        {
-            var ss = sg.Split('/');
-            var n = ss.Length;
-            var dir = db.catalog;
-            var i = 0;
-            for (; dir != CTree<string, TypedValue>.Empty && i < n - 1 && ss[i] != ""; i++)
-                if (dir[ss[i]] is TSchema s)
-                {
-                    dir = s.directory;
-                    schema = s;
-                }
-                else break;
-            if (i < n - 1)
-                throw new DBException("42107", ss[i]);
-            return dir[ss[i]]?? throw new DBException("42104", sg);
-        }
-        internal void AddCatalog(string sg, TypedValue v)
-        {
-            db += (Database.Catalog, AddCatalog(db.catalog, sg.Split('/'), 0, v));
-        }
-        CTree<string,TypedValue> AddCatalog(CTree<string,TypedValue> c,string[] s,int i,TypedValue v)
-        {
-            if (i == s.Length - 1)
-                return c + (s[i], v);
-            if (c[s[i]] is not TSchema ts) throw new DBException("42000");
-            var sg = (v is TGraph g) ? g.iri : (v is TTypeSpec tt) ? tt.dataType.name : "";
-            if (sg ==null || sg=="") throw new DBException("42000");
-            return c + (s[i], new TSchema(this,s[i],ts.directory+(sg,v)));
-        }
         /// <summary>
         /// Make a new TGraph whose nodes are the given by the current binding
         /// and whose scenarii are those of the current graphtype and current graph
@@ -2748,32 +2742,33 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal TGraph CurrentGraph()
         {
-            if (exec?.graph is string gn)
-            {
+            if (exec?.graph is TGraph gn)
+                return gn;
+       /*     {
                 var ss = gn.Split('/');
                 var n = ss.Length;
                 TSchema? schema = null;
-                var dir = db.catalog;
+                var dir = role.catalog??CTree<string,TypedValue>.Empty;
                 var i = 0;
                 for (; dir != CTree<string, TypedValue>.Empty && i < n - 1 && ss[i] != ""; i++)
                     if (dir[ss[i]] is TSchema s)
                     {
-                        dir = s.directory;
+                        dir = s.graphTypes;
                         schema = s;
                     }
                     else break;
                 if (i < n - 1)
                     throw new DBException("42107", ss[i]);
-                if (dir[ss[i]] is not TGraph) // name already in use for something else
-                    throw new DBException("42104", gn);
+                if (dir[ss[i]] is not TGraph) 
+                    throw new PEException("42104");
                 gn = ss[i];
                 if (gn == "")
                     throw new DBException("42000","Name cannot be empty");
                 if (schema == null)
                 {
                     var es = graphType?._dataType.alts ?? CTree<Domain,bool>.Empty;
-                    var ee = (graphType?._dataType as GraphType)?.scenarii ?? CTree<long,bool>.Empty;
-                    var ge = graph?.scenarii ?? CTree<long,bool>.Empty;
+                    var ee = (graphType?._dataType as GraphType)?.scenarii ?? CTree<long,TypedValue>.Empty;
+                    var ge = graph?.scenarii ?? CTree<long,TypedValue>.Empty;
                     for (var b = role.dbobjects.First(); b != null; b = b.Next())
                     {
                         if (db.objects[b.value()] is Domain d)
@@ -2784,21 +2779,24 @@ namespace Pyrrho.Level4
                             ge += gt.scenarii;
                         }
                     }
-                    if (es != CTree<Domain, bool>.Empty || ee != CTree<long, bool>.Empty)
+                    var ro = role;
+                    if (es != CTree<Domain, bool>.Empty || ee != CTree<long, TypedValue>.Empty)
                     {
                         var dp = GetUid();
                         if (graphType == null)
                             graphType = new TTypeSpec(dp.ToString(),new Domain(GetUid(),es),ee);
-                        db += (Database.Catalog,db.catalog+(dp.ToString(),graphType));
+                        ro += (Role.Catalog, ro.catalog ?? CTree<string, TypedValue>.Empty + (dp.ToString(), graphType));
+                        db += ro;
                     }
-                    if (ge != CTree<long, bool>.Empty)
+                    if (ge != CTree<long, TypedValue>.Empty)
                     {
                         if (graph == null)
-                            graph = new TGraph(this,CTree<Domain,CTree<long,bool>>.Empty,gn,ge);
-                        db += (Database.Catalog, db.catalog + ("", graph));
+                            graph = new TGraph(CTree<Domain,CTree<long,bool>>.Empty,gn,ge);
+                        ro += (Role.Catalog, ro.catalog ?? CTree<string, TypedValue>.Empty + (gn, graph));
+                        db += ro;
                     }
                 }
-            }
+            } */
             var nodes = CTree<Domain,CTree<long,bool>>.Empty;
             for (var c = this; c != null; c = c.next)
                 for (var b = c.binding.First(); b != null; b = b.Next())
@@ -2807,12 +2805,12 @@ namespace Pyrrho.Level4
                         var ts = nodes[t.dataType] ?? CTree<long, bool>.Empty;
                         nodes += (t.dataType,ts+(t.defpos, true));
                     }
-            var sc = CTree<long, bool>.Empty;
+            var sc = CTree<string, TypedValue>.Empty;
             if (graphType != null)
                 sc += graphType.scenarii;
             if (graph != null)
                 sc += graph.scenarii;
-            return new TGraph(this,nodes,graph?.iri,sc);
+            return new TGraph(nodes,graph?.iri,sc);
         }
         // debugging
         public override string ToString()
@@ -3012,6 +3010,20 @@ namespace Pyrrho.Level4
                     u += (p, true);
             }
             return u;
+        }
+        internal CTree<GqlNode, Qlx>? FixTGq(object u)
+        {
+            if (u is null)
+                return null;
+            var r = CTree<GqlNode, Qlx>.Empty;
+            for (var b = (u as CTree<GqlNode,Qlx>)?.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var p = (GqlNode)k.Fix(this);
+                if (p != k)
+                    r += (p, b.value());
+            }
+            return r;
         }
         internal BTree<long,ObInfo> Fix(BTree<long,ObInfo> oi)
         {
@@ -3383,7 +3395,7 @@ namespace Pyrrho.Level4
                         ns += (n.dataType, ts + (n.defpos, true));
                     }
                     else if (c.Value() is TRef r
-                        && db.objects[r.elType.defpos] is Table t
+                        && db.objects[r.dataType.elType?.defpos??-1L] is Table t
                         && r.ToLong() is long p
                         && t.tableRows[p] is TableRow tr)
                     {
@@ -3393,7 +3405,7 @@ namespace Pyrrho.Level4
             return ns;
         }
 
-        internal CTree<long,bool> Scenarii()
+        internal CTree<string,TypedValue> Scenarii()
         {
             return CurrentGraph().scenarii;
         }
@@ -3733,7 +3745,7 @@ namespace Pyrrho.Level4
             if (fn.mod == Qlx.DISTINCT && vl is not null)
             {
                 if (mset == null)
-                    mset = new TMultiset(vl.domain);
+                    mset = new TMultiset(Domain.FindOrCreateDomain(cx,new Domain(-1L,Domain.SetType.mem+(Domain.Element,vl.domain))));
                 else if (mset.Contains(v))
                     return;
                 mset = mset.Add(v);

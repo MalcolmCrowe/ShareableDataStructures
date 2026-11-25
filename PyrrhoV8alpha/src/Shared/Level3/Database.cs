@@ -98,13 +98,13 @@ namespace Pyrrho.Level3
     public enum ExecuteStatus { Parse, Obey, Prepare, Compile, Commit, Http }
 
     /// <summary>
-    /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
+    /// Counter-intuitively, a logical database (embodied by the durable graphTypes of the transaction log)
     /// is represented in the engine by a great many immutable instances of this class as physical records
     /// are processed by the engine. New instances are not created by copying! Instead, 
     /// every modification at database or transaction level creates a new instance.
     /// The first instance of the database is created when the server first reads physical obs from the 
     /// transaction log, and is initialised to contain the system objects (database _system). 
-    /// The entire contents of the transaction log file are then processed so that at the conclusion of
+    /// The entire graphTypes of the transaction log file are then processed so that at the conclusion of
     /// Load() there is an instance that represents the committed state of the database.
     /// When a new connection thread is started it is given the latest committed version of the database.
     /// 
@@ -141,7 +141,6 @@ namespace Pyrrho.Level3
         internal readonly long length;
         public override long lexeroffset => length;
         internal const long
-            Catalog = -247, // CTree<string,TypedValue> 
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 52 for Pyrrho v7; 53 for Pyrrhov8)
             Guest = -55, // long: a role holding all grants to PUBLIC
@@ -157,20 +156,18 @@ namespace Pyrrho.Level3
             Prefixes = -375, // CTree<string,long> UDT
             Procedures = -95, // CTree<long,string> Procedure
             Public = -311, // long: always -1L, a dummy user Id
-            RefTypes = -275, // CTree<Domain,long> referenced domain, reference
+            RefTypes = -275, // CTree<Domain,long> referenced domain, reference (Domain.kind!=Qlx.REF)
             Role = -285, // Role: the current role (e.g. an executable's definer)
             Roles = -60, // CTree<string,long>
             OwnerRole = -291, // long: the owner role for the database
             Suffixes = -376, // CTree<string,long> UDT
             Types = -61, // CTree<Domain,long> for system types and unnamed structured types
-            UnlabelledNodeTypes = -237, // CTree<TMetadata,long> Unlabelled NodeType and EdgeType by propertyset
+            UnlabelledNodeTypes = -237, // CTree<CTree<string,bool>,CTree<long,bool>> propertyname,defpos
             User = -277, // User: always the connection user
             Users = -287; // CTree<string,long> users defined in the database
         internal virtual long uid => -1;
         public string name => (string)(mem[ObInfo.Name]??throw new PEException("PE1001"));
         internal FileStream df => dbfiles[name]??throw new PEException("PE1002");
-        internal CTree<string, TypedValue> catalog =>
-            (CTree<string, TypedValue>)(mem[Catalog] ?? new CTree<string, TypedValue>("/",TNull.Value));
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
@@ -199,8 +196,8 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem; // access this only to populate cx.obs or commit a transaction
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
-        internal CTree<TMetadata, long> unlabelledNodeTypes =>
-    (CTree<TMetadata, long>)(mem[UnlabelledNodeTypes] ?? CTree<TMetadata, long>.Empty);
+        internal CTree<CTree<string, bool>, CTree<long, bool>> unlabelledNodeTypes =>
+            (CTree<CTree<string, bool>, CTree<long, bool>>)(mem[UnlabelledNodeTypes] ?? CTree<CTree<string,bool>, CTree<long,bool>>.Empty);
         public CTree<string, long> prefixes =>
             (CTree<string, long>)(mem[Prefixes] ?? CTree<string, long>.Empty);
         public CTree<string, long> suffixes =>

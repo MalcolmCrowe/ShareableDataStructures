@@ -6663,7 +6663,7 @@ namespace Pyrrho.Level4
 
             internal static RoleGraphBookmark? New(Context cx, SystemRowSet res)
             {
-                for (var b = cx.db.catalog.First(); b != null; b = b.Next())
+                for (var b = cx.role.catalog.First(); b != null; b = b.Next())
                     if (b.value() is TGraph g)
                     {
                         var rb = new RoleGraphBookmark(cx, res, 0, b, g);
@@ -6790,19 +6790,19 @@ namespace Pyrrho.Level4
             t.Add();
         }
         internal class RoleGraphScenarioBookmark(Context cx, SystemRowSet r, int pos,
-            ABookmark<long, bool> bmk, Expectation e, TGraph g)
+            ABookmark<string, TypedValue> bmk, TExpectation e, TGraph g)
             : SystemBookmark(cx, r, pos, e.defpos, -1L, _Value(cx, r, g, e))
         {
-            readonly ABookmark<long, bool> _bmk = bmk;
+            readonly ABookmark<string, TypedValue> _bmk = bmk;
             readonly TGraph _g = g;
-            readonly Expectation _e = e;
+            readonly TExpectation _e = e;
 
             internal static RoleGraphScenarioBookmark? New(Context cx, SystemRowSet res)
             {
                 if (cx.graph == null)
                     return null;
                 for (var b = cx.graph.scenarii.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is Expectation e)
+                    if (b.value() is TExpectation e)
                     {
                         var rb = new RoleGraphScenarioBookmark(cx, res, 0, b, e, cx.graph);
                         if (rb.Match(res) && Eval(res.where, cx))
@@ -6815,7 +6815,7 @@ namespace Pyrrho.Level4
                 if (cx.graph == null)
                     return null;
                 for (var b = _bmk.Next(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is Expectation e)
+                    if (b.value() is TExpectation e)
                     {
                         var rb = new RoleGraphScenarioBookmark(cx, res, _pos + 1, b, e, cx.graph);
                         if (rb.Match(res) && Eval(res.where, cx))
@@ -6826,14 +6826,14 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Graph,Ref, Confidence, ValidStart, ValidEnd)
             /// </summary>
-            static TRow _Value(Context cx, SystemRowSet rs, TGraph g, Expectation e)
+            static TRow _Value(Context cx, SystemRowSet rs, TGraph g, TExpectation e)
             {
                 return new TRow(rs,
                     new TChar(g.iri ?? ""),
                     new TInt(e.defpos),
-                    new TInt(e.confidence),
-                    new TDateTime(e.valid ?? DateTime.Now),
-                    new TDateTime(DateTime.Now)); // TBD
+                    new TReal(e.confidence.ToDouble()),
+                    e.asserted,
+                    new TDateTime(DateTime.Now)); 
             }
             protected override Cursor? _Previous(Context cx)
             {
@@ -7007,6 +7007,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Description", Char, 0);
             t+=new SystemTableColumn(t, "Iri", Char, 0);
             t+=new SystemTableColumn(t, "Metadata", Char,0);
+            t += new SystemTableColumn(t, "Model", Char, 0);
             t.Add();
         }
         /// <summary>
@@ -7046,7 +7047,7 @@ namespace Pyrrho.Level4
                 return null;
             }
             /// <summary>
-            /// the current value: (Name,Type,Owner,Source)
+            /// the current value
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object oo)
             {
@@ -7061,7 +7062,8 @@ namespace Pyrrho.Level4
                     new TChar(oi.name),
                     new TChar(oi.description ?? ""),
                     new TChar(dm?.name ?? ""),
-                    new TChar(ObInfo.Metadata(oi.metadata,oi.description??""))); ;
+                    new TChar(ObInfo.Metadata(oi.metadata,oi.description??"")),
+                    new TChar(oi.model.ToString()));
             }
             /// <summary>
             /// Move to the next object

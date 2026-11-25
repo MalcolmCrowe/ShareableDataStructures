@@ -59,7 +59,7 @@ namespace Pyrrho.Common
             }
         }
         /// <summary>
-        /// Iteration through the tree contents is done using immutable ABookmarks.
+        /// Iteration through the tree graphTypes is done using immutable ABookmarks.
         /// </summary>
         /// <returns>A bookmark positioned at the first element of the tree, or null if the tree is empty</returns>
         public ABookmark<K, V>? First()
@@ -67,7 +67,7 @@ namespace Pyrrho.Common
             return ABookmark<K, V>.Next(null, this);
         }
         /// <summary>
-        /// Iteration through the tree contents is done using immutable ABookmarks.
+        /// Iteration through the tree graphTypes is done using immutable ABookmarks.
         /// </summary>
         /// <returns>A bookmark positioned at the last element of the tree, or null if the tree is empty</returns>
         public ABookmark<K, V>? Last()

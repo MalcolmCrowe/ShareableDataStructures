@@ -1059,6 +1059,7 @@ namespace Pyrrho
                         case Connecting.Culture: str = "Locale"; break;
                         case Connecting.CaseSensitive: str = "CaseSensitive"; break;
                         case Connecting.Schema: str = "Schema"; break;
+                        case Connecting.GraphType: str = "GraphType"; break;
                         case Connecting.Graph: str = "Graph"; break;
                         default:
                             throw new DBException("42105").Add(Qlx.CONNECTION);
@@ -1135,15 +1136,25 @@ namespace Pyrrho
             tcp.ncells = 1;
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is CTree<int,long> co)
+            if (rb.columns is CTree<int, long> co)
             {
                 for (var b = co.First(); b != null; b = b.Next(), i++)
                     if (b.value() is long p)
-                        domains += (i, cx._Dom(p) ?? Domain.Content);
+                    {
+                        var d = cx._Dom(p) ?? Domain.Content;
+                        if (d.kind == Qlx.REF)
+                            d = Domain.Int;
+                        domains += (i, d);
+                    }
             }
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
-                    domains += (i, b.value() ?? Domain.Content);
+                {
+                    var d = b.value();
+                    if (d.kind == Qlx.REF)
+                        d = Domain.Int;
+                    domains += (i, d);
+                }
             var dc = domains[nextCol] ?? throw new PEException("PE1401");
             var ds = rb.display;
             if (ds == 0)
@@ -1557,7 +1568,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2026 Malcolm Crowe and University of the West of Scotland",
-            "8.0alpha","(23 Aug 2026)", "https://pyrrhodb.com"
+            "8.0alpha","(25 November 2026)", "https://pyrrhodb.com"
         ];
 	}
 }

@@ -113,8 +113,8 @@ namespace Pyrrho.Level3
             : base(cx, rs, rt, ds, ii) { }
         internal Table(long dp, Context cx, CTree<long, Domain> rs, CTree<int, long> rt, int ds)
             : base(dp, cx, Qlx.TABLE, rs, rt, ds) { }
-        public Table(long dp, CTree<Domain, bool> u)
-            : base(dp, u)
+        public Table(long dp, CTree<Domain, bool> u, long role)
+            : base(dp, _Mem(role,u) + (Kind,Qlx.TABLE))
         { }
         internal Table(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -295,6 +295,7 @@ namespace Pyrrho.Level3
         internal override (Context, DBObject) Add(Context cx, TMetadata md)
         {
             (cx, var ob) = base.Add(cx, md);
+            var bo = ob;
             for (var b = md.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
@@ -347,8 +348,11 @@ namespace Pyrrho.Level3
                             break;
                         }
                 }
-            cx.db += ob;
-            ob = (Table)cx.Add(ob);
+            if (ob != bo)
+            {
+                cx.db += ob;
+                ob = (Table)cx.Add(ob);
+            }
             return (cx, ob);
         }
         internal Table AddMultiplicityIndex(Context cx, TableColumn co)
@@ -495,7 +499,8 @@ namespace Pyrrho.Level3
                     if (ob is TableColumn tc)
                     {
                         m += (_Domain, tc.domain);
-                        var qv = new QlInstance(ap, rv?.defpos ?? cx.GetUid(), cx, nm ?? "", dp, tc, m);
+                        var qv = new QlInstance(ap, rv?.defpos ?? cx.GetUid(), cx, 
+                            tc.infos[cx.role.defpos]?.name?? "", dp, tc, m);
                         rt += ((int)rt.Count, qv.defpos);
                         sr += ((int)sr.Count, ob.defpos);
                         rs += (qv.defpos, qv.domain);
@@ -1284,13 +1289,14 @@ namespace Pyrrho.Level3
             TypedValue r = TNull.Value;
             for (var b = colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx._Ob(c.key()) is TableColumn cc && cx._Ob(b.key()) is Domain dm)
+                    if (cx._Ob(c.key()) is TableColumn cc && cx._Ob(b.key()) is Domain dm
+                        && cx._Ob(cc.tabledefpos) is Table t)
                         if (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dm)) 
                             if (cn != "" && (model[cn]?[q] == cc.defpos || cc.NameFor(cx) == cn))
-                                return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                                return TConnector.New(cx,t,q, cc.NameFor(cx), dm, cc.defpos);
                             else for (var d = model.First(); d != null; d = d.Next())
                                 if (d.value()[q] == cc.defpos)
-                                    return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                                    return TConnector.New(cx, t,q, cc.NameFor(cx), dm, cc.defpos);
             if (r == TNull.Value && cx.parsingGQL != Context.ParsingGQL.Match &&
                 BuildNodeTypeConnector(cx, new TConnector(q, cn, ct), this).Item2 is TConnector nc
                 && nc.rd.defpos > 0)
@@ -1302,8 +1308,11 @@ namespace Pyrrho.Level3
             var q = ba;
             switch (ba)
             {
+                case Qlx.ARROWR:
                 case Qlx.ARROW: q = Qlx.TO; break;
+                case Qlx.ARROWL:
                 case Qlx.RARROWBASE: q = Qlx.FROM; break;
+                case Qlx.ARROWTILDE:
                 case Qlx.ARROWBASETILDE:
                 case Qlx.TILDE:
                 case Qlx.RBRACKTILDE: q = Qlx.WITH; break;
@@ -1315,13 +1324,14 @@ namespace Pyrrho.Level3
             TypedValue r = TNull.Value;
             for (var b = colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx._Ob(c.key()) is TableColumn cc && cx.db.objects[b.key()] is Domain dm)
+                    if (cx._Ob(c.key()) is TableColumn cc && cx.db.objects[b.key()] is Domain dm
+                                                && cx._Ob(cc.tabledefpos) is Table t)
                         if (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dm)) 
                             if (cn != "" && (model[cn]?[q] == cc.defpos || cc.NameFor(cx) == cn))
-                                return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                                return TConnector.New(cx,t,q, cc.NameFor(cx), dm, cc.defpos);
                             else for (var d = model.First(); d != null; d = d.Next())
                                 if (d.value()[q] == cc.defpos)
-                                    return new TConnector(q, cc.NameFor(cx), dm, cc.defpos);
+                                    return TConnector.New(cx,t,q, cc.NameFor(cx), dm, cc.defpos);
             if (r == TNull.Value && cx.parsingGQL != Context.ParsingGQL.Match &&
                 BuildNodeTypeConnector(cx, new TConnector(q, cn, ct), this).Item2 is TConnector nc
                 && nc.rd.defpos > 0)
@@ -1365,7 +1375,7 @@ namespace Pyrrho.Level3
             }
             var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
             ut = (Table)(cx.db.objects[ut.defpos] ?? throw new DBException("42105").Add(Qlx.REF));
-            var um = ut.infos[ut.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+            var um = ut.infos[ut.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(ConnectorSet);
             ut = (Table)cx.Add(ut, TMetadata.Empty + (Qlx.REFERENCES, um + tn)).Item2;
             ut = ut.AddNodeOrEdgeType(cx);
             return ((Table)cx.Add(ut), tn);
@@ -1373,16 +1383,17 @@ namespace Pyrrho.Level3
 
         internal static Domain FindOrCreateRefDomain(Context cx, Domain rd)
         {
-            var np = cx.db.nextPos;
-            var dm = (cx.db.refTypes[rd] is long rp && rp != 0L) ? cx._Ob(rp) as Domain :
-                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", Qlx.REF, 0, 0, CharSet.UCS, rd.culture.Name, "",
-                rd, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
-            if (dm is null) throw new PEException("PE33611");
-            if (dm.defpos == np)
-                cx.Install(dm);
-            return dm;
+            if (cx.db.refTypes[rd] is long rp && rp != 0L && cx.db.objects[rp] is Domain dd)
+                return dd;
+            var pd = new PDomain(Physical.Type.PDomain, "", Qlx.REF, 0, 0, CharSet.UCS, rd.culture.Name, "",
+                rd, cx.db.nextPos, cx);
+            pd.domain += (Element, rd);
+            pd.ifNeeded = true;
+            var dm = cx.Add(pd) as Domain ?? throw new PEException("PE54321");
+            cx.Install(dm);
+            return FindOrCreateDomain(cx,dm);
         }
-        internal (Table, TypedValue) Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
+        internal (Table, TypedValue) Connect(Context cx, CTree<GqlNode,Qlx>? b, CTree<GqlNode,Qlx>? a, TypedValue cc,
      bool allowChange = false, long dp = -1L)
         {
             if (cc is not TConnector ec || ec.cp > 0L)
@@ -1392,8 +1403,8 @@ namespace Pyrrho.Level3
             for (var c = os?.First(); c != null; c = c.Next())
                 if (c.Value() is TConnector tc)
                 {
-                    long bt = (b?.domain ?? TypeSpec).defpos;
-                    long at = (a?.domain ?? TypeSpec).defpos;
+                    long bt = (b?.First()?.key()?.domain ?? TypeSpec).defpos;
+                    long at = (a?.First()?.key()?.domain ?? TypeSpec).defpos;
                     var cn = (ec.cn == "") ? ec.cn : tc.cn;
                     TypedValue qv = tc.q switch
                     {
@@ -1427,8 +1438,8 @@ namespace Pyrrho.Level3
             {
                 long nn = -1L;
                 Qlx q = Qlx.Null;
-                long bt = (b?.domain ?? TypeSpec).defpos;
-                long at = (a?.domain ?? TypeSpec).defpos;
+                long bt = (b?.First()?.key()?.domain ?? TypeSpec).defpos;
+                long at = (a?.First()?.key()?.domain ?? TypeSpec).defpos;
                 if (b != null) switch (ec.q)
                     {
                         case Qlx.ARROWBASE: q = Qlx.FROM; nn = bt; break;
@@ -1444,11 +1455,11 @@ namespace Pyrrho.Level3
                 if (nn > 0 && defpos > 0)
                 {
                     (r, nc) = BuildNodeTypeConnector(cx, nc);
-                    ns = (os ?? new TSet(Connector)) + nc;
+                    ns = (os ?? new TSet(ConnectorSet)) + nc;
                 }
                 else
                 {
-                    ns = (os ?? new TSet(Connector)) + nc;
+                    ns = (os ?? new TSet(ConnectorSet)) + nc;
                     cx.MetaPend(dp + 1L, dp + 1L, nc.cs, nc.cm ?? TMetadata.Empty);
                 }
                 if (ns != os && ns.Cardinality() >= 1)
@@ -1456,7 +1467,20 @@ namespace Pyrrho.Level3
             }
             return (r, (TypedValue?)os ?? TNull.Value);
         }
-        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode? a, GqlNode ed, TypedValue cc,
+        /// <summary>
+        /// Attempt to connect given nodes with cc which is a connector that may match a connector for this table
+        /// b and a if defined are already constructed (b is before a and a is after b)
+        /// and ls has the property assignments that have been found in ed.
+        /// If cc is not a suitable connector
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="b"></param>
+        /// <param name="a"></param>
+        /// <param name="cc"></param>
+        /// <param name="ls"></param>
+        /// <param name="allowChange"></param>
+        /// <returns></returns>
+        internal (Table, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode? a, TypedValue cc,
                 CTree<string, QlValue> ls, bool allowChange = false)
         {
             if (cc is not TConnector nc)
@@ -1469,23 +1493,23 @@ namespace Pyrrho.Level3
                     {
                         Qlx.TO => nc.q switch
                         {
-                            Qlx.ARROW or Qlx.ARROWR => Connect(cx, a, nc, tc, ed), // ]-> ->
-                            Qlx.RARROW or Qlx.ARROWL => Connect(cx, b, nc, tc, ed), // <-[ <-
+                            Qlx.ARROW or Qlx.ARROWR => Connect(cx, a, nc, tc), // ]-> ->
+                            Qlx.RARROW or Qlx.ARROWL => Connect(cx, b, nc, tc), // <-[ <-
                             _ => TNull.Value
                         },
                         Qlx.FROM => nc.q switch
                         {
-                            Qlx.ARROWBASE or Qlx.ARROWR => Connect(cx, b, nc, tc, ed), // -[ ->
-                            Qlx.RARROWBASE or Qlx.ARROWL => Connect(cx, a, nc, tc, ed), // ]- <-
+                            Qlx.ARROWBASE or Qlx.ARROWR => Connect(cx, b, nc, tc), // -[ ->
+                            Qlx.RARROWBASE or Qlx.ARROWL => Connect(cx, a, nc, tc), // ]- <-
                             _ => TNull.Value
                         },
                         Qlx.WITH => nc.q switch
                         {
                             Qlx.ARROWLTILDE or Qlx.RARROWTILDE or Qlx.ARROWBASETILDE // <~ <~[ ~[
-                                => Connect(cx, b, nc, tc, ed),
+                                => Connect(cx, b, nc, tc),
                             Qlx.RBRACKTILDE or Qlx.ARROWTILDE or Qlx.ARROWRTILDE // ]~ ]~> ~>
-                                => Connect(cx, a, nc, tc, ed),
-                            Qlx.TILDE => Connect(cx, a, nc, tc, ed) ?? Connect(cx, b, nc, tc, ed), // ~
+                                => Connect(cx, a, nc, tc),
+                            Qlx.TILDE => Connect(cx, a, nc, tc) ?? Connect(cx, b, nc, tc), // ~
                             _ => TNull.Value
                         },
                         _ => TNull.Value
@@ -1526,56 +1550,90 @@ namespace Pyrrho.Level3
                         new TConnector(q, nc.cn, nn.dataType));
                     ls += (cx.NameFor(rc.cp) ?? rc.cn,
                         (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(),
-                            new TRef(nn.defpos, nc.rd ?? Null))));
+                            new TRef(nn.defpos, FindOrCreateRefDomain(cx,rc.rd)))));
                 }
             }
             return (r, ls);
         }
-        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlNode ed,
-            CTree<long, long>? rn = null)
-        {
-            if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="n"></param>
+        /// <param name="nc"></param>
+        /// <param name="ec"></param>
+        /// <param name="rn"></param>
+        /// <returns></returns>
+        /// <exception cref="DBException"></exception>
+        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec)
+        { 
+            if (n == null || nc.cn==null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
                 return TNull.Value;
-            /*     if (nc.cd is SqlTypeExpr gl && gl.Eval(cx).dataType is Domain ld
-                     && ld.kind == Qlx.AMPERSAND)
-                     for (var b = gl._NodeTypes(cx).First(); b != null; b = b.Next())
-                         if (Connect(cx, n, (Table)b.key(), nc, ec, ed, rn) is TypedValue v && v != TNull.Value)
-                             return v;*/
             var nt = n.dataType as Table ?? throw new DBException("42105");
-            return Connect(cx, n, nt, nc, ec, ed, rn)
-                        ?? ((cx.values[rn?[n.defpos] ?? -1L] is TNode m) ?
-                        Connect(cx, m, m.dataType as Table, nc, ec, ed, rn) ?? TNull.Value
-                        : TNull.Value);
+            return Connect(cx, n, nt, ec) ?? TNull.Value;
         }
-        static TypedValue? Connect(Context cx, TNode n, Table? nt, TConnector nc, TConnector ec, GqlNode ed,
-            CTree<long, long>? rn = null)
+        /// <summary>
+        /// Calculate a reference value or set of reference values to be used for TConnector tc
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="n"></param>
+        /// <param name="nt"></param>
+        /// <param name="ec"></param>
+        /// <param name="rn"></param>
+        /// <returns></returns>
+        /// <exception cref="DBException"></exception>
+        static TypedValue? Connect(Context cx, TNode n, Table? nt, TConnector ec)
         {
             if (nt is null)
                 return null;
             if (ec.rd != nt && ec.rd is Domain en)
             {
-                if (en is Table ut && !nt.EqualOrStrongSubtypeOf(en))
+                if (en is Table && !nt.EqualOrStrongSubtypeOf(en))
                     return null;
             }
-            var m = (rn?[n.defpos] is long mp && mp > 0) ? mp : n.defpos;
-            if (/*ec.cd.kind == Qlx.REF && */ cx._Ob(n.tableRow.tabledefpos) is Domain rd)
-                return new TRef(m, rd);
-            if (ec.rd.kind == Qlx.SET && ec.rd is Domain de && cx._Ob(n.tableRow.tabledefpos) is Domain sd)
-                return /*(de.kind == Qlx.REF) ? */new TRef(m, sd) /*: n*/;
+            var m = n.defpos;
+            if (cx.db.objects[ec.cp] is TableColumn tc &&
+                tc.domain.kind == Qlx.SET && ec.rd is Domain de && cx._Ob(n.tableRow.tabledefpos) is Domain sd)
+            {   
+                var rf = new TRef(m, FindOrCreateRefDomain(cx, sd));
+                return new TRefSet(FindOrCreateDomain(cx,new Domain(-1L,Qlx.SET,rf.dataType))) + rf;
+            }
+            if (cx._Ob(n.tableRow.tabledefpos) is Domain rd && FindOrCreateRefDomain(cx,rd) is Domain rt)
+                return new TRef(m, rt);
             if (ec.rd is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
                 return n;
             throw new DBException("22G0V");
         }
         // return true if tc can connect bf to this with the given arrow (ab,ae)
+        // ae is the arrow edge (to match cn if specified)
         internal bool Connects(GqlNode bf, Qlx ab, TypedValue ae, TConnector tc)
         {
             if (bf.domain.defpos > 0 && !bf.domain.EqualOrStrongSubtypeOf(tc.rd))
                 return false;
             if (tc.cn != "" && ae!=TNull.Value && ae.ToString() is string an && an != "" && an != tc.cn)
                 return false;
-            return (ab == Qlx.ARROWBASE && tc.q == Qlx.FROM)
+            return ab==tc.q || (ab == Qlx.ARROWBASE && tc.q == Qlx.FROM)
                 || (ab == Qlx.RARROW && tc.q == Qlx.TO)
                 || ((ab == Qlx.TILDE || ab == Qlx.ARROWBASETILDE) && tc.q == Qlx.WITH);
+        }
+        // return true if c can connect this to ct with the given arrow (ab,ae)
+        // ae is the arrow edge (to match cn if specified)
+        internal bool Connects(Context cx,TConnector po, Table ct, TableColumn c)
+        {
+            if (po.rd.defpos > 0 && !EqualOrStrongSubtypeOf(ct))
+                return false;
+            if (po.rd.defpos > 0 && !ct.EqualOrStrongSubtypeOf(po.rd))
+                return false;
+            if ((po.q == Qlx.ARROWR || po.q == Qlx.ARROWBASE) && ct.refCols == CTree<long, bool>.Empty)
+                return false;
+            if ((po.q == Qlx.ARROWL || po.q == Qlx.RARROW) && refCols == CTree<long, bool>.Empty)
+                return false;
+            if (c.infos[cx.role.defpos]?.metadata[Qlx.CONNECTING] is TConnector tc)
+            {
+                if (tc.cn != "" && po.cn != "" && tc.cn != po.cn)
+                    return false;
+            }
+            return true;
         }
         internal (Table, TConnector) BuildNodeTypeConnector(Context cx, TConnector tc)
         {
@@ -1711,23 +1769,26 @@ namespace Pyrrho.Level3
             return (cx.role.unlabelledNodeTypesInfo[pn] is long q && q < Transaction.Analysing) ?
                 this : null;
         }
-        internal virtual Table Check(Context cx, GqlNode e, long ap, bool allowExtras = true)
+        internal virtual Table Check(Context cx, GqlNode e, long ap)
         {
             var r = this;
             if (cx._Ob(defpos) is not Table nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
             //       for (var b = super.First(); b != null; b = b.Next())
             //           if (b.key() is Table s && cx.names[s.NameFor(cx)].Item2 > (((SqlInsert?)cx.exec)?.forNode??e.defpos))
-            //               return s.Check(cx, e, ap, allowExtras);
+            //               return s.Check(cx, e, ap, dc);
             var nn = ni.names;
             for (var b = nt.rowType.PositionAt(nt.display); b != null; b = b.Next())
                 if (cx.NameFor(b.key()) is string s)
                 nn += (s, (b.key(),b.key()));
             for (var b = e.docValue.First(); b != null; b = b.Next())
-                if (!(nn.Contains(b.key()) || e.domain.names.Contains(b.key())) && allowExtras)
+                if (!(nn.Contains(b.key()) || e.domain.names.Contains(b.key())))
                 {
                     if (ni.model.Contains(b.key()))
                         continue;
+                    for (var c = e.domain.colRefs.First(); c != null; c = c.Next())
+                        if (cx.NameFor(c.key()) == b.key()) 
+                            goto skip;
                     var dm = (b.value() is SqlLiteral sl) ? sl.domain : b.value().domain;
                     if (b.value() is GqlNode gn)
                         dm = FindOrCreateRefDomain(cx, gn.domain);
@@ -1742,6 +1803,7 @@ namespace Pyrrho.Level3
                     r += (ObInfo._Names, ni.names);
                     cx.Add(r);
                     cx.db += r;
+                skip:;
                 }
             return r;
         }
@@ -1825,7 +1887,8 @@ namespace Pyrrho.Level3
                                 if (cx._Ob(c.key().defpos) is Table ef)
                                     ds = ef.For(cx, ms, xn, ds);
                 for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
-                    if (b.value() is long p2 && p2 >= 0 && cx._Ob(p2) is Table nt2)
+                    for (var c=b.value().First();c!=null;c=c.Next())
+                    if (cx._Ob(c.key()) is Table nt2)
                         ds = nt2.For(cx, ms, xn, ds);
                 return ds;
             }
@@ -1956,16 +2019,19 @@ namespace Pyrrho.Level3
             var sm = cm[cc.cn] ?? CTree<Qlx, long>.Empty;
             sm += (cc.q, cc.cp);
             cm += (cc.cn, sm);
+            if (cc.rd.NameFor(cx) is string s && s != "" && !cm.Contains(s))
+                cm += (s, sm);
             var ti = infos[cx.role.defpos] ?? new ObInfo(NameFor(cx), Grant.AllPrivileges);
-            ti += (ObInfo.Model, cm);
-            var ts = ti.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+            var ts = ti.metadata[Qlx.REFERENCES] as TSet ?? new TSet(ConnectorSet);
             for (var b = ts.First(); b != null; b = b.Next())
                 if (b.Value() is TConnector bc && bc.cp == cc.cp)
                     ts -= bc;
             ts += cc;
+            ti += (ObInfo.Model, cm);
             ti += (ObInfo._Metadata, ti.metadata + (Qlx.REFERENCES, ts));
-            var r = (Table)cx.Add(this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ti)));
-             // do not change the representation! metadata cannot change structure
+            var r = this + (ObInfo.Model, cm) + (Infos, infos + (cx.role.defpos, ti));
+            // do not change the representation! metadata cannot change structure
+            cx.Add(r);
             cx.db += r;
             return r;
         }

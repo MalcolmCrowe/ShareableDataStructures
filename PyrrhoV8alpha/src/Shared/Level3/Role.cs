@@ -54,18 +54,24 @@ namespace Pyrrho.Level3
     internal class Role : DBObject
     {
         internal const long
+            Catalog = -247, // CTree<string,TypedValue>   TSchema or TDirectory
             DBObjects = -248, // CTree<string,long> Domain/Table/View etc by name
             EdgeTypes = -128, // CTree<string,long>> Labelled EdgeType by name
             HomeGraph = -474, // string preferred HomeGraph 
             NodeTypes = -115, // CTree<string,long> Labelled NodeTypes by name
+            PersistedGraphData = -471, // CTree<long,TypedValue> 
             Properties = -243, // CTree<string,CTree<long,bool>> Domains by child names
             Procedures = -249, // CTree<string,CTree<CList<Domain>,long>> Procedure/Function by name and arity
             Schema = -350,     // string home Schema 
             UnlabelledNodeTypesInfo = -476, //CTree<CTree<string,bool>,long> NodeType by properties
             UnlabelledEdgeTypesInfo = -482; //CTree<CTree<string,bool>,long> EdgeType by properties
+        internal CTree<string, TypedValue> catalog =>
+            (CTree<string, TypedValue>)(mem[Catalog] ?? new CTree<string, TypedValue>("", TNull.Value));
         internal CTree<string, long> dbobjects => 
             (CTree<string, long>)(mem[DBObjects]??CTree<string,long>.Empty);
         public new string? name => (string?)mem[ObInfo.Name];
+        internal CTree<long, TypedValue> persistedGraphData =>
+            (CTree<long, TypedValue>)(mem[PersistedGraphData] ?? CTree<long, TypedValue>.Empty);
         internal CTree<string, CTree<CList<Domain>,long>> procedures => 
             (CTree<string, CTree<CList<Domain>,long>>)(mem[Procedures]??CTree<string, CTree<CList<Domain>, long>>.Empty);
         internal CTree<string,long> nodeTypes =>

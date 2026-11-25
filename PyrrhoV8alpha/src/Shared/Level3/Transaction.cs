@@ -164,11 +164,14 @@ namespace Pyrrho.Level3
             if (cx == null)
                 return Rollback();
             var cph = BTree<long, Physical>.Empty;
+            var drm = CTree<Domain, bool>.Empty; // Alas, REF domains not needed remain in refTypes, finally removed below
             for (var b = physicals.First(); b != null; b = b.Next())
             {
                 var cp = b.value();
                 if ((!cp.ifNeeded) || cp.NeededFor(physicals))
                     cph += (b.key(), cp);
+                else if (cp is PDomain pd && pd.element is Domain et)
+                    drm += (et, true);
             }
             if (cph == BTree<long, Physical>.Empty &&
                 (autoCommit || (cx.rdC.Count == 0 && (cx.db as Transaction)?.etags == null)))
@@ -198,9 +201,11 @@ namespace Pyrrho.Level3
                 {
                     if (et.mindexes != CTree<long, long>.Empty)
                         mt += (et, true);
-                    for (var c = (et.infos[et.definer]?.metadata[Qlx.REFERENCES] as TSet)?.First();
-                        c != null; c = c.Next())
-                        if (c.Value() is TConnector tc && tc.cm is TMetadata tm)
+                    for (var c = et.colRefs.First();c!=null;c=c.Next())
+                        for (var d=c.value().First();d!=null;d=d.Next())
+                        if (cx.db.objects[d.key()] is TableColumn cc &&
+                            cc.infos[cx.role.defpos]?.metadata[Qlx.CONNECTING] is TConnector tc 
+                            && tc.cm is TMetadata tm)
                         {
                             var v = nr.vals[tc.cp];
                             if (v == null || v == TNull.Value) 
@@ -375,6 +380,13 @@ namespace Pyrrho.Level3
             df.Flush();
             var r = new Database(wr.cx.db, wr.Length);
             r -= r.nextPos;
+            var rs = r.refTypes;
+            if (drm != CTree<Domain, bool>.Empty)
+            {
+                for (var b = drm.First(); b != null; b = b.Next())
+                    rs -= b.key();
+                r += (RefTypes, rs);
+            }
             lock (_lock)
                 databases += (name, r - Role - User);
             cx.db = r;

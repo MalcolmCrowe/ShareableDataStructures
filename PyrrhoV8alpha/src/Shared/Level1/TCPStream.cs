@@ -715,7 +715,7 @@ namespace Pyrrho.Level1
         }
         /// <summary>
         /// Version 2.0 extended exception handling.
-        /// Discard the write buffer contents and send an exception block
+        /// Discard the write buffer graphTypes and send an exception block
         /// instead. Note that it is possible for exception obs to be
         /// more than one buffer: any additional buffers are normal.
         /// </summary>

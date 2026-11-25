@@ -2,6 +2,7 @@
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Numerics;
 using System.Text;
 using System.Xml;
 
@@ -265,77 +266,78 @@ namespace Pyrrho.Level5
                }
                return base._Lookup(lp, cx, ic, n, r);
            }
-           internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
-           {
-               var th = (NodeType)(cx._Ob(defpos)??throw new PEException("PE50001"));
-               ds ??= BTree<long, TableRow>.Empty;
- /*              for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
-                   if (b.value().Contains(this) && th.tableRows[b.key()] is TableRow tr)
-                       ds += (cx.GetUid(),new TableRow(tr.defpos, tr.ppos, defpos, tr.vals)); */
-               if (defpos < 0)
-               {
-                   if (kind == Qlx.NODETYPE) // We are Domain.NODETYPE itself: do this for all nodetypes in the role
-                   {
-                       for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
-                           if (b.value() is long p1 && cx._Ob(p1) is NodeType nt1 
-                            && nt1.kind==kind)
-                               ds = nt1.For(cx, ms, xn, ds);
-                       for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
-                           if (b.value() is long p2 && p2>=0 
-                            && cx._Ob(p2) is NodeType nt2)
-                               ds = nt2.For(cx, ms, xn, ds);
-                   }
-                   if (kind == Qlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
-                   {
-                       for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
-                           if (b.value() is long p1 && cx._Ob(p1) is Domain ed)
-                           {
-                               if (ed is EdgeType nt1)
-                                   ds = nt1.For(cx, ms, xn, ds);
-                               else if (ed.kind == Qlx.UNION)
-                                   for (var c = ed.alts.First(); c != null; c = c.Next())
-                                       if (cx._Ob(c.key().defpos) is EdgeType ef)
-                                           ds = ef.For(cx, ms, xn, ds);
-                           }
-                   }
-                   return ds;
-               }
-               if (!ms.flags.HasFlag(MatchStatement.Flags.Schema))
-               {
-                   var cl = xn.EvalProps(cx, th);
+        internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
+        {
+            var th = (NodeType)(cx._Ob(defpos) ?? throw new PEException("PE50001"));
+            ds ??= BTree<long, TableRow>.Empty;
+            /*              for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
+                              if (b.value().Contains(this) && th.tableRows[b.key()] is TableRow tr)
+                                  ds += (cx.GetUid(),new TableRow(tr.defpos, tr.ppos, defpos, tr.vals)); */
+            if (defpos < 0)
+            {
+                if (kind == Qlx.NODETYPE) // We are Domain.NODETYPE itself: do this for all nodetypes in the role
+                {
+                    for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
+                        if (b.value() is long p1 && cx._Ob(p1) is NodeType nt1
+                         && nt1.kind == kind)
+                            ds = nt1.For(cx, ms, xn, ds);
+                    for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
+                        for (var c=b.value().First();c!=null;c=c.Next())
+                            if (cx._Ob(c.key()) is Table nt2)
+                                ds = nt2.For(cx, ms, xn, ds);
+                }
+                if (kind == Qlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
+                {
+                    for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
+                        if (b.value() is long p1 && cx._Ob(p1) is Domain ed)
+                        {
+                            if (ed is EdgeType nt1)
+                                ds = nt1.For(cx, ms, xn, ds);
+                            else if (ed.kind == Qlx.UNION)
+                                for (var c = ed.alts.First(); c != null; c = c.Next())
+                                    if (cx._Ob(c.key().defpos) is EdgeType ef)
+                                        ds = ef.For(cx, ms, xn, ds);
+                        }
+                }
+                return ds;
+            }
+            if (ms.flags.HasFlag(MatchStatement.Flags.Schema))
+                ds += (defpos, th.Schema(cx));
+            else
+            {
+                var cl = xn.EvalProps(cx, th);
                 for (var b = th.subtypes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is Domain sd)
                         ds += sd.For(cx, ms, xn, ds);
                 if (th.FindPrimaryIndex(cx) is Level3.Index px
                        && px.MakeKey(cl) is CList<TypedValue> pk)
-                       return (tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)?
-                           ds + (tr0.defpos, tr0):ds;
-                   for (var c = indexes.First(); c != null; c = c.Next())
-                       for (var d = c.value().First(); d != null; d = d.Next())
-                           if (cx._Ob(d.key()) is Level3.Index x
-                               && x.MakeKey(cl) is CList<TypedValue> xk)
-                               return (th.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)?
-                                   ds + (tr.defpos, tr) : ds;
-                   // let DbNode check any given properties match
-                   var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
-                   var la = ms.truncating.Contains(TypeSpec.defpos) ? ms.truncating[TypeSpec.defpos].Item1 : int.MaxValue;
-                   for (var b = th.tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
-                       if (b.value() is TableRow tr)
-                           ds += (tr.defpos, tr);
-                   if (defpos < 0)
-                   {
-                       // as a last resort try all node types
-                       Console.WriteLine("Unconstrained node search");
-                       for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
-                           if (cx._Ob(b.value()) is NodeType un)
-                               for (var c = un.tableRows.First(); c != null; c = c.Next())
-                                   if (c.value() is TableRow ur)
-                                       ds += (ur.defpos, ur);
-                   }
-               } else  // rowType flag
-                   ds += (defpos, th.Schema(cx));
-               return ds;
-           }
+                    return (tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0) ?
+                        ds + (tr0.defpos, tr0) : ds;
+                for (var c = indexes.First(); c != null; c = c.Next())
+                    for (var d = c.value().First(); d != null; d = d.Next())
+                        if (cx._Ob(d.key()) is Level3.Index x
+                            && x.MakeKey(cl) is CList<TypedValue> xk)
+                            return (th.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr) ?
+                                ds + (tr.defpos, tr) : ds;
+                // let DbNode check any given properties match
+                var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
+                var la = ms.truncating.Contains(TypeSpec.defpos) ? ms.truncating[TypeSpec.defpos].Item1 : int.MaxValue;
+                for (var b = th.tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
+                    if (b.value() is TableRow tr)
+                        ds += (tr.defpos, tr);
+            }
+            if (ds.Count == 0L)
+            {
+                // as a last resort try all node types
+             //   Console.WriteLine("Unconstrained node search");
+                for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.value()) is NodeType un)
+                        for (var c = un.tableRows.First(); c != null; c = c.Next())
+                            if (c.value() is TableRow ur)
+                                ds += (ur.defpos, ur);
+            }
+            return ds;
+        }
         /*          /// <summary>
                   /// Construct a fake TableRow for a nodetype rowType
                   /// </summary>
@@ -548,7 +550,7 @@ namespace Pyrrho.Level5
        /// For is used in Match to give a list of TNodes that match a given GqlNode/Edge/Path
        /// OnExtra method gives a single node/edgetype if available for allowExtras 
        /// </summary>
-       internal class GqlLabel : Domain
+       internal class GqlLabel : Table
        {
            internal static GqlLabel Empty = new();
            internal long left => (long)(mem[QlValue.Left] ?? -1L);
@@ -887,12 +889,6 @@ namespace Pyrrho.Level5
             return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, dp, cx))
                 ?? throw new DBException("42105").Add(Qlx.EDGETYPE));
         }  
-        internal override NodeType Check(Context cx, GqlNode n, long ap, bool allowExtras = true)
-        {
-            var et = (EdgeType)base.Check(cx, n, ap, allowExtras);
-            // TBD
-            return et;
-        }
         internal override Table AddNodeOrEdgeType(Context cx)
         {
             var ro = cx.role;
@@ -903,6 +899,7 @@ namespace Pyrrho.Level5
                 var ed = cx._Ob(ep) as Domain;
                 if (ep ==0L || ed?.kind == Qlx.NODETYPE) // _inner term here is for Metadata.EdgeType
                 {
+                    ro += (Role.EdgeTypes, ro.edgeTypes + (nm, defpos));
                     cx.db += ro;
                     cx.db += (Database.Role, ro);
                 }
@@ -911,7 +908,7 @@ namespace Pyrrho.Level5
                     if (ed.kind == Qlx.EDGETYPE)
                         ed = (Domain)cx.Add(UnionType(ed.defpos + 1L, ed, this));
                     else if (ed.kind == Qlx.UNION)
-                        ed = (Domain)cx.Add(new Table(ed.defpos, ed.alts));
+                        ed = (Domain)cx.Add(new Table(ed.defpos, ed.alts, cx.role.defpos));
                     else throw new PEException("PE20901");
                     ro += (Role.DBObjects, ro.dbobjects + (nm, ed.defpos));
                     cx.db += ed;
@@ -1154,7 +1151,7 @@ namespace Pyrrho.Level5
                      -1L, cx.db.nextPos,cx.db,false);
                  nc += (Level3.Index.RefIndex, px.ppos);
                  ut = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
-                 var um = ut.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+                 var um = ut.metadata[Qlx.REFERENCES] as TSet ?? new TSet(ConnectorSet);
                  ut = (EdgeType)ut.Add(cx,ut.metadata + (Qlx.REFERENCES, um + tn));
                  ut.AddNodeOrEdgeType(cx);
                  return ((EdgeType)cx.Add(ut),tn);
@@ -1318,7 +1315,7 @@ namespace Pyrrho.Level5
                                 pc.reftype = t.defpos;
                                 r = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                                 nc = cx.obs[tc.cp] as TableColumn ?? throw new PEException("PE20832");
-                                var om = r.infos[r.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+                                var om = r.infos[r.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(ConnectorSet);
                                 (cx, r) = r.Add(cx, TMetadata.Empty + (Qlx.REFERENCES, om + tc));
                             }
                             else
@@ -1475,6 +1472,7 @@ namespace Pyrrho.Level5
                    return r;
                } */
     }
+    /*
     /// <summary>
     /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
     /// Contains results of compiling temporal statements
@@ -1484,12 +1482,12 @@ namespace Pyrrho.Level5
         internal const long
             Iri = -147, // string
             ElementTypes = -289, // CTree<long,bool> Table
-            Scenarii = -472, // CTree<long,bool> Expectation
+            Scenarii = -472, // CTree<long,TypedValue> Expectation
             _Schema = -450; // long
         internal CTree<long,bool> elTypes => 
             (CTree<long,bool>)(mem[ElementTypes] ?? CTree<long,bool>.Empty);
-        internal CTree<long, bool> scenarii =>
-            (CTree<long, bool>)(mem[Scenarii] ?? CTree<long, bool>.Empty);
+        internal CTree<long, TypedValue> scenarii =>
+            (CTree<long, TypedValue>)(mem[Scenarii] ?? CTree<long,TypedValue>.Empty);
         internal long schema => (long)(mem[_Schema] ?? -1L);
         internal string iri => (string)(mem[Iri] ?? "");
         internal static GraphType Empty = new();
@@ -1498,8 +1496,9 @@ namespace Pyrrho.Level5
             : this(pg.ppos, _Mem(pg, cx, ap))
         {
             cx.graphType = new TTypeSpec(pg.name, pg.dataType);
-            cx.db += (Database.Catalog, cx.db.catalog + (pg.name, cx.graphType));
-            cx.db += this;
+            var ro = cx.role;
+            ro += (Role.Catalog, ro.catalog + (pg.name, cx.graphType));
+            cx.db += ro;
         }
         public GraphType(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -1560,7 +1559,7 @@ namespace Pyrrho.Level5
                 cx.db += nt;
             }
         }
-    }
+    } */
     /*
     /// <summary>
     /// A Graph is a named DBObject set of TNodes/TEdges
@@ -1641,12 +1640,59 @@ namespace Pyrrho.Level5
             return sb.ToString();
         }
     } */
+    /// <summary>
+    /// all TypedValues are references to QlValues
+    /// </summary>
+    internal class TExpectation : TypedValue
+    {
+        public readonly TypedValue confidence = TNull.Value; // QlValue reference
+        public readonly TypedValue expect = TNull.Value; // MatchPattern reference or TChar
+        public readonly TypedValue because = TNull.Value; // MatchPattern reference or TChar
+        public readonly TypedValue asserted = TNull.Value; // start time
+        public readonly long defpos = -1L;  // some expectatioons might get persisted 
+        internal static readonly TExpectation Empty = new TExpectation();
+        TExpectation() : base(Domain.Null) { }
+        internal TExpectation(TypedValue confidence, TypedValue expect, TypedValue because,
+            DateTime? a = null,  long? p = -1L) :base(Domain.Null)
+        {
+            this.confidence = confidence;
+            this.expect = expect;
+            this.because = because;
+            asserted = (a!=null)?new TDateTime(Domain.Timestamp,a.Value):TNull.Value;
+            defpos = p ?? -1L;
+        }
+        internal double Eval(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        internal override string ToString(Context cx)
+        {
+            var sb = new StringBuilder(" Expect: ");
+            if (expect is TInt e && cx.obs[e.value] is MatchPattern ex)
+                sb.Append(ex);
+            else sb.Append(expect);
+            if (because is TInt b && cx.obs[b.value] is MatchPattern bx)
+            {
+                sb.Append(" Because: "); sb.Append(bx);
+            }
+            else sb.Append(because);
+            if (confidence is TInt c && cx.obs[c.value] is QlValue cv && cv.Eval(cx) is TypedValue v && v != TNull.Value)
+            {
+                sb.Append(" Confidence: "); sb.Append(v);
+            }
+            else sb.Append(confidence);
+            return sb.ToString();
+        }
+    }
+/*    /// <summary>
+    /// Always Transaction local: all addresses are on the heap
+    /// </summary>
     internal class Expectation : DBObject
     {
         internal const long
             Confidence = -416, // long QlValue (Real)
             Because = -417,    // long MatchPattern
-            Expect = 418;     // long MatchPattern
+            Expect = -418;     // long MatchPattern
         public long confidence => (long?)mem[Confidence] ?? -1L;
         public long because => (long?)mem[Because] ?? -1L;
         public long expect => (long?)mem[Expect] ?? -1L;
@@ -1671,116 +1717,74 @@ namespace Pyrrho.Level5
             }
             return sb.ToString();
         }
-    }
-    /*    internal class Schema : DBObject
-        {
-            internal string directoryPath => 
-                (string)(mem[GraphType.Iri] ?? "");
-            internal static Schema Empty = new(); 
-            Schema() : base(--_uid,new BTree<long,object>(Infos,
-                new BTree<long,ObInfo>(-502,new ObInfo("/",Grant.AllPrivileges))))
-            { }
-            public Schema (PSchema ps,Context cx)
-                :base(ps.ppos,_Mem(cx,ps))
-            {
-                cx.db += (Database.Catalog, cx.db.catalog + (ps.name, ps.ppos));
-                cx.db += this;
-                cx.schema = this;
-            }
-            public Schema(long dp, BTree<long, object> m) : base(dp, m)
-            {  }
-            public Schema(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
-            {  }
-            static BTree<long,object> _Mem(Context cx,PSchema ps)
-            {
-                var r = BTree<long, object>.Empty;
-                r += (GraphType.Iri, ps.name);
-                var oi = new ObInfo(ps.name, Grant.AllPrivileges);
-                r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
-                return r;
-            }
-            public static Schema operator +(Schema et, (long, object) x)
-            {
-                return (Schema)et.New(et.defpos, et.mem + x);
-            }
-            internal override DBObject New(long dp, BTree<long, object> m)
-            {
-                return new Schema(dp, m);
-            }
-            internal override string NameFor(Context cx)
-            {
-                return directoryPath;
-            }
-            public override string ToString()
-            {
-                var sb = new StringBuilder(base.ToString());
-                sb.Append(" DirectoryPath: ");sb.Append(directoryPath);
-                return sb.ToString();
-            } 
-        }  */
+    } */
     internal class TSchema : TypedValue
     {
-        internal readonly Role definer;
-        internal readonly string[] path;
-        internal readonly CTree<string, TypedValue> directory;
-        internal readonly CTree<Domain, bool> elementTypes; // accumulated from hierarchy
+        internal readonly string path = ""; // the parent path if any
+        internal readonly CTree<string, TypedValue> graphTypes; 
+        internal readonly long defpos = -1L;
         public static readonly TSchema Empty = new ();
         TSchema() : base(Domain.Null) 
         {
-            definer = Database.schemaRole;
-            directory = CTree<string, TypedValue>.Empty;
-            elementTypes = CTree<Domain, bool>.Empty;
-            path = Array.Empty<string>();
+            graphTypes = CTree<string, TypedValue>.Empty;
         }
-        TSchema(Domain t,Role r, string[]p,CTree<string,TypedValue> d,CTree<Domain,bool> e) :base(t)
+        internal TSchema(string p,CTree<string,TypedValue> c,long? x = null) :this()
         {
-            definer = r; path = p; directory = d; elementTypes = e;
+            path = p; graphTypes = c; defpos = x ?? -1L;
         }
-        internal TSchema(Context cx, string p, CTree<string, TypedValue>? d = null) : base(Dom(cx, cx.role))
+        public static TSchema operator+(TSchema left, (string,TypedValue) x)
         {
-            definer = cx.role;
-            directory = d ?? CTree<string, TypedValue>.Empty;
-            path = p.Split('/');
-            var es = CTree<Domain, bool>.Empty;
-            var cg = cx.db.catalog; // collect the elementTypes at this level or above
-            for (var i=0;cg!=CTree<string,TypedValue>.Empty && i<path.Length;i++)
-            {
-                var s = path[i];
-                for (var c = cg.First(); c != null; c = c.Next())
-                    if (c.value() is TTypeSpec t)
-                        es += (t._dataType, true);
-                if (cg[s] is TSchema ts)
-                    cg = ts.directory;
-            }
-            elementTypes = es;
-            cx.AddCatalog(p, this);
-        }
-        static Domain Dom(Context cx, Role r)
-        {
-            var a = CTree<Domain, bool>.Empty;
-            for (var b = r.dbobjects.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value()] is Table t)
-                    a += (t, true);
-            return new Domain(cx.GetUid(), a);
+            return new(left.path, left.graphTypes + x);
         }
         internal override TypedValue Fix(Context cx)
         {
-            var t = (Domain)dataType.Fix(cx);
-            var r = (Role)definer.Fix(cx);
-            var es = cx.FixTDb(elementTypes);
-            var d = cx.FixTsV(directory);
-            return (t==dataType && r==definer && es.CompareTo(elementTypes) == 0 
-                && directory.CompareTo(d)==0) ? this : new(t,r,path,d,es);
+            var es = cx.FixTsV(graphTypes);
+            return (es.CompareTo(graphTypes) == 0)? this 
+                : new(path,es);
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("Schema[");
-            var cm = "";
-            for (var b = directory.First(); b != null; b = b.Next())
+            var sb = new StringBuilder("Schema ");
+            sb.Append(path);
+            var cm = " [";
+            for (var b = graphTypes.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ","; sb.Append(b.key());
                 sb.Append('='); sb.Append(b.value());
             }
+            if (cm==",")
+                sb.Append(']');
+            return sb.ToString();
+        }
+    }
+    internal class TDirectory : TypedValue
+    {
+        internal readonly CTree<string,TypedValue> contents;
+        internal readonly string? path = null;
+        internal static TDirectory Empty = new();
+        TDirectory() : base(Domain.Null) { contents = CTree<string, TypedValue>.Empty; }
+        internal TDirectory(string? p,CTree<string,TypedValue>? c=null):base(Domain.Null)
+        {
+            path = p;  contents = c??CTree<string,TypedValue>.Empty;
+        }
+        public static TDirectory operator +(TDirectory left, (string, TypedValue) x)
+        {
+            return new(left.path, left.contents + x);
+        }
+        internal override TypedValue Fix(Context cx)
+        {
+            var es = cx.FixTsV(contents);
+            return (es.CompareTo(contents) == 0) ? this
+                : new(path, es);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("Directory ");
+            sb.Append(path);
+            var cm = " [";
+            for (var b= contents.First();b != null;b = b.Next())
+            {   sb.Append(cm); cm = ","; sb.Append(b.key());
+                sb.Append('='); sb.Append(b.value()); }
             sb.Append(']');
             return sb.ToString();
         }
@@ -1788,16 +1792,22 @@ namespace Pyrrho.Level5
     internal class TGraph : TypedValue
     {
         internal readonly CTree<Domain,CTree<long,bool>> nodes;
-        internal readonly CTree<long, bool> scenarii;
+        internal readonly CTree<string, TypedValue> scenarii;
         internal readonly string? iri = null;
+        internal readonly long defpos = -1L;
         internal static TGraph Empty = new();
-        TGraph() : base(Domain.Null) { nodes = CTree<Domain,CTree<long,bool>>.Empty; scenarii = CTree<long, bool>.Empty; }
-        internal TGraph(Context cx, CTree<Domain,CTree<long,bool>> n, string? i = null, CTree<long, bool>? s = null) 
-            : base(Dom(cx, n))
+        TGraph() : base(Domain.Null) { nodes = CTree<Domain,CTree<long,bool>>.Empty; scenarii = CTree<string, TypedValue>.Empty; }
+        internal TGraph(CTree<Domain,CTree<long,bool>> n, string? i = null, CTree<string, TypedValue>? s = null,
+            long? p = null): this()
         {
             nodes = n;
             iri = i;
-            scenarii = s ?? CTree<long, bool>.Empty;
+            scenarii = s ?? CTree<string, TypedValue>.Empty;
+            defpos = p ?? -1L;
+        }
+        public static TGraph operator+(TGraph left, (string,TypedValue)x)
+        {
+            return new(left.nodes, left.iri, left.scenarii + x);
         }
         internal static TGraph? Make(PGraph pg,Context cx)
         {
@@ -1807,13 +1817,6 @@ namespace Pyrrho.Level5
             var ex = psr.ParseStatements(BTree<long,object>.Empty);
             return (cx.exec?._Obey(psr.cx)?.result as RowSet)?.MakeGraph(psr.cx,ex);
         }
-        static Domain Dom(Context cx, CTree<Domain,CTree<long,bool>> n)
-        {
-            var a = CTree<Domain, bool>.Empty;
-            for (var b = n.First(); b != null; b = b.Next())
-                a += (b.key(), true);
-            return new Domain(cx.GetUid(), a);
-        }
         public override string ToString()
         {
             var sb = new StringBuilder("Graph[");
@@ -1821,17 +1824,73 @@ namespace Pyrrho.Level5
             for (var b = nodes.First(); b != null; b = b.Next())
             { sb.Append(cm); cm = ","; sb.Append(b.ToString()); }
             sb.Append(']');
-            if (scenarii != CTree<long, bool>.Empty)
+            if (scenarii != CTree<string, TypedValue>.Empty)
             {
                 sb.Append(" Scenarii["); cm = "";
                 for (var b = scenarii.First(); b != null; b = b.Next())
-                { sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key())); }
+                { sb.Append(cm); cm = ","; sb.Append(b.key());
+                    sb.Append('\''); sb.Append(b.value().ToString()); sb.Append('\'');
+                }
                 sb.Append(']');
             }
             return sb.ToString();
         }
     }
+    internal class TGraphType : TypedValue
+    {
+        internal readonly CTree<string,Domain> elementTypes;
+        internal readonly CTree<string,TGraph> graphs;
+        internal readonly CTree<string, TypedValue> scenarii; 
+        internal readonly string? iri = null;
+        internal readonly long defpos = -1L; // some TGraphTypes might get persisted
+        internal static TGraphType Empty = new();
+        TGraphType() : base(Domain.Null) { elementTypes = CTree<string,Domain>.Empty; graphs = CTree<string, TGraph>.Empty;
+            scenarii = CTree<string, TypedValue>.Empty; }
+        internal TGraphType(CTree<string, Domain> n, string? i = null, CTree<string, TGraph>? gs = null,
+            CTree<string,TypedValue>? s = null,long? p=null)
+            : this()
+        {
+            elementTypes = n;
+            iri = i;
+            graphs = gs ?? CTree<string, TGraph>.Empty;
+            scenarii = s ?? CTree<string, TypedValue>.Empty;
+            defpos = p??-1L;
+        }
+        public static TGraphType operator+(TGraphType left, (string,Domain) x)
+        {
+            return new(left.elementTypes + x, left.iri, left.graphs);
+        }
+        public static TGraphType operator +(TGraphType left, (string, TGraph) x)
+        {
+            return new(left.elementTypes, left.iri, left.graphs+x);
+        }
+        internal void SaveFocus(Context cx)
+        {
+            var nl = CTree<string, long>.Empty;
+            for (var b = elementTypes.First(); b != null; b = b.Next())
+                if (b.value() is DBObject e)
+                    nl += (e.NameFor(cx), e.defpos);
+            cx.Add(new PGraphType(cx.db.nextPos, ToString(), nl, cx));
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("GraphType ");
+            sb.Append(iri);
+            var cm = " [";
+            for (var b = elementTypes.First(); b != null; b = b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(b.ToString()); }
+            sb.Append(']');
+            if (graphs != CTree<string,TGraph>.Empty)
+            {
+                sb.Append(" Graphs "); cm = "";
+                for (var b = graphs.First(); b != null; b = b.Next())
+                    if (b.value() is TGraph g)
+                { sb.Append(cm); cm = ","; sb.Append(g.iri); }
+            }
+            return sb.ToString();
+        }
 
+    }
     internal class TNode : TypedValue
     {
         protected readonly TableRow _tableRow;
@@ -2026,7 +2085,7 @@ namespace Pyrrho.Level5
         }
         internal override TConnector Fix(Context cx)
         {
-            var d = (Domain)(cx.db.objects[rd.defpos] ?? throw new PEException("PE60061"));
+            var d = (Domain)(cx.db.objects[cx.Fix(rd.defpos)] ?? throw new PEException("PE60061"));
             var r = new TConnector(q, cn, (Domain)d.Fix(cx), cx.Fix(cp), fk, cs, 
                 (TMetadata)(cm?.Fix(cx)??TMetadata.Empty));
             if (r.rd is Table t && !t.refCols.Contains(cp))
@@ -2096,6 +2155,14 @@ namespace Pyrrho.Level5
             { sb.Append(','); sb.Append(cm); }
             sb.Append('}');
             return sb.ToString();
+        }
+
+        internal static TConnector New(Context cx, Table tb, Qlx nw, string nn, Domain rd, long np,
+            bool f=false,string s="",TMetadata? m=null)
+        {
+            var c = new TConnector(nw, nn, rd, np,f,s,m);
+            cx.Add(tb.Add(cx, c));
+            return c;
         }
     }
     /// <summary>

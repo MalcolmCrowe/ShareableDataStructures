@@ -265,13 +265,16 @@ namespace Pyrrho.Level2
 
         internal override DBObject? Install(Context cx)
         {
-            var ns = CTree<long, TNode>.Empty;
-            var g = new GraphType(this,cx,0L);
-            cx.db += g;
-            cx.db += g;
-            cx.Add(g);
-            cx.graphType = new TTypeSpec(g.NameFor(cx),g);
-            return g;
+            var ns = CTree<string, Domain>.Empty;
+            for (var b = types.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value()] is Domain d)
+                    ns += (b.key(), d);
+            cx.graphType = new TGraphType(ns,iri);
+            var ro = cx.role;
+            ro += (Role.PersistedGraphData, ro.persistedGraphData + (ppos, cx.graphType));
+            cx.db += ro;
+            cx.AddCatalog(iri, cx.graphType);
+            return null;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
@@ -314,8 +317,11 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var g = TGraph.Make(this, cx);
-            if (g !=null)
-                cx.db += (Database.Catalog,cx.db.catalog+(name,graph));
+            cx.graph = g;
+            var ro = cx.role;
+            if (g!=null)
+                ro += (Role.PersistedGraphData, ro.persistedGraphData + (ppos, g));
+            cx.db += ro;
             return null;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -357,25 +363,24 @@ namespace Pyrrho.Level2
                 if (node > 0 && t.tableRows[node] is TableRow tr)
                 {
                     var ts = g.nodes[t] ?? CTree<long, bool>.Empty;
-                    ng  = new TGraph(cx,g.nodes+(t,ts+(tr.defpos,true)),g.iri,g.scenarii);
+                    ng  = new TGraph(g.nodes+(t,ts+(tr.defpos,true)),g.iri,g.scenarii);
                 }
                 else if (t.tableRows[-node] is TableRow rt)
                 {
                     var ns = g.nodes[t]??CTree<long,bool>.Empty;
                     ns -= rt.defpos;
                     if (ns != CTree<long, bool>.Empty)
-                        ng = new TGraph(cx, g.nodes + (t, ns), g.iri, g.scenarii);
+                        ng = new TGraph(g.nodes + (t, ns), g.iri, g.scenarii);
                     else if (g.nodes[t]?.Count > 1)
-                        ng = new TGraph(cx, g.nodes - t, g.iri, g.scenarii);
+                        ng = new TGraph(g.nodes - t, g.iri, g.scenarii);
                     else
                         ng = TGraph.Empty;
                 }
-                var ct = cx.db.catalog;
+                var ct = cx.role.catalog;
                 if (ng != TGraph.Empty && ng!=null && ng.iri!=null)
                     cx.AddCatalog(ng.iri,ng);
                 else
                     ct -= ppos.ToString();
-                cx.db += (Database.Catalog,ct);
                 cx.graph = ng;
             }
             return base.Install(cx);
@@ -416,7 +421,8 @@ namespace Pyrrho.Level2
 
         internal override DBObject? Install(Context cx)
         {
-            var g = new TSchema(cx,name);
+            var g = new TSchema(name,CTree<string,TypedValue>.Empty);
+            cx.schema = g;
             cx.AddCatalog(name,g);
             cx.schema = g;
             return null;
@@ -434,20 +440,21 @@ namespace Pyrrho.Level2
     }
     internal class PExpect : Compiled
     {
-        public long graphType; 
-        public string source = "";  // (2 patterns) includes becuase clause 
+        public string iri = "";
+        public string source = "";  // (2 patterns) includes because clause 
         public string confidence = ""; // expression depending on binding names
-        public Expectation? expect = null;
-        internal PExpect(Type tp, long pp, Context cx, long g, long ns) 
-            : base(tp, pp, cx, "", g, Domain.GraphSpec, ns) { }
-        protected PExpect(Type tp, Reader rdr) : base(tp, rdr)  { }
-        protected PExpect(PExpect ph, Writer wr) : base(ph, wr)
+        public TExpectation? expect = null;
+        internal PExpect(Type tp, string nm, string s, string c, long pp, Context cx, long g, long ns) 
+            : base(tp, pp, cx, nm, g, Domain.GraphSpec, ns) 
         {
-            graphType = wr.cx.Fix(ph.dataType.defpos);
+            source = s;
+            confidence = c;
         }
+        protected PExpect(Type tp, Reader rdr) : base(tp, rdr)  { }
+        protected PExpect(PExpect ph, Writer wr) : base(ph, wr) { }
         public override void Deserialise(Reader rdr)
         {
-            graphType = rdr.GetLong();
+            iri = rdr.GetString();
             name = rdr.GetString();
             source = rdr.GetString();
             confidence = rdr.GetString();
@@ -455,7 +462,7 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(graphType);
+            wr.PutString(iri);
             wr.PutString(name);
             wr.PutString(source);
             wr.PutString(confidence);
@@ -475,14 +482,23 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
-            sb.Append(' '); sb.Append(DBObject.Uid(graphType));
+            sb.Append(' '); sb.Append(iri);
             sb.Append(' '); sb.Append(source);
             sb.Append(' '); sb.Append(confidence);
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
         {
-
+            var ro = cx.role;
+            var ix = source.IndexOf("because");
+            if (ix < 0)
+                ix = source.IndexOf("BECAUSE");
+            var ex = (ix == 0) ? "": (ix>0)? source[0..(ix-1)] : source;
+            var bc = (ix == 0) ? source : (ix > 0) ? source[(ix + 7)..] : "";
+            var te = new TExpectation(new TChar(confidence), new TChar(ex), 
+                new TChar(bc), new DateTime(time), ppos);
+            ro += (Role.PersistedGraphData, ro.persistedGraphData + (ppos, te));
+            cx.db += ro;
             return base.Install(cx);
         }
         internal override void OnLoad(Reader rdr)
@@ -492,11 +508,15 @@ namespace Pyrrho.Level2
             psr.cx.obs = ObTree.Empty;
             psr.cx.depths = BTree<int, ObTree>.Empty;
             psr.cx.parse = ExecuteStatus.Parse;
-            if (psr.ParseExpectation(BTree<long, object>.Empty) is Expectation p)
+            if (psr.ParseExpectation(BTree<long, object>.Empty) is TExpectation p)
             {
                 framing = new Framing(psr.cx, nst);
                 expect = p;
-                rdr.context.Add(p);
+                var ro = rdr.context.role;
+                if (ro.catalog[iri] is TGraph g && g.iri!=null)
+                    rdr.context.AddCatalog(g.iri, new TGraph(g.nodes, g.iri, g.scenarii + (iri, p)));
+                if (ro.catalog[iri] is TGraphType gt && gt.iri != null)
+                    rdr.context.AddCatalog(gt.iri, new TGraphType(gt.elementTypes,gt.iri, gt.graphs,gt.scenarii + (iri, p)));
             }
         }
     }

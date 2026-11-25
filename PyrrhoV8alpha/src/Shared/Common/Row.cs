@@ -1,9 +1,12 @@
-using System.Text;
-using System.Xml;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Reflection.Metadata.Ecma335;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Xml;
+using System.Xml.Linq;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
@@ -20,7 +23,7 @@ namespace Pyrrho.Common
     /// (row, array, multiset, user-defined, documents). 
     /// In normal use such complex obs can be in a class of TypedValue 
     /// (containing other TypedValues), and can be referred to by a single QlValue. 
-    /// But if during analysis we find we are dealing with SQL references to its internal contents, 
+    /// But if during analysis we find we are dealing with SQL references to its internal graphTypes, 
     /// it is built into a structured QlValue (SqlRow, SqlArray etc) 
     /// whose referenceable elements are SqlValues. 
     /// Evaluation will restore the simple TypedValue structure.
@@ -109,7 +112,7 @@ namespace Pyrrho.Common
             if (right is TNull)
                 return left;
             if (left is TRef pl && right is TRef pr)
-                return new TSet(Domain.Ref) + pl + pr;
+                return new TSet(Domain.RefSet) + pl + pr;
             if (left is TInt li && right is TInt ri)
                 return new TInt(li.value + ri.value);
             if (left is TInteger lj && right is TInteger rj)
@@ -120,9 +123,11 @@ namespace Pyrrho.Common
                 return new TReal(lr?.ToDouble()??0 + rr?.ToDouble()??0);
             if (left is TSet sl && right is TSet sr)
                 return sl + sr;
-            if (left is TSet ls && right.dataType.defpos == ls.dataType.elType?.defpos)
+            if (left is TSet ls && ls.dataType.elType is not null 
+                && right.dataType.EqualOrStrongSubtypeOf(ls.dataType.elType))
                 return ls + right;
-            if (right is TSet rs && left.dataType.defpos == rs.dataType.elType?.defpos)
+            if (right is TSet rs && rs.dataType.elType is not null
+                && left.dataType.EqualOrStrongSubtypeOf(rs.dataType.elType))
                 return rs + left;
             if (left is TList ll && right is TList rl)
                 return ll + rl;
@@ -355,18 +360,16 @@ namespace Pyrrho.Common
     // shareable
     internal class TRef : TInt
     {
-        internal readonly Domain elType;
-        internal TRef(long p, Domain typ) : base(typ, p)
+        internal TRef(long p, Domain typ) : base(typ, p) 
         {
-//            if (dataType.kind != Qlx.REF)  
-//                throw new PEException("01234");
-//            if (p>=Transaction.Analysing&&p<Transaction.Executables)
-   //             throw new PEException("12345");
-            elType = typ;
+            if (typ.kind != Qlx.REF || typ.elType is null)
+                throw new PEException("PE41056");
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TRef((cx.uids[value] is long p && p!=0L)?p:value,(Domain)elType.Fix(cx));
+            if (dataType.elType is not Table et) throw new PEException("PE41059");
+            var rf = Table.FindOrCreateRefDomain(cx, (Table)et.Fix(cx));
+            return new TRef((cx.uids[value] is long p && p!=0L)?p:value,rf);
         }
         internal override long? ToLong()
         {
@@ -377,21 +380,43 @@ namespace Pyrrho.Common
             var sb = new StringBuilder();
             sb.Append(DBObject.Uid(value));
             sb.Append('[');
-            if (elType.alts != CTree<Domain, bool>.Empty)
+            if (dataType.elType?.alts != CTree<Domain, bool>.Empty)
             {
                 var cm = "";
-                for (var b = elType.alts.First(); b != null; b = b.Next())
+                for (var b = dataType.elType?.alts.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(DBObject.Uid(b.key().defpos));
                 }
             }
             else
-                sb.Append(DBObject.Uid(elType.defpos));
+                sb.Append(DBObject.Uid(dataType.elType.defpos));
             sb.Append(']');
             return sb.ToString();
         }
     } 
+    internal class TRefSet : TSet
+    {
+        Domain refTable;
+        internal TRefSet(Domain rt) : base(rt)
+        {
+            if (rt.kind != Qlx.SET && rt.elType?.kind != Qlx.REF)
+                throw new PEException("PE21701");
+            refTable = rt.elType?.elType ?? throw new PEException("PE21702");
+            if (refTable.defpos <= 0)
+                throw new PEException("PE21703");
+        }
+        TRefSet(Domain d,CTree<TypedValue,bool> t) : base(d,t)
+        {
+            refTable = d.elType ?? throw new PEException("PE21704");
+        }
+        public static TRefSet operator+(TRefSet t1, TRef v)
+        {
+            if (v.dataType.kind != Qlx.REF || v.dataType.elType?.EqualOrStrongSubtypeOf(t1.refTable) != true)
+                throw new DBException("22005");
+            return new TRefSet(t1.dataType,((TSet)t1 + v).tree);
+        }
+    }
     // shareable
     internal class TInteger : TInt
     {
@@ -886,8 +911,9 @@ namespace Pyrrho.Common
     {
         internal readonly CList<TypedValue> list; 
         internal TList(Domain dt, params TypedValue[] a) 
-            : base(new Domain(-1L,Qlx.LIST,dt)) 
-        { 
+            : base(dt) 
+        {
+            if (dt.elType is null || dt.defpos < 0) throw new PEException("PE31221");
             var ts = CList<TypedValue>.Empty;
             foreach (var x in a)
                 ts += x;
@@ -1089,18 +1115,10 @@ namespace Pyrrho.Common
     {
         internal readonly Domain _dataType;
         internal readonly string name;
-        internal readonly CTree<long, bool> scenarii;
-        internal TTypeSpec(string n, Domain t, CTree<long,bool>? ee = null) : base(Domain.TypeSpec)
+        internal TTypeSpec(string n, Domain t) : base(Domain.TypeSpec)
         {
-            _dataType = t;
             name = n;
-            ee ??= CTree<long, bool>.Empty;
-            if (t is GraphType gt)
-                ee += gt.scenarii;
-            for (var b=t.alts.First();b!=null;b=b.Next())
-                if (b.key() is GraphType g)
-                    ee += g.scenarii;
-            scenarii = ee;
+            _dataType = t;
         }
         internal override TypedValue Fix(Context cx)
         {
@@ -1627,25 +1645,32 @@ namespace Pyrrho.Common
         /// <summary>
         /// Constructor: a new Set
         /// </summary>
-        internal TSet(Domain dt) : base(dt)
+        internal TSet(Domain d) : base(d)
         {
+            if (d.kind!=Qlx.SET || d.elType is null) throw new PEException("PE31201");
             tree = CTree<TypedValue, bool>.Empty;
         }
-        internal TSet(Domain dt, CTree<TypedValue, bool> t) : base(dt)
+        protected TSet(Domain d, CTree<TypedValue, bool> t) : base(d)
         {
-            var a = CTree<TypedValue, bool>.Empty;
-            for (var b = t.First(); b != null; b = b.Next())
-                a += (b.key(),true);
-            tree = a;
+            tree = t;
+        } 
+        public static TSet operator+(TSet a, CTree<TypedValue, bool> t)
+        {
+            return new TSet(a.dataType, a.tree+t);
         }
         public static TSet operator+(TSet a,TypedValue v)
         {
+    //        if (a is not TRefSet && v is TRef) throw new PEException("PE31214");
+            if (v.dataType.kind==Qlx.REF && v.dataType.elType is Domain rd 
+                && a.dataType.elType?.elType?.CanTakeValueOf(rd)!=true) 
+                throw new PEException("PE31204");
             if (a.tree.Contains(v))
                 return a;
             return a.Add(v);
         }
         public static TSet operator +(TSet a, TSet b)
         {
+            if (a.dataType.elType?.CompareTo(b.dataType.elType) != 0) throw new PEException("PE31205");
             for (var c = b.tree.First(); c != null; c = c.Next())
                 if (!a.tree.Contains(c.key()))
                     a += c.key();
@@ -1653,11 +1678,20 @@ namespace Pyrrho.Common
         }
         public static TSet operator -(TSet a, TypedValue v)
         {
+            if (a.dataType.elType?.CanTakeValueOf(v.dataType)==false) throw new PEException("PE31206");
             return a.Remove(v);
         }
         internal override int Cardinality()
         {
             return (int)tree.Count;
+        }
+        internal TSet ToTSet(Context cx, TMultiset tm)
+        {
+            var d = Domain.FindOrCreateDomain(cx, new Domain(-1L, tm.dataType.mem + (Domain.Kind, Qlx.SET)));
+            var t = CTree<TypedValue, bool>.Empty;
+            for (var b = tm.tree.First(); b != null; b = b.Next())
+                t += (b.key(), true);
+            return new TSet(d, t);
         }
         internal override TypedValue Fix(Context cx)
         {
@@ -1666,11 +1700,11 @@ namespace Pyrrho.Common
         internal TSet Add(TypedValue a)
         {
             var nt = tree;
-            if (a.dataType.kind != dataType.kind)
+            if (dataType.elType?.EqualOrStrongSubtypeOf(a.dataType)==false)
                 throw new DBException("22G0L");
             if (!nt.Contains(a))
                 nt += (a, true);
-            return new TSet(a.dataType, nt);
+            return new TSet(dataType, nt);
         }
         /// <summary>
         /// Whether an element is already in the set
@@ -1846,8 +1880,9 @@ namespace Pyrrho.Common
         /// Constructor: a new Multiset
         /// </summary>
         /// <param name="tr">The transaction</param>
-        internal TMultiset(Domain dt) : base (new Domain(-1L,Qlx.MULTISET,dt))
+        internal TMultiset(Domain dt) : base (dt)
         {
+            if (dt.elType is null || dt.defpos < 0) throw new PEException("PE31211");
             tree = CTree<TypedValue,long>.Empty;
             count = 0;
             // Disallow not Allow for duplicates (see below)

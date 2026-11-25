@@ -1,7 +1,9 @@
+using Microsoft.Win32.SafeHandles;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Net.Cache;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
@@ -35,14 +37,14 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Label = -92, // string
-            UseGraph = -481, // an iri
+            UseGraph = -481, // TGraph?
             ValueType = -93; // Domain of val (a TypedValue)
         /// <summary>
         /// The label for the Executable
         /// </summary>
         internal string? label => (string?)mem[Label];
         internal Domain valueType => (Domain)(mem[ValueType] ?? Domain.Null);
-        internal string graph => (string)(mem[UseGraph]??"/");
+        internal TGraph? graph => mem[UseGraph]as TGraph;
         internal string create => (string)(mem[Source] ?? "");
         public static Executable Empty = new EmptyStatement(0);
         public Executable(Context cx, string cr)
@@ -71,10 +73,9 @@ namespace Pyrrho.Level3
        internal Context Obey(Context cx)
         {
             var oc = cx;
-            if (graph != "")
+            if (graph != null)
             {
-                cx = new Context(cx);
-                cx.CatalogPath(graph);
+                cx = new Context(cx) { graph = graph};
             }
             if (cx is Activation ax)
                 cx = _Obey(ax);
@@ -85,7 +86,7 @@ namespace Pyrrho.Level3
                 cx = a.SlideDown(); //??
                 cx = r;
             }
-            if (graph != "")
+            if (graph != null)
                 cx = cx.SlideDown();
             return cx;
         }
@@ -4266,12 +4267,12 @@ namespace Pyrrho.Level3
             {
                 var sb = new StringBuilder('{');
                 var cc = "\r\n";
-                if (cx.db.objects[cx.role.dbobjects[graph]] is GraphType gt)
+                if (cx.graphType is TGraphType gt)
                     for(var b=gt.scenarii.First();b!=null;b=b.Next())
-                        if (cx.db.objects[b.key()] is Expectation e)
+                        if (b.value() is TExpectation e)
                         {
                             sb.Append(cc); cc = ",\r\n";
-                            sb.Append(e.Show(cx));
+                            sb.Append(b.value().ToString(cx));
                         }
                 sb.Append('}');
                 ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
@@ -4280,59 +4281,60 @@ namespace Pyrrho.Level3
             else
             {
                 var sb = new StringBuilder('{');
-                var cc = "\r\n";
-                var es = CTree<long,bool>.Empty;
-                if (cx.graphType != null)
-                    es += (cx.graphType.dataType.defpos,true);
-                else
-                    for (var b = cx.db.types.First(); b != null; b = b.Next())
-                        if (cx.db.objects[b.value()] is Table t)
-                            es += (t.defpos, true);
-                for (var c = es.First(); c != null; c = c.Next())
-                {
-                    if (cx.db.objects[c.key()] is not DBObject ob) continue;
-                    if (ob is GraphType tg)
-                    {
-                        sb.Append(cc); cc = ",\r\n";
-                        sb.Append("GraphType: { ");
-                        sb.Append("Iri : "); sb.Append(tg.iri);
-                        var st = new StringBuilder();
-                        var cs = "";
-                        var cm = "\r\n\tTables: {\r\n";
-                        for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
-                            if (cx.db.objects[b.value()] is Table t && t is not NodeType && t.defpos > 0)
-                            {
-                                st.Append(cm); cm = ",\r\n";
-                                t.SchemaJson(cx, st, 2);
-                            }
-                        if (st.Length > 0)
-                        { st.Append('}'); sb.Append(cs); cs = ","; sb.Append(st); }
-                        var sn = new StringBuilder();
-                        cm = "\r\n\tNodes: {\r\n";
-                        for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
-                            if (cx.db.objects[b.value()] is NodeType t && t is not EdgeType && t.defpos > 0)
-                            {
-                                sn.Append(cm); cm = ",\r\n";
-                                t.SchemaJson(cx, sn, 2);
-                            }
-                        if (sn.Length > 0)
-                        { sn.Append('}'); sb.Append(cs); cs = ","; sb.Append(sn); }
-                        var se = new StringBuilder();
-                        cm = "\r\n\tEdges: {\r\n";
-                        for (var b = cx.role.edgeTypes.First(); b != null; b = b.Next())
-                            if (cx.db.objects[b.value()] is EdgeType t && t.defpos > 0)
-                            {
-                                se.Append(cm); cm = ",\r\n";
-                                t.SchemaJson(cx, se, 2);
-                            }
-                        if (se.Length > 0)
-                        { se.Append('}'); sb.Append(cs); sb.Append(se); }
-                        sb.Append('}');
-                    }
-                }
+    //            var cc = "\r\n";
+    //            var es = cx.graphType?.elementTypes??CTree<string,Domain>.Empty;
+                if (cx.graphType is TGraphType gt)
+                    sb.Append(gt.ToString(cx));
+                /*               else
+                                   for (var b = cx.db.types.First(); b != null; b = b.Next())
+                                       if (cx.db.objects[b.value()] is Table t)
+                                           es += (t.defpos, true);
+                               for (var c = es.First(); c != null; c = c.Next())
+                               {
+                                   if (cx.db.objects[c.key()] is not DBObject ob) continue;
+                                   if (ob is GraphType tg)
+                                   {
+                                       sb.Append(cc); cc = ",\r\n";
+                                       sb.Append("GraphType: { ");
+                                       sb.Append("Iri : "); sb.Append(tg.iri);
+                                       var st = new StringBuilder();
+                                       var cs = "";
+                                       var cm = "\r\n\tTables: {\r\n";
+                                       for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                                           if (cx.db.objects[b.value()] is Table t && t is not NodeType && t.defpos > 0)
+                                           {
+                                               st.Append(cm); cm = ",\r\n";
+                                               t.SchemaJson(cx, st, 2);
+                                           }
+                                       if (st.Length > 0)
+                                       { st.Append('}'); sb.Append(cs); cs = ","; sb.Append(st); }
+                                       var sn = new StringBuilder();
+                                       cm = "\r\n\tNodes: {\r\n";
+                                       for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
+                                           if (cx.db.objects[b.value()] is NodeType t && t is not EdgeType && t.defpos > 0)
+                                           {
+                                               sn.Append(cm); cm = ",\r\n";
+                                               t.SchemaJson(cx, sn, 2);
+                                           }
+                                       if (sn.Length > 0)
+                                       { sn.Append('}'); sb.Append(cs); cs = ","; sb.Append(sn); }
+                                       var se = new StringBuilder();
+                                       cm = "\r\n\tEdges: {\r\n";
+                                       for (var b = cx.role.edgeTypes.First(); b != null; b = b.Next())
+                                           if (cx.db.objects[b.value()] is EdgeType t && t.defpos > 0)
+                                           {
+                                               se.Append(cm); cm = ",\r\n";
+                                               t.SchemaJson(cx, se, 2);
+                                           }
+                                       if (se.Length > 0)
+                                       { se.Append('}'); sb.Append(cs); sb.Append(se); }
+                                       sb.Append('}');
+                                   }
+                               } */
                 if (cx.graph is TGraph g)
-                {
-                    sb.Append(cc); cc = ",\r\n";
+                    sb.Append(g.ToString(cx));
+     /*         {
+      *         sb.Append(cc); cc = ",\r\n";
                     sb.Append("Graph: { ");
                     sb.Append("Name: "); sb.Append(name);
                     sb.Append(" Nodes: ");
@@ -4343,6 +4345,7 @@ namespace Pyrrho.Level3
                     }
                     sb.Append(']');
                 }
+     */
                 sb.Append("}\r\n");
                 ers += (ExplicitRowSet.ExplRows, ers.explRows + (pos++,
                         new TRow(ers, new TChar(cx.db.name), new TChar(sb.ToString()))));
@@ -4413,112 +4416,244 @@ namespace Pyrrho.Level3
                     {
                         GqlNode? gb = null; // previous GqlNode
                         GqlNode? gu = null; // what gb refers to
-                        TNode? nb = null;   // TNode of previous GqlNode 
-                        var rn = CTree<long, long>.Empty; // GqlNode to Record
-                        for (var c = cx.newNodes.First(); c != null; c = c.Next())
-                            if (c.value().First() is ABookmark<long, bool> m && m.key() is long mn)
-                                for (var mb = m.Next(); mb != null; mb = mb.Next())
-                                    rn += (mb.key(), mn);
+                        TypedValue? nb = null;   // value of previous GqlNode 
+                        // make a stack of afters for handling set connectors
+                        var afs = BTree<long,ABookmark<GqlNode, Qlx>>.Empty;
+                        ABookmark<GqlNode, Qlx>? af = null;
+                        long at = 0;
                         for (var bb = ge.First(); bb != null; bb = bb.Next())
-                            if (bb.value() is GqlNode gc) // current GqlNode
-                            {
-                                GqlNode gt = ((gc is GqlReference gr) ? (GqlNode?)cx.obs[gr.refersTo] : gc) ?? gc; // target of current GqlNode
-                                TNode? nc = gt.Eval(cx) as TNode;
-                                var vs = nc?.tableRow.vals ?? CTree<long, TypedValue>.Empty;
-                                var preconDone = false;
-                                if (gt.preCon is TConnector cr && nb != null && nc != null && cr.rd is not null)
+                            if (bb.value() is GqlNode gc)
+                                if (gc is GqlSet)
                                 {
-                                    vs += (cr.cp, new TRef(nb.defpos, cr.rd));
-                                    cx.Add(new Update(nc.defpos, nc.tableRow.tabledefpos, vs, cx.db.nextPos, cx));
-                                    preconDone = true;
+                                    gb = gc;
+                                    nb = gc.Eval(cx);
                                 }
-                                Table et = gt._Type(cx, gc.domain, 0L, false);
-                                var ls = gt.docValue;
-                                if (gt.preCon is TConnector rc && !preconDone) // maybe this code can be removed?
+                                else // current GqlNode
                                 {
-                                    if (rc.cp > 0)
+                                    GqlNode gt = gc.Target(cx);
+                                    TypedValue? nc = gt.Eval(cx);
+                                    var vs = (nc as TNode)?.tableRow.vals ?? CTree<long, TypedValue>.Empty;
+                                    var preconDone = false;
+                                    if (gt.preCon is TConnector cr && nb is TNode n1 && nc is TNode c1 && cr.rd is not null)
+                                        if (n1.defpos < Transaction.TransPos)
+                                        {
+                                            vs += (cr.cp, new TRef(n1.defpos, Table.FindOrCreateRefDomain(cx, cr.rd)));
+                                            cx.Add(new Update(c1.defpos, c1.tableRow.tabledefpos, vs, cx.db.nextPos, cx));
+                                            preconDone = true;
+                                        }
+                                    Table et = gt._Type(cx, gc.domain, gc.defpos);
+                                    var ls = gt.docValue;
+                                    if (gt.preCon is TConnector rc)
                                     {
-                                        var s = cx.NameFor(rc.cp);
-                                        if (s == null || s == "")
-                                            s = rc.cn;
-                                        ls += (s,
-                                            new SqlLiteral(cx.GetUid(), Table.Connect(cx, nb, rc, rc, gt, rn)));
-                                    }
-                                    else if (nc != null)
-                                        (_, ls) = et.Connect(cx, nb, nc, gc, gt.preCon, ls);
-                                }
-                                else if (gt.before != null && nb != null && gt.domain.infos[cx.role.defpos] is ObInfo oi)
-                                    for (var mb = oi.model.First(); mb != null; mb = mb.Next())
-                                        for (var lb = mb.value().First(); lb != null; lb = lb.Next())
-                                            if (cx.db.objects[lb.value()] is TableColumn tc
-                                                && tc.domain.elType is Domain lt
-                                                && nb.dataType.EqualOrStrongSubtypeOf(lt))
+                                        if (nb is TSet ts && rc.q==Qlx.ARROWL
+                                            && cx.db.objects[rc.cp] is TableColumn sc)
+                                        {
+                                            var s = sc.NameFor(cx);
+                                            if (s == null || s == "")
+                                                s = rc.cn;
+                                            ls = DocAdd(cx, ls - s, sc, s, ts);
+                                        }
+                                        else if (nb is TNode n2
+                                             && !preconDone) // maybe this code can be removed?
+                                        {
+                                            var rf = new TRef(n2.defpos, Table.FindOrCreateRefDomain(cx, nb.dataType));
+                                            if (cx.db.objects[rc.cp] is TableColumn tc)
                                             {
-                                                ls -= lt.name;
-                                                ls += (tc.NameFor(cx), new SqlLiteral(cx.GetUid(), new TRef(nb.defpos, nb.dataType)));
+                                                var s = tc.NameFor(cx);
+                                                if (s == null || s == "")
+                                                    s = rc.cn;
+                                                ls = DocAdd(cx, ls - s, tc, s, rf);
                                             }
-                                gt += (_Domain, et);
-                                gt += (Scope, defpos);
-                                gt += (GqlNode.DocValue, ls);
-                                cx.obs += (gt.defpos, gt);
-                                if (nc == null)
-                                {
-                                    gt.Create(cx, et, gc.scope, ls);
-                                    nc = cx.values[gt.defpos] as TNode;
-                                }
-                                if (nc != null)
-                                {
-                                    rn += (gt.defpos, nc.defpos);
-                                    for (var e = gt.domain.colRefs.First(); e != null; e = e.Next())
-                                        for (var f = e.value().First(); f != null; f = f.Next())
-                                            if ((nc.tableRow.vals[f.key()] ?? TNull.Value) == TNull.Value)
-                                                cx.checkEdges += (nc.defpos, nc.tableRow);
-                                    if (gb != null && gb.postCon is TConnector oc)
-                                    {
-                                        if (oc.rd is not null && nb != null && gu != null)
-                                        {// we are adding a reference to nc to an existing node nb
-                                            var ns = nb.tableRow.vals;
-                                            var tb = (Table)gb.domain;
-                                            ns += (oc.cp, new TRef(nc.defpos, oc.rd));
-                                            var tr = cx.db as Transaction ?? throw new PEException("PE03061");
-                                            var done = false;
-                                            for (var bp = cx.checkEdges.First(); bp != null && !done; bp = bp.Next())
-                                                if (tr.physicals[bp.key()] is Record rr && rr.node == gu.defpos)
-                                                {
-                                                    rr.fields += ns;
-                                                    tb = (Table)(rr.Install(cx) ?? throw new PEException("PE73023"));
-                                                    cx.checkEdges += (rr.defpos, new TableRow(rr.tabledefpos, rr.fields));
-                                                    done = true;
-                                                }
-                                            if (!done)
-                                            {
-                                                var u = new Update(nb.defpos, gb.domain.defpos, ns, cx.db.nextPos, cx);
-                                                cx.Add(u);
-                                            }
-                                            if (tb.tableRows[nb.defpos] is TableRow nr)
-                                                cx.binding += (gb.defpos, new TNode(cx, nr));
+                                            else if (nc is TNode c2)
+                                                (_, ls) = et.Connect(cx, n2, c2, gt.preCon, ls);
                                         }
                                     }
-                                    else if (gb?.after != null && nc != null && nb!=null
-                                        && gb.domain.infos[cx.role.defpos] is ObInfo oi)
+                                    else if (gt.before != null && nb is TNode n3 && gt.domain.infos[cx.role.defpos] is ObInfo oi)
+                                    {
+                                        var rf = new TRef(n3.defpos, Table.FindOrCreateRefDomain(cx, nb.dataType));
                                         for (var mb = oi.model.First(); mb != null; mb = mb.Next())
                                             for (var lb = mb.value().First(); lb != null; lb = lb.Next())
-                                                if (cx.db.objects[lb.value()] is TableColumn tc
-                                                    && tc.domain.elType is Domain lt
-                                                && nc.dataType.EqualOrStrongSubtypeOf(lt)
-                                                && cx.db is Transaction tr
-                                                && tr.physicals[nb.defpos] is Record r)
+                                                if (cx.db.objects[lb.value()] is TableColumn tc)
                                                 {
-                                                    r.fields += (tc.defpos, new TRef(nc.defpos, nc.dataType));
-                                                    cx.db = tr + (nb.defpos, r);
+                                                    if (tc.domain.kind == Qlx.REF && tc.domain.elType is Domain lt
+                                                    && nb.dataType.EqualOrStrongSubtypeOf(lt))
+                                                    {
+                                                        ls -= lt.name;
+                                                        ls = DocAdd(cx, ls, tc, tc.NameFor(cx), rf);
+                                                    }
+                                                    else if (tc.domain.kind == Qlx.SET && tc.domain.elType?.elType is Domain le
+                                                        && nb.dataType.EqualOrStrongSubtypeOf(le))
+                                                    {
+                                                        ls -= le.name;
+                                                        ls = DocAdd(cx, ls, tc, tc.NameFor(cx), new TRefSet(tc.domain) + rf);
+                                                    }
                                                 }
+                                        if (oi.model == CTree<string, CTree<Qlx, long>>.Empty)
+                                            for (var e = gt.before.First(); e != null; e = e.Next())
+                                                if (cx.values[e.key().defpos] is TNode en)
+                                                    for (var f = gt.domain.colRefs[e.key().domain.defpos]?.First();
+                                                        f != null; f = f.Next())
+                                                        if (cx.db.objects[f.key()] is TableColumn tc)
+                                                        {
+                                                            if (tc.domain.kind == Qlx.REF
+                                                                && tc.domain.elType is Table td && td.NameFor(cx) is string nd)
+                                                            {
+                                                                ls -= nd;
+                                                                ls = DocAdd(cx, ls, tc, tc.NameFor(cx), rf);
+                                                            }
+                                                            else if (tc.domain.kind == Qlx.SET
+                                                                && tc.domain.elType?.elType is Table te
+                                                                && te.NameFor(cx) is string nn
+                                                                && nb.dataType.EqualOrStrongSubtypeOf(te))
+                                                            {
+                                                                ls -= nn;
+                                                                ls = DocAdd(cx, ls, tc, tc.NameFor(cx),
+                                                                    new TSet(tc.domain) + new CTree<TypedValue, bool>(rf, true));
+                                                            }
+                                                        }
+                                    }
+                                    et = (Table)(cx.db.objects[et.defpos] ?? et);
+                                    gt += (_Domain, et);
+                                    gt += (Scope, defpos);
+                                    gt += (GqlNode.DocValue, ls);
+                                    cx.obs += (gt.defpos, gt);
+                                    if (nc is TTypeSpec)
+                                    {
+                                        gt.Create(cx, et, gc.scope, ls);
+                                        nc = cx.values[gt.defpos] as TNode;
+                                    }
+                                    /* This section is confusing because nb and nc can both be sets of nodes
+                                     */
+                                    if (gb?.postCon is TConnector rp) // maybe this code can be removed?
+                                    {
+                                        if (cx.db.objects[rp.cp] is TableColumn tc)
+                                        {
+                                            var s = tc.NameFor(cx);
+                                            if (s == null || s == "")
+                                                s = rp.cn;
+                                            var lr = gb.docValue;
+                                            if (nc is TNode c6 && Table.Connect(cx, c6, rp, rp) is TypedValue v && v != TNull.Value)
+                                            {
+                                                lr = DocAdd(cx, lr, tc, s, v);
+                                                gb += (GqlNode.DocValue, lr);
+                                                cx.obs += (gb.defpos, gb);
+                                            }
+                                        }
+                                    }
+                                    if (nc is TNode c5)
+                                    {
+                                        for (var e = gt.domain.colRefs.First(); e != null; e = e.Next())
+                                            for (var f = e.value().First(); f != null; f = f.Next())
+                                                if (nc is TNode c3 && 
+                                                    (c3.tableRow.vals[f.key()] ?? TNull.Value) == TNull.Value)
+                                                    cx.checkEdges += (c3.defpos, c3.tableRow);
+                                        if (gb != null && gb.postCon is TConnector oc
+                                            && cx.db.objects[oc.cp] is TableColumn co)
+                                        {
+                                            if (oc.rd is not null && nb is TNode n4 && gu != null)
+                                            {// we are adding a reference to nc to an existing node nb
+                                                var ns = n4.tableRow.vals;
+                                                var tb = (Table)gb.domain;
+                                                if (nc is TNode c4)
+                                                { 
+                                                    var rf = new TRef(c4.defpos, Table.FindOrCreateRefDomain(cx, c4.dataType));
+                                                    if (co.domain.kind == Qlx.REF)
+                                                        ns += (oc.cp, rf);
+                                                    else if (co.domain.kind == Qlx.SET && co.domain.elType is Domain se)
+                                                    {
+                                                        if (((Transaction)cx.db).physicals[n4.defpos] is Record r
+                                                            && r.fields[oc.cp] is TSet os)
+                                                            ns += (oc.cp, os + rf);
+                                                        else
+                                                        {
+                                                            var ss = Domain.FindOrCreateDomain(cx,new Domain(-1L,Qlx.SET,se));
+                                                            ns += (oc.cp, new TRefSet(ss) + rf);
+                                                        }
+                                                    }
+                                                    ns = FillReferenceKey(cx, co, ns);
+                                                }
+                                                else
+                                                    ns += (oc.cp, nc);
+                                                var tr = cx.db as Transaction ?? throw new PEException("PE03061");
+                                                var done = false;
+                                                for (var bp = cx.checkEdges.First(); bp != null && !done; bp = bp.Next())
+                                                    if (tr.physicals[bp.key()] is Record rr && rr.node == gu.defpos)
+                                                    {
+                                                        rr.fields += ns;
+                                                        tb = (Table)(rr.Install(cx) ?? throw new PEException("PE73023"));
+                                                        cx.checkEdges += (rr.defpos, new TableRow(rr.tabledefpos, rr.fields));
+                                                        done = true;
+                                                    }
+                                                if (!done)
+                                                {
+                                                    if (n4.defpos >= Transaction.TransPos // we fix without update
+                                                        && ((Transaction)cx.db).physicals[n4.defpos] is Record r)
+                                                    {
+                                                        r.fields += ns;
+                                                        cx.Add(r);
+                                                    }
+                                                    else
+                                                    {
+                                                        var u = new Update(n4.defpos, gb.domain.defpos, ns, cx.db.nextPos, cx);
+                                                        cx.Add(u);
+                                                    }
+                                                }
+                                                if (tb.tableRows[n4.defpos] is TableRow nr)
+                                                    cx.binding += (gb.defpos, new TNode(cx, nr));
+                                            }
+                                        }
+                                        else if (gb?.after != null && nb is TNode n5 && nc!=null
+                                            && gb.domain.infos[cx.role.defpos] is ObInfo oi
+                                            && cx.db is Transaction tr
+                                            && tr.physicals[n5.defpos] is Record r)
+                                        {
+                                            var ch = false;
+                                            for (var mb = oi.model.First(); mb != null; mb = mb.Next())
+                                                for (var lb = mb.value().First(); lb != null; lb = lb.Next())
+                                                    if (cx.db.objects[lb.value()] is TableColumn tc
+                                                        && tc.domain.elType is Domain lt
+                                                    && (nc.dataType.EqualOrStrongSubtypeOf(lt)
+                                                       || nc.dataType.EqualOrStrongSubtypeOf(lt.elType))
+                                                    && gb.docValue[tc.NameFor(cx)]?.Eval(cx) is TypedValue v)
+                                                    {
+                                                        r.fields += (tc.defpos, v);
+                                                        ch = true;
+                                                    }
+                                            for (var d = gb.domain.colRefs.First(); d != null; d = d.Next())
+                                                for (var c = d.value().First(); c != null; c = c.Next())
+                                                    if (cx.db.objects[c.key()] is TableColumn cp
+                                                        && cx.db.objects[d.key()] is Table dt
+                                                        && gb.docValue[cp.NameFor(cx)]?.Eval(cx) is TypedValue v
+                                                        && v != TNull.Value)
+                                                    {
+                                                        r.fields += (cp.defpos, v);
+                                                        ch = true;
+                                                    }
+                                            if (ch)
+                                                cx.db = tr + (n5.defpos, r);
+                                        }
+                                    }
+                                    if (af != null)
+                                    {
+                                        if ((af = af.Next()) == null)
+                                            at--;
+                                        else
+                                            afs += (at, af);
+                                    }
+                                    if (af == null)
+                                    {
+                                        gb = gc;
+                                        nb = nc;
+                                    }
+                                    if (gc.after?.First() is ABookmark<GqlNode, Qlx> gf)
+                                    {
+                                        afs += (at++, gf);
+                                        af = gf;
+                                    }
+                                    gu = gt;
+                                    if (atSchemaLevel)
+                                        gc?.InsertSchema(cx);
                                 }
-                                gb = gc;
-                                gu = gt;
-                                nb = nc ?? gt.Eval(cx) as TNode;
-                                if (atSchemaLevel)
-                                    gc?.InsertSchema(cx);
-                            }
                         for (var g = ne.First(); g != null; g = g.Next())
                             if (g.value() is GqlNode gc
                                 && gc.domain is Table et)
@@ -4529,6 +4664,48 @@ namespace Pyrrho.Level3
             while ((ib = ib?.Next(cx)) != null);
             return cx;
 
+        }
+        //
+        private CTree<long,TypedValue> FillReferenceKey(Context cx, TableColumn tc, CTree<long, TypedValue> ns)
+        {
+            if (tc.keyMap == CTree<int, long>.Empty)
+                return ns;
+            if (tc.domain.kind==Qlx.REF && cx.db.objects[tc.domain.elType?.defpos ?? -1L] is Table rt
+                && rt.FindPrimaryIndex(cx) is Index px
+                && ns[tc.defpos]?.ToLong() is long rp
+                && rt.tableRows[rp] is TableRow tr)
+            {
+                var d = tc.keyMap.First();
+                for (var c = px.keys.First(); d != null && c != null; c = c.Next(), d = d.Next())
+                    if (cx.db.objects[d.value()] is TableColumn kc)
+                        ns += (kc.defpos, tr.vals[c.value()] ?? TNull.Value);
+            }
+            if (tc.domain.kind == Qlx.SET && cx.db.objects[tc.domain.elType?.elType?.defpos ?? -1L] is Table st
+                && st.FindPrimaryIndex(cx) is Index ps
+                && ns[tc.defpos] is TSet rs)
+            {
+                var kc = cx.db.objects[tc.keyMap.First()?.value()??-1L] as TableColumn??throw new PEException("PE67013");
+                var k = ns[kc.defpos] as TSet ?? new TSet(kc.domain);
+                for (var e = rs.First(); e != null; e = e.Next())
+                    if (e.Value()?.ToLong() is long p && st.tableRows[p] is TableRow sr)
+                        for (var c = ps.keys.First(); c != null; c = c.Next())
+                            k += sr.vals[c.value()]??TNull.Value;
+                ns += (kc.defpos, k);
+            }
+            return ns;
+        }
+
+        internal static CTree<string,QlValue> DocAdd(Context cx,CTree<string,QlValue> ls,TableColumn tc, string s, TypedValue v)
+        {
+            if (!ls.Contains(s) && v is TRef rf && rf.dataType.elType?.EqualOrStrongSubtypeOf(tc.domain.elType??Domain.TypeSpec)==true)
+                return ls + (s, new SqlLiteral(cx.GetUid(), v));
+            if (v is TSet ts && tc.domain.elType?.EqualOrStrongSubtypeOf(tc.domain.elType ?? Domain.TypeSpec) == true)
+            {
+                var lv = ls[s]?.Eval(cx);
+                var le = (lv==null||lv==TNull.Value)?new TSet(ts.dataType):lv;
+                return ls + (s, new SqlLiteral(cx.GetUid(), le + v));
+            }
+            return ls;
         }
         internal CTree<string,long> GraphTypes(Context cx)
         {
@@ -5214,9 +5391,8 @@ namespace Pyrrho.Level3
                 if (!_ms.Done(cx) && matches != null)
                     r = _ms.ExpNode(cx, new ExpStep(patt, matches, ab, cn ?? next, _e), pg,
                         (pg is GqlReference gr) ? gr.postCon :
-                        (pg is GqlEdge pe) ? pe.postCon : 
-                        (match == Qlx.WITH) ? TBool.True : TNull.Value,
-                        (pg?.delimit == true) ? null : pd);
+                        (pg is GqlEdge pe) ? pe.postCon :
+                        (match == Qlx.WITH) ? TBool.True : TNull.Value, pd);
                 else
                     r = next.Next(cx, _ms, null, pg, pd, Qlx.WITH);
                 return r;
@@ -5422,16 +5598,40 @@ namespace Pyrrho.Level3
             }
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
+            if (cr == TNull.Value)
+                cr = xn.preCon;
             if (cr == TBool.True && pd != null)
                 ds += (pd.defpos, pd.tableRow);
-            else if (cr is TConnector po && pd?.tableRow.vals[po.cp]?.ToLong() is long pp
-                && cx.db.objects[po.rd.defpos] is Table tb && tb.tableRows[pp] is TableRow pr)
-                ds += (pp, pr);
-            else if (cr is TConnector pb && pd?.dataType is Table bt)
+            else if (cr is TConnector po && pd!=null && pd.dataType is Table bt)
             {
-                for (var pa = bt.sindexes[pd.defpos]?[pb.cp]?.First(); pa != null; pa = pa.Next())
-                    if (cx.db.objects[xn.domain.defpos] is Table ct && ct.tableRows[pa.key()] is TableRow rr)
-                        ds += (rr.defpos, rr);
+                if (po.cp > 0)
+                {
+                    if (pd.tableRow.vals[po.cp]?.ToLong() is long pp
+                    && cx.db.objects[po.rd.defpos] is Table tb && tb.tableRows[pp] is TableRow pr)
+                        ds += (pp, pr);
+                    else
+                    {
+                        for (var pa = bt.sindexes[pd.defpos]?[po.cp]?.First(); pa != null; pa = pa.Next())
+                            if (cx.db.objects[xn.domain.defpos] is Table ct && ct.tableRows[pa.key()] is TableRow rr)
+                                ds += (rr.defpos, rr);
+                    }
+                }
+                else
+                {
+                    for (var b = bt.refCols.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key()] is TableColumn c
+                            && cx.db.objects[c.tabledefpos] is Table t)
+                            for (var d = bt.sindexes[pd.defpos]?[c.defpos]?.First(); d != null; d = d.Next())
+                                if (bt.Connects(cx, po, t, c) && t.tableRows[d.key()] is TableRow pr)
+                                    ds += (pr.defpos, pr);
+                    for (var b = bt.colRefs.First(); b != null; b = b.Next())
+                        for (var d = b.value().First(); d != null; d = d.Next())
+                            if (cx.db.objects[b.key()] is Table t && cx.db.objects[d.key()] is TableColumn c
+                               && bt.Connects(cx, po, t, c)
+                               && pd.tableRow?.vals[d.key()]?.ToLong() is long pa
+                               && t.tableRows[pa] is TableRow tr)
+                                ds += (tr.defpos, tr);
+                }
             }
             else if (xn is GqlReference gr)
             {
@@ -5459,19 +5659,31 @@ namespace Pyrrho.Level3
                     }
             }
             else if (xn.name is string xs && xs != "" && cx.obs[cx.names[xs].Item2] is QlInstance qi
-                && cx.values[qi.sPos] is TRef tf && cx.db.objects[tf.elType?.defpos ?? -1L] is Table ft
+                && cx.values[qi.sPos] is TRef tf && cx.db.objects[tf.dataType.elType?.defpos ?? -1L] is Table ft
                 && ft.tableRows[tf.value] is TableRow fr)
                 ds += (fr.defpos, fr);
-            else if (pd is not null && pd.dataType is Table pe && pe.colRefs.Count > 0
-                && pd.defpos != pd.dataType.defpos && cr is TConnector ed)
+            else if (pd is not null && pd.dataType is Table pe && pe.refCols.Count > 0)
             {
-                for (var b = pe.colRefs.First(); b != null; b = b.Next())
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        if (Connects(ed, ed.q))
-                            if (ed.cn == "" || ed.cn.ToUpper() == cx.NameFor(c.key())?.ToUpper())
-                                if ((cx.db.objects[b.key()] as Table)?.GetS(cx, pd.tableRow.vals[c.key()] as TInt)
-                               is TableRow tn)
-                                    ds += (tn.defpos, tn);
+                if (cr == TNull.Value)
+                    for (var b = pe.sindexes[pd.defpos]?.First(); b != null; b = b.Next())
+                    {
+                        if (cx.db.objects[b.key()] is TableColumn bc && cx.db.objects[bc.tabledefpos] is Table bn)
+                            for (var c = b.value()?.First(); c != null; c = c.Next())
+                            {
+                                if (bn.tableRows[c.key()] is TableRow br)
+                                    ds += (br.defpos, br);
+                            }
+                    }
+                else if (cr is TConnector ed && pd.defpos != pd.dataType.defpos)
+                {
+                    for (var b = pe.colRefs.First(); b != null; b = b.Next())
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            if (Connects(ed, ed.q))
+                                if (ed.cn == "" || ed.cn.ToUpper() == cx.NameFor(c.key())?.ToUpper())
+                                    if ((cx.db.objects[b.key()] as Table)?.GetS(cx, pd.tableRow.vals[c.key()] as TInt)
+                                   is TableRow tn)
+                                        ds += (tn.defpos, tn);
+                }
             }
             else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
@@ -5496,6 +5708,16 @@ namespace Pyrrho.Level3
                 && ne.values[pc.cp] is TRef tp && tp.ToLong() is long tq
                 && FindTableRow(cx, xn, pc.rd?.defpos ?? -1L, tq) is TableRow nr)
                 ds = new(tq, nr);
+            else if (gp != null && gp.postCon is TConnector cb && pd != null // check the edge connection if specified
+    && cr == TNull.Value && cx.db.objects[pd.tableRow.tabledefpos] is Table pt)
+            {
+                var bc = cx.db.objects[cb.cp] as TableColumn ?? throw new PEException("PE4782");
+                if (bc.domain.kind != Qlx.REF) throw new PEException("PE4783");
+                if (pd.tableRow.vals[bc.defpos]?.ToLong() is long vp
+                        && cx.db.objects[bc.domain.elType?.defpos ?? -1L] is Table vt
+                        && vt.tableRows[vp] is TableRow vr)
+                    ds += (vp, vr);
+            }
             // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
             else if (ds.Count == 0)
                 ds = xn.For(cx, this, xn, ds);
@@ -5503,27 +5725,27 @@ namespace Pyrrho.Level3
             if (df == null && optional)
                 be.next.Next(cx, this, be.next, null, null, Qlx.FALSE);
             else if (df != null && !Done(cx))
-                return DbNode(cx, new NodeStep(be.patt, xn, df, 
-                    new ExpStep(be.patt, be.matches?.Next(), be.matchPatterns, be.next, be._e)),qd);
+                return DbNode(cx, new NodeStep(be.patt, xn, df,
+                    new ExpStep(be.patt, be.matches?.Next(), be.matchPatterns, be.next, be._e)), qd);
             return r;
         }
         TableRow? FindTableRow(Context cx, GqlNode x, long ct, long p)
         {
             var nt = cx._Ob(ct) as Table;
-            var gt = cx.graphType?.dataType as GraphType;
+            var gt = cx.graphType;
             if (x.domain.defpos > 0 && cx._Ob(x.domain.defpos) is Table xt)
             {
                 if (nt is not null && !xt.EqualOrStrongSubtypeOf(nt))
                     return null;
-                if (gt?.elTypes.Contains(xt.defpos)==true)
+                if (gt?.elementTypes.Contains(xt.NameFor(cx))==true)
                     return xt.tableRows[p];
             }
-            if (nt?.defpos > 0L  && gt?.elTypes.Contains(nt.defpos)==true)
+            if (nt?.defpos > 0L  && gt?.elementTypes.Contains(nt.NameFor(cx))==true)
                 return nt.tableRows[p];
             if (gt is not null)
             {
-                for (var b = gt.elTypes.First(); b != null; b = b.Next())
-                    if (cx._Ob(b.key()) is Table t
+                for (var b = gt.elementTypes.First(); b != null; b = b.Next())
+                    if (cx._Ob(cx.role.dbobjects[b.key()]) is Table t
                         && t.tableRows[p] is TableRow r)
                         return r;
             }
@@ -5557,7 +5779,7 @@ namespace Pyrrho.Level3
             {
                 for (var b = xn.domain.alts.First(); b != null; b = b.Next())
                     if (b.key() is Table nl
-                       && (cx.graphType?.dataType as GraphType)?.elTypes.Contains(nl.defpos)==true)
+                       && cx.graphType?.elementTypes.Contains(nl.NameFor(cx)) ==true)
                         ds = Traverse(cx, ms, xn, tr, cr, pd, nl, ctr, ds);
                 return ds;
             }
@@ -5565,7 +5787,7 @@ namespace Pyrrho.Level3
             for (var b = (cx.db.objects[pn.defpos] as Table)?.sindexes[pd.tableRow.defpos]?.First();
                  b != null; b = b.Next())
                 if (cx._Ob(b.key()) is TableColumn cc && cx._Ob(cc.tabledefpos) is Table rt
-                   && (cx.graphType?.dataType as GraphType)?.elTypes.Contains(rt.defpos)==true)
+                   && cx.graphType?.elementTypes.Contains(rt.NameFor(cx)) ==true)
                 {
                     if (xn.preCon is TConnector tc && tc.cp != cc.defpos)
                        continue;  

@@ -190,6 +190,7 @@ namespace Pyrrho.Level2
             }
             if (priv == Privilege.GrantGraph)
                 rg += (Executable.UseGraph, ob.NameFor(cx));
+            // if it's a Column, update the connector metadata TBD
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
             ob = (DBObject)ob.New(ob.mem+(DBObject.Infos,ob.infos + (grantee, oi)));

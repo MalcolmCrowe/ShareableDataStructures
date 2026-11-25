@@ -206,13 +206,13 @@ namespace Pyrrho.Level3
         {
             if (k[ff] is not TypedValue h) // happens if a short key is supplied
                 return count!=0;
-            if (h is TSet ts)
+     /*       if (h is TSet ts)
             {
                 for (var b = ts.First(); b != null; b = b.Next())
                     if (b.Value() is TypedValue e && !Contains(k-ff+(ff,e), ff))
                         return false;
                 return true;
-            }
+            } */
             if (impl == null || !impl.Contains(h))
                 return false;
             var tv = impl[h];
@@ -514,6 +514,27 @@ namespace Pyrrho.Level3
                     }
             }
             return (tv as TInt)?.value;
+        }
+        public TypedValue Get(TypedValue tk, Table a)
+        {
+            if (tk is TSet ks && ks.dataType.elType?.kind == info.kind)
+            {
+                var r = new TSet(a);
+                for (var b = ks.First(); b != null; b = b.Next())
+                    if (b.Value() is TList k && Get(k.list, 0) is long p)
+                        r += new TRef(p, a);
+                return r;
+            }
+            if (tk is TList li)
+            {
+                var k = CList<TypedValue>.Empty;
+                for (var b = li.First(); b != null; b = b.Next())
+                    if (b.Value() is TypedValue v)
+                        k += v;
+                if (Get(k, 0) is long p)
+                    return new TRef(p, a);
+            }
+            return TNull.Value;
         }
         public override string ToString()
         {

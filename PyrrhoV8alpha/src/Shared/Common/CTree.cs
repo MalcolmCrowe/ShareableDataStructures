@@ -403,7 +403,7 @@ namespace Pyrrho.Common
                     r += (b.value(), true);
             return r;
         }
-        public override bool Contains(TypedValue k)
+  /*      public override bool Contains(TypedValue k)
         {
             if (k.dataType == keyType.elType)
             {
@@ -413,7 +413,7 @@ namespace Pyrrho.Common
                 return false;
             }
             return base.Contains(k);
-        }
+        } */
     }
     /// <summary>
     /// CList is NOT a sorted list: it is a BList whose elements are Comparable

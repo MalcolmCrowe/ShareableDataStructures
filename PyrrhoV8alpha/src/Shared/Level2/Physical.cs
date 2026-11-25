@@ -898,7 +898,7 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx)
         {
-            domain = new Table(ppos, alts);
+            domain = new Table(ppos, alts, cx.role.defpos);
             cx.db += domain;
             return (Domain)cx.Add(domain??throw new PEException("PE10261"));
         }

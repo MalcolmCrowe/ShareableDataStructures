@@ -338,7 +338,7 @@ namespace Pyrrho.Common
             return r;
         }
         /// <summary>
-        /// Parse the contents of {} or []
+        /// Parse the graphTypes of {} or []
         /// </summary>
         /// <param name="doc">The document so far</param>
         /// <param name="s">the string</param>
@@ -1083,7 +1083,7 @@ namespace Pyrrho.Common
             }
         }
         /// <summary>
-        /// Parse the contents of {} or []
+        /// Parse the graphTypes of {} or []
         /// </summary>
         /// <param name="s">the string</param>
         /// <param name="i">the start of the fields</param>

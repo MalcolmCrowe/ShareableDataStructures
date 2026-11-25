@@ -641,12 +641,19 @@ namespace Pyrrho.Level4
             SlideDown();
             return _cx;
         }
+        Table? Target(TableColumn tc)
+        {
+            if (tc.domain.kind == Qlx.REF && db.objects[tc.domain.elType?.defpos ?? -1L] is Table rt)
+                return rt;
+            if (tc.domain.kind == Qlx.SET && tc.domain.elType?.elType is Table rr)
+                return rr;
+            return null;
+        }
         CTree<long,TypedValue> ReferenceColumns(Cursor tgc,CTree<long,TypedValue> vs)
         {
             // some reference column things
             for (var b = table.First(); b != null; b = b.Next())
-                if (_Ob(b.value()) is TableColumn tc 
-                    && tc.domain.kind==Qlx.REF && db.objects[tc.domain.elType?.defpos??-1L] is Table rt)
+                if (_Ob(b.value()) is TableColumn tc && Target(tc) is Table rt)
                 {
                     var fd = false;
                     var rd = tgc.values[tc.defpos]?.CompareTo(vs[tc.defpos]) != 0;

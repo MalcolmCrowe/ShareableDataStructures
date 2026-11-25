@@ -28,6 +28,8 @@ namespace Pyrrho.Level2
 
         public override long Dependent(Writer wr, Transaction tr)
         {
+            if (element != null && !Committed(wr, element.defpos))
+                return element.defpos;
             if (domain.orderFunc != null && !Committed(wr, domain.orderFunc.defpos))
                 return domain.orderFunc.defpos;
             return -1L;
@@ -61,7 +63,7 @@ namespace Pyrrho.Level2
                 + (ObInfo.Name, nm));
             if (sd is not null)
             {
-                if (dt == Qlx.ARRAY || dt == Qlx.MULTISET || dt == Qlx.SET || dt == Qlx.REF)
+                if (dt == Qlx.ARRAY || dt == Qlx.MULTISET || dt == Qlx.SET || dt == Qlx.REF || dt==Qlx.LIST)
                 {
                     element = sd;
                     domain += (Domain.Element, sd);
@@ -176,6 +178,7 @@ namespace Pyrrho.Level2
                 domain += (Domain.Element, sd);
             }
             base.Deserialise(rdr);
+            rdr.context.db += domain;
             rdr.Setup(this);
         }
         internal static CultureInfo GetCulture(string s)
@@ -259,6 +262,12 @@ namespace Pyrrho.Level2
                     ro += (Role.EdgeTypes, ro.edgeTypes + (domain.name, defpos));
             }
             cx.Install(dt);
+            cx.db += (Database.Types, cx.db.types + (dt, dt.defpos));
+            if (dt.kind == Qlx.REF)
+            {
+                if (dt.elType is null) throw new PEException("PE79201");
+                cx.db += (Database.RefTypes, cx.db.refTypes + (dt.elType, dt.defpos));
+            }
             cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

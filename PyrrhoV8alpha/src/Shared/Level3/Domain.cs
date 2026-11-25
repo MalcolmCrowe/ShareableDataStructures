@@ -32,7 +32,7 @@ namespace Pyrrho.Level3
             Aggs = -191, // CTree<long,bool> QlValue
             Alts = -91, // CTree<Domain,bool> Domain
             Charset = -71, // Pyrrho.CharSet
-            ColRefs = -145, // CTree<long,CTree<long,bool>> Referenced domain REFerencing column in this Domain
+            ColRefs = -145, // CTree<long,CTree<long,bool>> Referenced domain REFerencing column in this Domain (or REF SET)
             Constraints = -72,  // CTree<long,bool> DBObjects 
             Culture = -73, // System.Globalization.CultureInfo
             Default = -74, // TypedValue
@@ -66,10 +66,10 @@ namespace Pyrrho.Level3
     Array, SetType, Multiset, List, Collection, Cursor, UnionNumeric, UnionDate,
     UnionDateNumeric, Exception, Period,
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
-    Row, Delta, Ref,
+    Row, Delta, Ref, RefSet, IntSet,
     Metadata, HttpDate, Star, // Pyrrho v7
     _Rvv, GraphSpec, PathType, LabelType, Comparable,
-    Connector, Vector, Identity; // Rvv is V7 validator type, Identity is identifier syntax
+    Connector, ConnectorSet, Vector, Identity; // Rvv is V7 validator type, Identity is identifier syntax
         internal static Table TableType;
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
@@ -115,6 +115,8 @@ namespace Pyrrho.Level3
             List = new StandardDataType(Qlx.LIST, OrderCategory.None, Content);
             SetType = new StandardDataType(Qlx.SET, OrderCategory.None, Content);
             Ref = new StandardDataType(Qlx.REF);
+            RefSet = new Domain(--_uid, SetType.mem + (Element, Ref));
+            IntSet = new Domain(--_uid, SetType.mem + (Element, Int));
             Multiset = new StandardDataType(Qlx.MULTISET, OrderCategory.None, Content);
             Collection = UnionType(--_uid, Array, Multiset);
             Cursor = new StandardDataType(Qlx.CURSOR);
@@ -143,6 +145,7 @@ namespace Pyrrho.Level3
             PathType = new StandardDataType(Qlx.PATH);
             LabelType = new StandardDataType(Qlx.LABEL); // opaque
             Connector = new StandardDataType(Qlx.CONNECTING); // opaque
+            ConnectorSet = new Domain(_uid, Qlx.SET,SetType.mem + (Element, Connector));
             Vector = new StandardDataType(Qlx.VECTOR); // opaque
             Identity = new StandardDataType(Qlx.IDENTITY); // string version of identifier
         }
@@ -211,11 +214,11 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dp"></param>
         /// <param name="u">A list of pattern domains</param>
-        internal Domain(long dp, CTree<Domain, bool> u, long role=-502)
+        internal Domain(long dp, CTree<Domain, bool> u, long role=-502, BTree<long,object>? m=null)
             : this(dp, _Mem(role,u) + (Kind, Qlx.UNION) + (Alts, u))
         { }
-        public Domain(long dp, Qlx t, CTree<Domain, bool> u)
-    : this(dp, BTree<long, object>.Empty + (Kind, t) + (Under, u))
+        public Domain(long dp, Qlx t, CTree<Domain, bool> u, long role)
+    : this(dp, BTree<long, object>.Empty + (Kind, t) + (Under, u) + (Definer,role))
         {
             for (var b = u.First(); b != null; b = b.Next())
                 if (b.key().defpos > 0)
@@ -279,17 +282,28 @@ namespace Pyrrho.Level3
                 m += (Display, ds);
             return m;
         }
-        static BTree<long, object> _Mem(long role, CTree<Domain, bool> a)
+        protected static BTree<long, object> _Mem(long role, CTree<Domain, bool> a)
         {
             var ns = Names.Empty;
+            var rc = CTree<long, bool>.Empty;
+            var cr = CTree<long, CTree<long, bool>>.Empty;
             for (var b = a.First(); b != null; b = b.Next())
                 if (b.key() is Domain d)
                 {
                     ns += d.names;
                     if (d.infos[role] is ObInfo di)
                         ns += di.names;
+                    if (d is Table t)
+                    {
+                        rc += t.refCols;
+                        for (var c=t.colRefs.First();c!=null;c=c.Next())
+                        {
+                            var e = cr[c.key()] ?? CTree<long, bool>.Empty;
+                            cr += (c.key(), e + c.value());
+                        }
+                    }
                 }
-            return new BTree<long, object>(ObInfo._Names, ns);
+            return BTree<long,object>.Empty + (ObInfo._Names, ns)+(ColRefs, cr);
         }
         internal static Domain UnionType(long lp, params Domain[] u)
         {
@@ -379,14 +393,17 @@ namespace Pyrrho.Level3
         }
         internal static Domain FindOrCreateDomain(Context cx, Domain rd)
         {
-            var np = cx.db.nextPos;
-            var dm = (cx.db.types[rd] is long rp && rp != 0L) ? cx._Ob(rp) as Domain :
-                (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", rd.kind, rd.prec, rd.scale,
-                CharSet.UCS, rd.culture.Name, "", rd.elType, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
-            if (dm is null) throw new PEException("PE33611");
-            if (dm.defpos == np)
-                cx.Install(dm);
-            return dm;
+            if (rd is StandardDataType)
+                return rd;
+            if (cx.db.types[rd] is long rp && rp != 0L && cx._Ob(rp) is Domain d)
+                return d;
+            var ed = rd.elType;
+            if (ed is not null && ed.kind == Qlx.REF && ed.elType is Domain dd)
+                ed = Table.FindOrCreateRefDomain(cx, dd);
+            var nd = (Domain)(cx.Add(new PDomain(Physical.Type.PDomain, "", rd.kind, rd.prec, rd.scale,
+                CharSet.UCS, rd.culture.Name, "", ed, cx.db.nextPos, cx)) ?? throw new PEException("PE54321"));
+            cx.Install(nd);
+            return nd;
         }
         internal virtual (CTree<int,long>, CTree<long, Domain>, CTree<int,long>, CTree<long, long>, Names, BTree<long, Names>)
 ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<int,long> sr, CTree<long, long> tr,
@@ -843,7 +860,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             return Equivalent(kind) switch
             {
                 Qlx.NULL => 0,
-                Qlx.INTEGER => 1,
+                Qlx.INTEGER or Qlx.REF => 1,
                 Qlx.NUMERIC => 2,
                 Qlx.REAL => 8,
                 Qlx.CHECK or Qlx.LEVEL or Qlx.NCHAR => 3, // TInt or TLevel
@@ -895,7 +912,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.REF:
                     {
                         var o = rdr.GetInteger();
-                        return new TRef((long)o,elType??Content);
+                        return new TRef((long)o,this);
                     }
                 case Qlx.INTEGER:
                     {
@@ -912,52 +929,52 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.INTERVAL: return new TInterval(this, rdr.GetInterval());
                 case Qlx.VECTOR:
                     {
-                        var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var ed = rdr.context.db.objects[rdr.GetLong()] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var d = FindOrCreateDomain(rdr.context, new Domain(-1L, Qlx.VECTOR, ed));
                         var vs = CTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            vs += (rdr.GetInt(), el.Get(log, rdr, pp));
-                        return new TVector(new Domain(-1L, Qlx.VECTOR, el), vs);
+                            vs += (rdr.GetInt(), ed.Get(log, rdr, pp));
+                        return new TVector(d, vs);
                     }
                 case Qlx.ARRAY:
                     {
-                        var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var ed = rdr.context.db.objects[rdr.GetLong()] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var d = FindOrCreateDomain(rdr.context, new Domain(-1L, Qlx.ARRAY, ed));
                         var vs = CTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            vs += (rdr.GetInt(), el.Get(log, rdr, pp));
-                        return new TArray(new Domain(-1L, Qlx.ARRAY, el), vs);
+                            vs += (rdr.GetInt(), ed.Get(log, rdr, pp));
+                        return new TArray(d, vs);
                     }
                 case Qlx.MULTISET:
                     {
-                        var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var m = new TMultiset(el);
+                        var ed = rdr.context.db.objects[rdr.GetLong()] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var d = FindOrCreateDomain(rdr.context, new Domain(-1L, Qlx.MULTISET, ed));
+                        var m = new TMultiset(d);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            m = m.Add(el.Get(log, rdr, pp));
+                            m = m.Add(ed.Get(log, rdr, pp));
                         return m;
                     }
                 case Qlx.SET:
                     {
-                        var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var m = new TSet(el);
+                        var ed = rdr.context.db.objects[rdr.GetLong()] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var d = FindOrCreateDomain(rdr.context, new Domain(-1L, Qlx.SET, ed));
+                        var m = new TSet(d);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            m = m.Add(el.Get(log, rdr, pp));
+                            m = m.Add(ed.Get(log, rdr, pp));
                         return m;
                     }
                 case Qlx.LIST:
                     {
-                        var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var m = new TList(el);
+                        var ed = rdr.context.db.objects[rdr.GetLong()] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var d = FindOrCreateDomain(rdr.context, new Domain(-1L, Qlx.LIST, ed));
+                        var m = new TList(d);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            m += el.Get(log, rdr, pp);
+                            m += ed.Get(log, rdr, pp);
                         return m;
                     }
                 case Qlx.ROW:
@@ -1103,6 +1120,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         internal (int, Domain) Best(Domain dt)
         {
             int j = 1;
+            if (kind == Qlx.REF)
+                return (-1,this);
             for (var b = alts.First(); b != null; b = b.Next(), j++)
                 if (b.key().EqualOrStrongSubtypeOf(dt) || (b.key().elType?.EqualOrStrongSubtypeOf(dt) == true))
                     return (j, b.key());
@@ -1123,6 +1142,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 if (dt == NodeType && (kind == Qlx.EDGETYPE || kind == Qlx.NODETYPE))
                     return true;*/
             if (dt.kind == Qlx.REF && kind == Qlx.INT)
+                return true;
+            if (defpos > 0 && dt.defpos == defpos)
                 return true;
             if (defpos > 0 && dt.defpos < 0 && ki == dt.kind)
                 return true;
@@ -1201,10 +1222,9 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.TIME: wr.WriteByte((byte)DataType.TimeSpan); break;
                 case Qlx.TIMESTAMP: wr.WriteByte((byte)DataType.TimeStamp); break;
                 case Qlx.INTERVAL: wr.WriteByte((byte)DataType.Interval); break;
+                case Qlx.REF: wr.WriteByte((byte)DataType.Integer); break; // no specific type known
                 case Qlx.NODETYPE:
                 case Qlx.EDGETYPE:
-                case Qlx.REF:
-                    wr.WriteByte((byte)DataType.Integer); break;
                 case Qlx.TYPE:
                     wr.WriteByte((byte)DataType.DomainRef);
                     var nd = (Domain?)wr.cx._Ob(defpos) ?? Content; // without nms
@@ -1261,6 +1281,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
 #if SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
+                case Qlx.REF:
                 case Qlx.INTEGER:
                     {
                         if (tv is TInteger n)
@@ -1403,7 +1424,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                         }
                         return;
                     }
-                case Qlx.REF: goto case Qlx.ROW;
                 case Qlx.ARRAY:
                 case Qlx.VECTOR:
                     {
@@ -1535,6 +1555,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 case Qlx.BOOLEAN:
                     return 0;
                 case Qlx.ARRAY:
+                case Qlx.REF:
                 case Qlx.SET:
                 case Qlx.MULTISET:
                     if (elType is null) return -1;
@@ -1584,8 +1605,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                         return c;
                     c = Comp(end, that.end);
                     return c;
-                case Qlx.REF:
-                    return 0;
                 default:
                     return ToString().CompareTo(that.ToString());
             }
@@ -1777,10 +1796,6 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     {
                         if (elType is null)
                             break;
-                        if (a is not TSet && elType.CanTakeValueOf(a.dataType))
-                            a = new TSet(this, new CTree<TypedValue, bool>(a, true));
-                        if (b is not TSet && elType.CanTakeValueOf(b.dataType))
-                            b = new TSet(this, new CTree<TypedValue, bool>(b, true));
                         if (a is not TSet x || b is not TSet y)
                             throw new DBException("22004").ISO();
                         if (x.dataType.elType == null || y.dataType.elType == null)
@@ -2951,12 +2966,14 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
         /// <returns></returns>
         internal virtual TypedValue Coerce(Context cx, TypedValue v)
         {
+            if (kind == Qlx.INTEGER && v is TRef vr)
+                return new TInt(vr.value);
             if (kind == Qlx.REF)
             {
                 if (v is TRef r0)// && elType?.defpos == r0.elType?.defpos)
                     return v;
                 if (v is TNode tn && elType is not null && tn.dataType.EqualOrStrongSubtypeOf(elType))
-                    return new TRef(tn.defpos,tn.dataType);
+                    return new TRef(tn.defpos,this);
             }
      /*           else if (v is TInt ri && ri.ToLong() is long rp)
                 {
@@ -2992,11 +3009,11 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     if (d.kind == Qlx.TABLE || d.kind == Qlx.TYPE
                         || d.kind == Qlx.NODETYPE || d.kind == Qlx.EDGETYPE)
                     {
-                        if (v is TRef rf && d.defpos == rf.elType.defpos)
+                        if (v is TRef rf && d.defpos == rf.dataType.defpos)
                             return v;
                         if (v is TInt ri && cx._Ob(d.defpos) is Table t && ri.ToLong() is long rp
                             && t.tableRows.Contains(rp))
-                            return new TRef(rp, t);
+                            return new TRef(rp, Table.FindOrCreateRefDomain(cx,t));
                     }
                     var av = d.Coerce(cx, v);
                     if (av != TNull.Value)
@@ -3007,11 +3024,12 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
             if (kind == Qlx.TABLE || kind == Qlx.TYPE
                 || kind == Qlx.NODETYPE || kind == Qlx.EDGETYPE)
             {
-                if (v is TRef rf && defpos == rf.elType.defpos)
+                if (v is TRef rf && defpos == rf.dataType.defpos)
                     return v;
                 if (v is TInt ri && cx._Ob(defpos) is Table t && ri.ToLong() is long rp
+                    && Table.FindOrCreateRefDomain(cx,t) is Domain tf
                     && t.tableRows.Contains(rp))
-                    return new TRef(rp, t);
+                    return new TRef(rp, tf);
             }
             if (kind == Qlx.COLLECT && elType is not null && v.dataType.EqualOrStrongSubtypeOf(elType))
                 return v;
@@ -3025,10 +3043,10 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 return di.Coerce(cx, va);
             if (v.dataType is Table ut && CanTakeValueOf(ut) && v is TSubType ts)
                 return CheckFields(ts.value);
-            if (v.dataType.kind == Qlx.SET && ((TSet)v).Cardinality() == 1)
-                return ((TSet)v).First()?.Value() ?? TNull.Value;
+            if (v.dataType.kind == Qlx.SET && v.Cardinality() == 1)
+                return v.First()?.Value() ?? TNull.Value;
             if (kind == Qlx.SET && elType is Domain ed && v.dataType.kind == ed.kind)
-                return new TSet(ed) + v;
+                return new TSet(FindOrCreateDomain(cx,new Domain(-1L,Qlx.SET,ed))) + v;
             if (v.dataType.kind == Qlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
                 return CheckFields(((TMultiset)v).First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
@@ -3364,21 +3382,22 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                         }
                     break;
                 case Qlx.SET:
-                    if (elType is not null && v.dataType.elType is not null)
-                        if (v is TSet st)
+                    {
+                        if (elType is not null)
                         {
                             var w = CTree<TypedValue, bool>.Empty;
-                            for (var b = st.tree.First(); b != null; b = b.Next())
-                                w += (elType.Coerce(cx, b.key()), true);
-                            return new TSet(this, w);
+                            if (v is TSet st)
+                                for (var b = st.tree.First(); b != null; b = b.Next())
+                                    w += (elType.Coerce(cx, b.key()), true);
+                            else if (v.First() != null)
+                                for (var b = v.First(); b != null; b = b.Next())
+                                    w += (elType.Coerce(cx, b.Value()), true);
+                            else if (elType.CanTakeValueOf(v.dataType))
+                                w += (v, true);
+                            else break;
+                            return new TRefSet(this) + w;
                         }
-                        else
-                        {
-                            var w = CTree<TypedValue, bool>.Empty;
-                            for (var b = v.First(); b != null; b = b.Next())
-                                w += (elType.Coerce(cx, b.Value()), true);
-                            return new TSet(this, w);
-                        }
+                    }
                     break;
                 case Qlx.MULTISET:
                     if (elType is not null && v.dataType.elType is not null)
@@ -3537,7 +3556,8 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                             if (f.Key == "$check")
                             {
                                 vs += (LastChange, new TInt((long)f.Value));
-                                vs += (Defpos, new TRef((long)(d["$pos"] ?? 0L), (cx._Ob(defpos) as Domain)??Ref));
+                                vs += (Defpos, (d["$pos"] is long rp && cx.db.objects[rp] is Table t) ?
+                                    new TRef(rp, t) : TNull.Value);
                             }
                             if (f.Key == "$classification")
                                 vs += (Classification,
@@ -3696,7 +3716,7 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                             var v = elType.Coerce(cx, o);
                             va += (v, true);
                         }
-                        return CheckFields(new TSet(elType, va));
+                        return CheckFields(new TRefSet(elType) + va);
                     }
                     break;
                 case Qlx.MULTISET:
@@ -4933,16 +4953,23 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                     else
                         r += b.key().HasRefCols(db);
                 }
-            else if (this is Table tb)
+            else if (this is Table)
                 for (var b = First(); b != null; b = b.Next())
-                    if (db.objects[b.value()] is TableColumn tc
-                        && tc.domain.kind==Qlx.REF && tc.domain.elType is Domain rd)
-{
-                                var u = r[rd.defpos] ?? CTree<long, bool>.Empty;
-                                r += (rd.defpos, u + (tc.defpos, true));
-                                if (db.objects[rd.defpos] is Table rt && !rt.refCols.Contains(tc.defpos))
-                                    db += rt + (Table.RefCols, rt.refCols + (tc.defpos, true));
-                            } 
+                    if (db.objects[b.value()] is TableColumn tc)
+                        if (tc.domain.kind == Qlx.REF && tc.domain.elType is Domain rd)
+                        {
+                            var u = r[rd.defpos] ?? CTree<long, bool>.Empty;
+                            r += (rd.defpos, u + (tc.defpos, true));
+                            if (db.objects[rd.defpos] is Table rt && !rt.refCols.Contains(tc.defpos))
+                                db += rt + (Table.RefCols, rt.refCols + (tc.defpos, true));
+                        }
+                        else if (tc.domain.kind == Qlx.SET && tc.domain.elType?.elType is Domain sd)
+                        {
+                            var u = r[sd.defpos] ?? CTree<long, bool>.Empty;
+                            r += (sd.defpos, u + (tc.defpos, true));
+                            if (db.objects[sd.defpos] is Table rt && !rt.refCols.Contains(tc.defpos))
+                                db += rt + (Table.RefCols, rt.refCols + (tc.defpos, true));
+                        }
             return r;
         }
         internal virtual BTree<long, TableColumn> FindProps(Context cx,string ident)
@@ -5635,16 +5662,16 @@ ColsFrom(Context cx, long dp, CTree<int,long> rt, CTree<long, Domain> rs, CTree<
                 r += (Suffix, sf.value);
                 cx.db += (Database.Suffixes, cx.db.suffixes + (sf.value, defpos));
             }
-            if (md[Qlx.REFERENCES] is TSet ts && r is Table tb)
+   /*         if (md[Qlx.REFERENCES] is TSet ts && r is Table tb) REFERENCES is for reporting on connections, not construction
             {
                 for (var b = ts.First(); b != null; b = b.Next())
                     if (b.Value() is TConnector tc)
                         tb = tb.Add(cx, tc);
                 r = tb;
-            }
+            } */
            if (r != this)
            {
-                cx.Add(r);
+                cx.Add((DBObject)r);
                 cx.db += (defpos, r);
             }
             return (cx,r);

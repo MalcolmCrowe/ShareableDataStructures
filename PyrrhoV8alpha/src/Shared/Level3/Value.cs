@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.ComponentModel.Design;
 using System.Globalization;
 using System.Text;
 
@@ -1133,7 +1134,7 @@ namespace Pyrrho.Level3
     internal class SqlTreatExpr : QlValue
     {
         internal const long
-            _Diff = -468, // BTree<long,object>
+            _Diff = -462, // BTree<long,object>
             TreatExpr = -313; // long QlValue
         BTree<long, object> diff => (BTree<long, object>)(mem[_Diff] ?? BTree<long, object>.Empty);
         internal new long val => (long)(mem[TreatExpr]??-1L);
@@ -1901,7 +1902,7 @@ namespace Pyrrho.Level3
                 && tt.tableRow.vals[p] is TypedValue nv)
                 return nv;
             if ((cx.values[target] ?? cx.binding[target]) is TRef tr 
-                && cx.db.objects[tr.elType.defpos] is Table rt 
+                && cx.db.objects[tr.dataType.elType?.defpos??-1L] is Table rt 
                 && tr.ToLong() is long rp
                 && rt.names[name ?? ""].Item2 is long cp
                 && rt.tableRows[rp]?.vals[cp] is TypedValue rv)
@@ -2778,7 +2779,7 @@ namespace Pyrrho.Level3
                                 && tn.dataType.names[sf.name ?? "?"].Item2 is long dp)
                                 return tn.tableRow.vals[dp] ?? TNull.Value;
                         }
-                        if (a is TRef tr && cx.db.objects[tr.elType.defpos] is Table rt
+                        if (a is TRef tr && cx.db.objects[tr.dataType.elType?.defpos ?? -1L] is Table rt
                             && rt.tableRows[tr.ToLong()??-1L] is TableRow r)
                         {
                             if (cx.obs[right] is QlInstance sn)
@@ -3272,6 +3273,7 @@ namespace Pyrrho.Level3
     internal class SqlNull : QlValue
     {
         internal static SqlNull Value = new();
+        internal static SqlNull Ref = new();
         /// <summary>
         /// constructor for a null expression
         /// </summary>
@@ -4089,7 +4091,7 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// We should not try to recalaculate the contents: use the activation's values
+        /// We should not try to recalaculate the graphTypes: use the activation's values
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
@@ -4159,7 +4161,7 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// We should not try to recalaculate the contents: use the activation's values
+        /// We should not try to recalaculate the graphTypes: use the activation's values
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
@@ -5614,7 +5616,7 @@ namespace Pyrrho.Level3
                         throw new DBException("22004");
                     n++;
                 }
-            return new TSet(dm, vs);
+            return new TSet(dm) + vs;
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -7811,7 +7813,7 @@ namespace Pyrrho.Level3
                         TypedValue? a = cx.obs[val]?.Eval(cx);
                         if (a is not TNode n)
                             return TNull.Value;
-                        var s = new TSet(Domain.Char);
+                        var s = new TSet(Domain.FindOrCreateDomain(cx,new Domain(-1L,Domain.SetType.mem+(Domain.Element,Domain.Char))));
                         var tb = (Table)n.dataType;
                         var ti = tb.infos[tb.definer];
                         for (var b = ti?.metadata[Qlx.LABELS]?.First(); b!=null;b=b.Next())
@@ -7917,8 +7919,8 @@ namespace Pyrrho.Level3
                         var p = 1.0D;
                         for (var b = cx.Scenarii().First();
                             b is not null; b = b.Next())
-                            if (cx.db.objects[b.key()] is Expectation e)
-                                p *= e.confidence;
+                            if (cx.role.catalog[b.key()] is TExpectation e)
+                                p *= e.Eval(cx);
                         return new TReal(p);
                     }
                 case Qlx.PERIOD:
@@ -7962,11 +7964,13 @@ namespace Pyrrho.Level3
                             break;
                         for (var b = rs.rsTargets.First(); b != null; b = b.Next())
                             if (b.value() is long p && cx.cursors[p] is Cursor c)
-                                if (c is TableRowSet.TableCursor tc && tc._rec is TableRow tr) 
-                                    return new TRef(tr.defpos,cx._Ob(tr.tabledefpos) as Domain??Domain.Content);
+                                if (c is TableRowSet.TableCursor tc && tc._rec is TableRow tr
+                                    && (Table?)cx._Ob(tr.tabledefpos) is Table tt) 
+                                    return new TRef(tr.defpos, Table.FindOrCreateRefDomain(cx, tt));
                         if (cx.cursors[rs.source] is Cursor cs)
-                            if (cs is TableRowSet.TableCursor tc && tc._rec is TableRow tr)
-                                return new TRef(tr.defpos,cx._Ob(tr.tabledefpos) as Domain??Domain.Content);
+                            if (cs is TableRowSet.TableCursor tc && tc._rec is TableRow tr
+                                && cx._Ob(tr.tabledefpos) is Table tt)
+                                return new TRef(tr.defpos, Table.FindOrCreateRefDomain(cx, tt));
                         break;
                     }
                 case Qlx.POWER:
@@ -8400,7 +8404,7 @@ namespace Pyrrho.Level3
                     {
                         if (cx.obs[val] is not QlValue vl)
                             throw new PEException("PE48185");
-                        fc.mset = new TMultiset(vl.domain);
+                        fc.mset = new TMultiset(Domain.FindOrCreateDomain(cx,new Domain(-1L,Domain.SetType.mem+(Domain.Element,vl.domain))));
                         break;
                     }
                 case Qlx.SOME:
@@ -10898,7 +10902,7 @@ cx.obs[high] is not QlValue hi)
             for (var t = rhs.First(); t is not null; t = t.Next())
             {
                 var c = t.value().Coerce(cx, a);
-                b = b || (c is TRef rc && rc.elType.HasValue(cx,c)==true);
+                b = b || (c is TRef rc && rc.dataType.elType?.HasValue(cx,c)==true);
             }
             return TBool.For(b == found);
         }
@@ -11666,20 +11670,17 @@ cx.obs[high] is not QlValue hi)
     internal class GqlNode : QlValue
     {
         internal const long
-            After = -479,       // GqlNode
-            Before = -473,      // GqlNode
-            Delimit = -325,     // bool
-            DocValue = -477,    // CTree<long,QlValue>  Table
+            After = -479,       // CTree(GqlNode,Qlx)
+            Before = -473,      // CTree(GqlNode,Qlx)
+            DocValue = -477,    // CTree<string,QlValue>  Table
             IdValue = -480,     // long     QlValue of Int
-            Implied = -461,     // CTree<string,bool>
             PostCon = -470,     // TypedValue
             PreCon = -469,      // TypedValue
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
-        internal GqlNode? before => (GqlNode?)mem[Before];
-        internal GqlNode? after => (GqlNode?)mem[After];
+        internal CTree<GqlNode,Qlx>? before => (CTree<GqlNode,Qlx>?)mem[Before];
+        internal CTree<GqlNode,Qlx>? after => (CTree<GqlNode,Qlx>?)mem[After];
         internal virtual long RefNode => defpos;
-        internal bool delimit => (bool?)mem[Delimit]??false;
-        public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
+        public CTree<string,QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
         public long idValue => (long)(mem[IdValue] ?? -1L);
         public TypedValue postCon => (TypedValue)(mem[PostCon] ?? TNull.Value);
         public TypedValue preCon => (TypedValue)(mem[PreCon] ?? TNull.Value);
@@ -11687,13 +11688,13 @@ cx.obs[high] is not QlValue hi)
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         public CTree<long, TGParam> state =>
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
-        public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
-            CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
-           : this(cx, nm, ch, i, d, Fix(nm,tgs), _Type(dm,cx,d,m), m)
+        public GqlNode(Ident nm, BList<Ident> ch, Context cx, CTree<string, QlValue> d,
+            CTree<long, TGParam> tgs, Table? dm = null, BTree<long, object>? m = null)
+           : this(cx, nm, ch, d, Fix(nm,tgs), _Type(dm,cx,d,m), m)
         {  }
-        internal GqlNode(Context cx, Ident nm, BList<Ident> ch, long i, CTree<string, QlValue> d,
-            CTree<long, TGParam> tgs, Domain dm, BTree<long, object>? m = null)
-            : base(nm, nm, ch, cx, dm, _Mem(nm, i, d, tgs, dm, cx, m))
+        internal GqlNode(Context cx, Ident nm, BList<Ident> ch, CTree<string, QlValue> d,
+            CTree<long, TGParam> tgs,Table dm, BTree<long, object>? m = null)
+            : base(nm, nm, ch, cx, dm, _Mem(nm, d, tgs, dm, cx, m))
         {
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg && cx.names[tg.value].Item2 is long t)
                 for (var b = cx.obs[t]?.names.First(); b != null; b = b.Next())
@@ -11710,17 +11711,10 @@ cx.obs[high] is not QlValue hi)
                     tgs += (nm.uid, new TGParam(nm.uid, nm.ident,t.dataType, t.type, t.from));
             return tgs;
         }
-        static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, 
+        static BTree<long, object> _Mem(Ident nm, CTree<string, QlValue> d, 
             CTree<long, TGParam> tgs, Domain dm, Context cx, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
-            if (i > 0)
-            {
-                if ((cx.parse==ExecuteStatus.Compile || (i >= Transaction.Analysing && i < Transaction.Executables))
-                    && cx.names[nm.ident].Item2 is long p)
-                    i = p;
-                m += (IdValue, i);
-            }
             if (d is not null)
                 m += (DocValue, d);
             cx.names += nm;
@@ -11742,7 +11736,7 @@ cx.obs[high] is not QlValue hi)
             m += (ObInfo._Names, dm.names);
             return m;
         }
-        protected static Domain _Type(Domain? dm, Context cx, CTree<string, QlValue> d, BTree<long, object>? m)
+        internal static Table _Type(Table? dm, Context cx, CTree<string, QlValue> d, BTree<long, object>? m)
         {
             m ??= BTree<long,object>.Empty;
             if (dm is Table nt && dm.defpos >= 0)
@@ -11751,24 +11745,34 @@ cx.obs[high] is not QlValue hi)
                 // this complicates the coding here a lot 
                 for (var b = nt.super.First(); b != null; b = b.Next())
                     if (cx.names[b.key().name].Item1 > cx.names[nt.name].Item1) // need to do this using lexpos
-                        st = b.key();
+                        st = b.key() as Table;
                 if (d.Count != 0L)
                     nt = st.ForExtra(cx, m + (DocValue, d))??nt;
                 return nt;
             }
-            if (m is null)
-                return Domain.TypeSpec;
             if (dm?.kind == Qlx.AMPERSAND)
                 return dm;
-            Domain r = dm?.ForExtra(cx, m + (DocValue, d)) ?? Domain.TypeSpec;
-            if (r.defpos<0 && m[Before] is GqlNode be && be.postCon is TConnector pc)
-                r = pc.rd??Domain.TypeSpec;
+            Table r = dm?.ForExtra(cx, m + (DocValue, d)) ?? Domain.TypeSpec;
+            if (r.defpos<0 && m[Before] is CTree<GqlNode,Qlx> bt)
+                for (var c=bt.First();c!=null;c=c.Next()) // && c.value()==Qlx.ARROWL ?
+                    if (c.key() is GqlNode be && be.postCon is TConnector pc)
+                        r = (Table)(pc.rd.elType??throw new PEException("PE42566"));
+            for (var b = cx.role.dbobjects.First(); b != null && r.defpos < 0; b = b.Next())
+            {
+                if (cx.db.objects[b.value()] is Table tb && tb.infos[cx.role.defpos] is ObInfo ti)
+                {
+                    for (var c = d.First(); c != null; c = c.Next())
+                        if (!ti.names.Contains(c.key()))
+                            goto next;
+                    r = tb;
+                }
+            next:;
+            }
             return r;
         }
-        internal virtual Table _Type(Context cx, Domain dt, long ap, bool allowExtras = true,
-            CTree<TypedValue, bool>? cr = null)
+        internal virtual Table _Type(Context cx, Domain dt, long ap)
         {
-            if (dt is Table u)
+            if (dt is Table u && u.defpos>0)
                 return u;
             string nm = "";
             for (var c = dt.alts.First(); c != null; c = c.Next())
@@ -11778,14 +11782,27 @@ cx.obs[high] is not QlValue hi)
                     for (var d = docValue.First(); d != null; d = d.Next())
                     {
                         nm = d.key();
-                        if (!t.names.Contains(nm) && !allowExtras)
+                        if (!t.names.Contains(nm))
                             goto skip;
                     }
                     return t;
                 }
             skip:;
             }
-            throw new DBException("42112", nm);
+            var ps = CTree<string, bool>.Empty;
+            for (var b = dt.names.First(); b != null; b = b.Next())
+                if (b.key()!="")
+                    ps += (b.key(), true);
+            for (var b = docValue.First(); b != null; b = b.Next())
+                ps += (b.key(), true);
+            if (cx.db.objects[cx.db.unlabelledNodeTypes[ps]?.First()?.key() ?? -1L] is Table ut)
+                return ut;
+            var r = (Table)(cx.Add(new PTable("", dt, cx.db.nextPos, cx))
+                ?? throw new DBException("42105"));
+            if (ps!=CTree<string,bool>.Empty)
+                cx.db += (Database.UnlabelledNodeTypes, 
+                    cx.db.unlabelledNodeTypes + (ps, new CTree<long, bool>(r.defpos, true)));
+            return r;
         }
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
@@ -11801,7 +11818,7 @@ cx.obs[high] is not QlValue hi)
         }
         public static GqlNode operator +(GqlNode n, (long, object) x)
         {
-            return (GqlNode)n.New(n.mem + x);
+            return (GqlNode)n.New(n.defpos,n.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -11839,42 +11856,54 @@ cx.obs[high] is not QlValue hi)
         {
             var v = Eval(cx);
             if (cx.db.objects[v.dataType.defpos] is NodeType nt) // or EdgeType
-                if (cx.graphType?.dataType is GraphType gt && !gt.elTypes.Contains(v.dataType.defpos))
+                if (cx.graphType is TGraphType gt && !gt.elementTypes.Contains(nt.NameFor(cx)))
                     return ds ?? BTree<long, TableRow>.Empty;
-               else 
+                else
                     return nt.For(cx, ms, xn, ds);
             var r = BTree<long, TableRow>.Empty;
-            if (v is TTypeSpec)
+            var a = (xn.postCon is TConnector xp)?xp.q:Qlx.NO;
+            if (v is TTypeSpec vt && vt._dataType.defpos>0L)
             {
-                if (xn.domain.kind == Qlx.UNION)
+                //          if (xn.domain.kind == Qlx.UNION)
+                if (vt._dataType.kind == Qlx.UNION)
                 {
-                    for (var b = domain.alts.First(); b != null; b = b.Next())
+                    for (var b = vt._dataType.domain.alts.First(); b != null; b = b.Next())
                         if (cx.db.objects[b.key().defpos] is Table at
-                            && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(at.defpos)))
-                                r += at.For(cx, ms, xn, ds);
+                            && (cx.graphType is not TGraphType gt || gt.elementTypes.Contains(at.NameFor(cx))))
+                            r += at.For(cx, ms, xn, ds);
                     return r;
                 }
-                var dm = cx.db.objects[domain.defpos] as Domain ?? throw new DBException("42107",cx.NameFor(domain.defpos)??"");
+                var dm = cx.db.objects[vt._dataType.defpos] as Domain ?? throw new DBException("42107", cx.NameFor(domain.defpos) ?? "");
                 if (dm.defpos > 0)
                     return dm.For(cx, ms, xn, ds);
                 for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.value()] is Table n
-                      && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(n.defpos)))
+                    if (cx.db.objects[b.value()] is Table n  && CanConnect(n,a)
+                      && (cx.graphType is not TGraphType gt || gt.elementTypes.Contains(n.NameFor(cx))))
                         r += n.For(cx, ms, xn, ds);
             }
-            if (v.dataType.kind==Qlx.UNION)
-            for (var b=v.dataType.alts.First();b!=null;b=b.Next())
-                if (b.key() is Table t
-                   && (cx.graphType?.dataType is not GraphType gt || gt.elTypes.Contains(t.defpos)))
+            if (v.dataType.kind == Qlx.UNION)
+                for (var b = v.dataType.alts.First(); b != null; b = b.Next())
+                    if (b.key() is Table t
+                       && (cx.graphType is not TGraphType gt || gt.elementTypes.Contains(t.NameFor(cx))))
                         r += t.For(cx, ms, xn, ds);
-            if (r == BTree<long, TableRow>.Empty
-               && (cx.graphType?.dataType is not GraphType gu || gu.elTypes.Contains(domain.defpos)))
-                return domain.For(cx, ms, xn, ds);
+            if (r == BTree<long, TableRow>.Empty)
+                for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value()] is Table t && CanConnect(t, a))
+                        r += t.For(cx, ms, xn, t.tableRows);
+            if (r == BTree<long, TableRow>.Empty) // if all else fails
+                for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value()] is Table t)
+                        r += t.For(cx, ms, xn, t.tableRows);
             return r;
+        }
+        bool CanConnect(Table t,Qlx a)
+        {
+            return (a == Qlx.ARROWL && t.refCols != CTree<long, bool>.Empty)
+                || (a == Qlx.ARROWR && t.colRefs != CTree<long, CTree<long, bool>>.Empty);
         }
         internal virtual GqlNode Add(Context cx, GqlNode an, CTree<long, TGParam> tgs, long ap, TypedValue t)
         {
-            return (GqlNode)cx.Add(this + (State, tgs + state) + (PostCon,t) + (After, an));
+            return (GqlNode)cx.Add(this + (State, tgs + state) + (PostCon,t) + (After, new CTree<GqlNode, bool>(an, true)));
         }
         internal GqlNode Create(Context cx, Table  dt, long ap, CTree<string, QlValue> ls,
             bool allowExtras = true)
@@ -11889,7 +11918,7 @@ cx.obs[high] is not QlValue hi)
                     r1 = r1.Create(cx, (Table)b.key(), ap, ls, false);
                     ds += (b.key(), true);
                 }
-                return (GqlNode)cx.Add(r1 + (_Domain, new Table(cx.GetUid(), ds)));
+                return (GqlNode)cx.Add(r1 + (_Domain, new Table(cx.GetUid(), ds, cx.role.defpos)));
             }
             var nd = this;
             var nm = dt.NameFor(cx)??throw new PEException("PE66041");
@@ -11900,7 +11929,7 @@ cx.obs[high] is not QlValue hi)
                 if (dt.infos[cx.role.defpos] is ObInfo oi)
                     cx.names += oi.names;
                 if (dt.defpos >= 0 && dt.defpos < Transaction.Analysing)
-                    dt = dt.Check(cx, nd, 0L, allowExtras);
+                    dt = dt.Check(cx, nd, 0L);
                 else if (cx._Ob(cx.role.defpos) is Role rr
                           && cx._Ob(rr.dbobjects[nm]) is Table ot)
                     dt = ot;
@@ -11922,13 +11951,28 @@ cx.obs[high] is not QlValue hi)
                 for (var bb = ts.rowType.First(); bb != null && tb != null; bb = bb.Next(), tb = tb.Next())
                     if (bb.value() is long bq && cx.NameFor(bq) is string n9
                         && ts.sRowType[bb.key()] is long ic  && cx._Ob(ic) is TableColumn co
-                        && ValueFor(ls,n9,co) is QlValue sv
+                        && ValueFor(cx,ls,n9,co) is QlValue sv
         //                && (ls[n9] ?? ls[n9.ToUpper()] ?? ls[n9.ToLower()]
         //                    ?? ls[(co.tc as TConnector)?.cn??""]) is QlValue sv 
                         && sv is not SqlNull)
                     {
                         ll += (sv,co);
                         iC += ((int)iC.Count, tb.value());
+                        if (co.keyMap != CTree<int, long>.Empty
+                            && cx.db.objects[co.domain.elType?.defpos??-1L] is Table rt 
+                            && rt.FindPrimaryIndex(cx) is Index px
+                            && sv.Eval(cx)?.ToLong() is long rp
+                            && rt.tableRows[rp] is TableRow tr)
+                        {
+                            var d = co.keyMap.First();
+                            for (var c = px.keys.First(); d != null && c != null; c = c.Next(), d = d.Next())
+                                if (cx.db.objects[d.value()] is TableColumn kc
+                                    && ts.sIMap[d.value()] is long dp)
+                                {
+                                    ll += (new SqlLiteral(dp, tr.vals[c.value()] ?? TNull.Value), kc);
+                                    iC += ((int)iC.Count, dp);
+                                }
+                        }
                     }
                 // ll generally has fewer cols than dt
                 // carefully construct what would happen with ordinary SQL INSERT VALUES
@@ -11980,13 +12024,28 @@ cx.obs[high] is not QlValue hi)
         }
         //                && (ls[n9] ?? ls[n9.ToUpper()] ?? ls[n9.ToLower()]
         //                    ?? ls[(co.tc as TConnector)?.cn??""]) is QlValue sv 
-        private QlValue? ValueFor(CTree<string, QlValue> ls, string n9, TableColumn co)
+        private QlValue? ValueFor(Context cx, CTree<string, QlValue> ls, string n9, TableColumn co)
         {
             var r = ls[n9] ?? ls[n9.ToUpper()] ?? ls[n9.ToLower()];
+            if (r?.domain is Table rt && co.domain.kind == Qlx.REF 
+                && rt.defpos == co.domain.elType?.defpos)
+                for (var b = before?.First(); b != null; b = b.Next())
+                    if (b.value()==Qlx.ARROWL)
+                if (b.key() is GqlReference gr && cx.values[gr.refersTo] is TNode qr)
+                    return new SqlLiteral(cx.GetUid(), new TRef(qr.defpos, co.domain));
+                else if (cx.values[b.key().defpos] is TNode qn)
+                    return new SqlLiteral(cx.GetUid(), new TRef(qn.defpos, co.domain));
             if (r != null) return r;
-      /*      for (var b = model; b != null; b = b.Next())
-                if (ls[b.value().cn] is QlValue v)
-                    return v; */
+            /*      for (var b = model; b != null; b = b.Next())
+                      if (ls[b.value().cn] is QlValue v)
+                          return v; */
+            if (co.domain.kind == Qlx.REF 
+                && ls[co.domain.elType?.NameFor(cx) ?? ""] is GqlNode qv)
+                if (cx.values[qv.defpos] is TNode qn)
+                    return new SqlLiteral(cx.GetUid(), new TRef(qn.defpos, co.domain));
+                else if (qv is GqlReference qr && cx.values[qr.refersTo] is TNode n)
+                    return new SqlLiteral(cx.GetUid(), new TRef(n.defpos, co.domain));
+            // set case?
             return null;
         }
 
@@ -12097,6 +12156,15 @@ cx.obs[high] is not QlValue hi)
                 }
             return tb;
         }
+        StringBuilder Show(StringBuilder sb,CTree<GqlNode,Qlx> x)
+        {
+            var cm = '[';
+            for (var b=x.First();b!=null;b=b.Next())
+            { sb.Append(cm); cm = ',';sb.Append(b.value()); sb.Append(' '); sb.Append(Uid(b.key().defpos)); }
+            if (cm == ',') 
+                sb.Append(']');
+            return sb;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -12121,9 +12189,9 @@ cx.obs[high] is not QlValue hi)
             }
             if (preCon != TNull.Value) { sb.Append(" pre "); sb.Append(preCon); }
             if (postCon != TNull.Value) { sb.Append(" post "); sb.Append(postCon); }
-            if (before != null) { sb.Append(" before "); sb.Append(Uid(before.defpos)); }
-            if (after != null) { sb.Append(" after "); sb.Append(Uid(after.defpos)); }
-            cm = " ";
+            if (before != null) { sb.Append(" before "); sb=Show(sb,before); }
+            if (after != null) { sb.Append(" after "); sb=Show(sb,after); }
+             cm = " ";
             for (var b = state.First(); b != null; b = b.Next())
                 if (b.key() < 0 && b.value() is TGParam ts)
                 {
@@ -12145,6 +12213,11 @@ cx.obs[high] is not QlValue hi)
                     }
                 }
             return sb.ToString();
+        }
+
+        internal virtual GqlNode Target(Context cx)
+        {
+            return this;
         }
     }
     internal class GqlReference : GqlNode
@@ -12179,7 +12252,9 @@ cx.obs[high] is not QlValue hi)
         }
         internal override TypedValue _Eval(Context cx)
         {
-            return cx.obs[refersTo]?._Eval(cx) ?? TNull.Value;
+            if (cx.obs[refersTo]?._Eval(cx) is TNode n)
+                return new TRef(n.defpos,Table.FindOrCreateRefDomain(cx,n.dataType));
+            return TNull.Value;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -12200,6 +12275,10 @@ cx.obs[high] is not QlValue hi)
             }
             return r;
         }
+        internal override GqlNode Target(Context cx)
+        {
+            return ((GqlNode?)cx.obs[refersTo])?.Target(cx) ?? throw new DBException("42112");
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -12207,6 +12286,68 @@ cx.obs[high] is not QlValue hi)
             return sb.ToString();
         }
 
+    }
+    class GqlSet : GqlNode
+    {
+        CList<long> els => (CList<long>)(mem[SqlValueSet.Elements] ?? CList<long>.Empty);
+        internal GqlSet(Context cx, Ident nm, Domain  dm, CList<long> es)
+            : base(nm.uid, new BTree<long, object>(_Domain,dm)+(SqlValueSet.Elements, es))
+        {
+            cx.names += nm;
+        }
+        protected GqlSet(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        public static GqlSet operator+ (GqlSet s,GqlNode n)
+        {
+            return new GqlSet(s.defpos, s.mem + (SqlValueSet.Elements, s.els + n.defpos));
+        }
+        public static GqlSet operator+(GqlSet s,(long,object) x)
+        {
+            return new GqlSet(s.defpos, s.mem + x);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new GqlSet(dp,m);
+        }
+        internal override TypedValue _Eval(Context cx)
+        {
+            var rt = Table.FindOrCreateRefDomain(cx, domain);
+            var st = Domain.FindOrCreateDomain(cx,new Domain(-1L,Qlx.SET,rt));
+            var r = new TSet(st);
+            var d = CTree<Domain, bool>.Empty;
+            for (var b = els.First(); b != null; b = b.Next())
+            {
+                var gn = (GqlNode?)cx.obs[b.value()];
+                var gv = gn?._Eval(cx);
+                if (gv is TTypeSpec gt && gt._dataType is Table et && gn!=null)
+                {
+                    gn = gn.Create(cx, et, 0,gn.docValue);
+                    gv = cx.values[gn.defpos] ?? TNull.Value;
+                    if (gv is TNode tn)
+                        gv = new TRef(tn.defpos, rt);
+                }
+                if (gv is TRef v)
+                {
+                    r += v;
+                    d += (v.dataType.elType ?? throw new PEException("PE78433"), true);
+                }
+            }
+            // var nd = (d.Count == 1L) ? d.First()?.key() : Domain.FindOrCreateDomain(cx,new Domain(-1L, Qlx.UNION, d, cx.role.defpos));
+            // if (nd is null)
+            //    throw new PEException("PE78434");
+            // return new TSet(cx,nd)+r.tree;
+            return r;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" SET{");
+            var cm = "";
+            for (var b=els.First();b!=null;b=b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(Uid(b.value())); }
+            sb.Append('}');
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// For an insert edge label set, tok (mem[SqlValueExpr.Op]) here can be Qlx.COLON or Qlx.AMPERSAND
@@ -12228,53 +12369,55 @@ cx.obs[high] is not QlValue hi)
             Connects = -466; // CTree<TConnector,long> QlValue
         public CTree<TConnector, long> connects => 
             (CTree<TConnector, long>)(mem[Connects] ?? CTree<TConnector, long>.Empty);
-        public GqlEdge(Ident nm, BList<Ident> ch, Context cx, long i,
-            CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm, BTree<long, object> m)
-            : base(nm, ch, cx, i, d, tgs, _Conn(nm, d, dm, cx, m), m)
+        public GqlEdge(Ident nm, BList<Ident> ch, Context cx, 
+            CTree<string, QlValue> d, CTree<long, TGParam> tgs, Table? dm, BTree<long, object> m)
+            : base(nm, ch, cx, d, tgs, _Conn(nm, d, dm, cx, m), m)
         {
-            if (cx.parsingGQL == Context.ParsingGQL.Match && m[Before] is GqlNode bn && bn.domain.defpos < 0)
-            {
-                Domain bd = bn.domain;
-                if (dm?.defpos > 0 != true && tgs[-(long)Qlx.TYPE] is TGParam tg)
-                    if (cx.names[tg.value].Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
-                        cx.names += (tg.value, (nm.lp, p));
-                    else
-                        dm = (cx._Ob(cx.role.edgeTypes[tg.value])
-                            ?? cx._Ob(cx.role.nodeTypes[tg.value])
-                            ?? cx._Ob(cx.role.dbobjects[tg.value])) as UDType;
-                var u = CTree<Domain, bool>.Empty;
-                //we are in a MatchExp and should constrain b
-                if (m[PreCon] is TConnector ec && ec.rd.defpos > 0)
-                {
-                    u += (ec.rd, true);
-                    bd = ec.rd;
-                }
-           /*         var mp = dm?.model[ec.cn]?[ec.q];
-                    for (var b = dm?.colRefs.First(); b != null; b = b.Next()) // the domains that dm references
-                        // b.key() a referenced domain, b.value() the table keymap that gets there
-                        for (var c = b.value().First(); c != null; c = c.Next())
-                            if (cx._Ob(c.key()) is TableColumn cr)
-                                for (var e = .First(); e != null; e = e.Next())
-                                {
-                                    var (q,cn) = e.value();
-                                    if ((ec.q == Qlx.ARROWBASE || ec.q == Qlx.FROM) && q != Qlx.FROM) continue;
-                                    if ((ec.q == Qlx.RARROW || ec.q == Qlx.TO) && q != Qlx.TO) continue;
-                                    if (ec.q == Qlx.TILDE && q != Qlx.WITH) continue;
-                                    bd = cx._Ob(cr.toType) as Domain??bd;
-                                    u += (bd, true);
-                                } */
-                if (u != CTree<Domain, bool>.Empty)
-                    cx.Add(bn + (_Domain, (u.Count == 1L) ? bd : new Domain(-1L, Qlx.UNION, u)));
-            }
+            if (cx.parsingGQL == Context.ParsingGQL.Match && m[Before] is CTree<GqlNode, Qlx> bt)
+                for (var c = bt.First(); c != null; c = c.Next())
+                    if (c.key() is GqlNode bn && bn.domain.defpos < 0)
+                    {
+                        Domain bd = bn.domain;
+                        if (dm?.defpos > 0 != true && tgs[-(long)Qlx.TYPE] is TGParam tg)
+                            if (cx.names[tg.value].Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
+                                cx.names += (tg.value, (nm.lp, p));
+                            else
+                                dm = (cx._Ob(cx.role.edgeTypes[tg.value])
+                                    ?? cx._Ob(cx.role.nodeTypes[tg.value])
+                                    ?? cx._Ob(cx.role.dbobjects[tg.value])) as UDType;
+                        var u = CTree<Domain, bool>.Empty;
+                        //we are in a MatchExp and should constrain b
+                        if (m[PreCon] is TConnector ec && ec.rd.defpos > 0)
+                        {
+                            u += (ec.rd, true);
+                            bd = ec.rd;
+                        }
+                        /*         var mp = dm?.model[ec.cn]?[ec.q];
+                                 for (var b = dm?.colRefs.First(); b != null; b = b.Next()) // the domains that dm references
+                                     // b.key() a referenced domain, b.value() the table keymap that gets there
+                                     for (var c = b.value().First(); c != null; c = c.Next())
+                                         if (cx._Ob(c.key()) is TableColumn cr)
+                                             for (var e = .First(); e != null; e = e.Next())
+                                             {
+                                                 var (q,cn) = e.value();
+                                                 if ((ec.q == Qlx.ARROWBASE || ec.q == Qlx.FROM) && q != Qlx.FROM) continue;
+                                                 if ((ec.q == Qlx.RARROW || ec.q == Qlx.TO) && q != Qlx.TO) continue;
+                                                 if (ec.q == Qlx.TILDE && q != Qlx.WITH) continue;
+                                                 bd = cx._Ob(cr.toType) as Domain??bd;
+                                                 u += (bd, true);
+                                             } */
+                        if (u != CTree<Domain, bool>.Empty)
+                            cx.Add(bn + (_Domain, (u.Count == 1L) ? bd : new Domain(-1L, Qlx.UNION, u, cx.role.defpos)));
+                    }
         }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        protected static Domain _Conn(Ident nm, CTree<string,QlValue> d, Domain? dm, Context cx, BTree<long, object>? m)
+        protected static Table _Conn(Ident nm, CTree<string,QlValue> d, Table? dm, Context cx, BTree<long, object>? m)
         {
             var pr = (TypedValue)(m?[PreCon] ?? TNull.Value);
             var po = (TypedValue)(m?[PostCon] ?? TNull.Value);
-            var bf = (GqlNode?)m?[Before];
-            var af = (GqlNode?)m?[After];
+            var bf = (CTree<GqlNode,Qlx>?)m?[Before];
+            var af = (CTree<GqlNode,Qlx>?)m?[After];
             if (cx.parsingGQL == Context.ParsingGQL.Match)
             {
                 if (dm is null) // Wildcard Edge in MatchExp
@@ -12282,20 +12425,21 @@ cx.obs[high] is not QlValue hi)
                 if (dm.defpos > 0L)
                     return dm;
                 var ts = CTree<Domain, bool>.Empty;
-                if (bf?.domain is Table bt)
-                    for (var b = bt.refCols.First(); b != null; b = b.Next())
-                        if (cx.db.objects[b.key()] is TableColumn bc
+                for (var b=bf?.First();b!=null;b=b.Next())
+                    if (b.key()?.domain is Table bt)
+                    for (var c = bt.refCols.First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is TableColumn bc
                             && cx.db.objects[bc.tabledefpos] is Table ct)
                         {
-                            for (var c = d.First(); c != null; c = c.Next())
-                                if (!ct.names.Contains(c.key()))
+                            for (var cb = d.First(); cb != null; cb = cb.Next())
+                                if (!ct.names.Contains(cb.key()))
                                     goto skip;
                             ts += (ct, true);
                         skip:;
                         }
                 if (ts.Count == 1L && ts.First()?.key() is Table dt)
                     return dt;
-                return new Domain(-1L, Qlx.UNION, ts);
+                return new Table(-1L, ts, cx.role.defpos);
             }
             if (dm is not Table et)
                 et = (Table)Domain.TypeSpec.Relocate(cx.GetUid());
@@ -12324,7 +12468,7 @@ cx.obs[high] is not QlValue hi)
             return 1;
         }
        /// <summary>
-        /// base._NodeType will find out for us if there is a single EdgeType with the right property names.
+        /// base._Type will find out for us if there is a single EdgeType with the right property names.
         /// If we have no single EdgeType with matching properties, we match on connector ids
         /// and declared types of connected nodes, and if we have the right privileges, extend existing Type(s).
         /// </summary>
@@ -12333,16 +12477,16 @@ cx.obs[high] is not QlValue hi)
         /// <param name="ap"></param>
         /// <param name="allowExtras"></param>
         /// <returns></returns>
-        internal override Table _Type(Context cx, Domain dt, long ap, bool allowExtras = true,
-            CTree<TypedValue,bool>? cr = null)
+        internal override Table _Type(Context cx, Domain dt, long ap)
         {
-            var et = base._Type(cx, dt, ap, allowExtras) ?? throw new DBException("42000");
-            cr ??= CTree<TypedValue, bool>.Empty; // connectors that need defining
-            var ls = docValue;
-            var ti = et.infos[cx.role.defpos] ?? throw new PEException("PE40461");
-            var ts = ti.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-            for (var b = cr.First(); b != null; b = b.Next())
-                if (b.key() is TConnector cc)
+            var et = base._Type(cx, dt, ap) ?? throw new DBException("42000");
+            var ot = et;
+            var ti = et.infos[cx.role.defpos];
+            var ts = ti?.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.ConnectorSet);
+            for (var a = docValue.First(); a != null; a = a.Next())
+                if (cx.db.objects[cx.names[a.key()].Item2] is TableColumn co
+                    && co.infos[cx.role.defpos] is ObInfo ci
+                    && ci.metadata[Qlx.CONNECTING] is TConnector cc)
                 {
                     for (var c = ts.First(); c != null; c = c.Next())
                         if (c.Value() is TConnector oc)
@@ -12350,19 +12494,19 @@ cx.obs[high] is not QlValue hi)
                             if (cc.q == oc.q && (cc.cn == oc.cn || cc.cn == ""))
                             {
                                 if (cc.rd.EqualOrStrongSubtypeOf(oc.rd))
-                                    cr -= cc; // request is already satisfied
+                                    goto skip; // request is already satisfied
+                                               // we need to create or extend the target union type
+                                var un = new CTree<Domain, bool>(cc.rd, true);
+                                if (oc.rd.kind != Qlx.UNION)
+                                    un += (oc.rd, true);
                                 else
-                                { // we need to create or extend the target union type
-                                    var un = new CTree<Domain, bool>(cc.rd, true);
-                                    if (oc.rd.kind != Qlx.UNION)
-                                        un += (oc.rd, true);
-                                    else
-                                        un += oc.rd.super;
-                                    var nc = new TConnector(oc.q, cc.cn,
-                                        new Domain(cx.GetUid(), Qlx.UNION, un), oc.cp);
-                                    ts = ts - oc + nc;
-                                    goto skip;
-                                }
+                                    un += oc.rd.super;
+                                var nc = new TConnector(oc.q, cc.cn,
+                                    new Domain(cx.GetUid(), Qlx.UNION, un, cx.role.defpos), oc.cp);
+                                if (cx.db.objects[oc.cp] is TableColumn tc && cx.db.objects[tc.tabledefpos] is Table ct)
+                                    cx.Add(ct.Add(cx, oc));
+                                ts = ts - oc + nc;
+                                goto skip;
                             }
                             if (cc.q != oc.q)
                                 continue;
@@ -12373,9 +12517,8 @@ cx.obs[high] is not QlValue hi)
                     (et, cc) = et.BuildNodeTypeConnector(cx, cc);
                 skip:;
             }
-            if (cr!=null)
-                et = (Table)cx.Add(et, ti.metadata +(Qlx.REFERENCES, ts)).Item2;
-            cx.Add(et);
+            if (ot != et)
+                et = (Table)cx.Add(et, ti.metadata + (Qlx.REFERENCES, ts)).Item2;
             return et;
         }
 

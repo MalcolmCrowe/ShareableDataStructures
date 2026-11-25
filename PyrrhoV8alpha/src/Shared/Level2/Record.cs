@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Level5;
+using System.ComponentModel.DataAnnotations;
 using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
@@ -71,6 +72,10 @@ namespace Pyrrho.Level2
                     return rd.defpos;
                 if (b.value() is TRef tp && !Committed(wr, tp.value))
                     return tp.value;
+                if (b.value() is TSet ts)
+                    for (var c = ts.First(); c != null; c = c.Next())
+                        if (c.Value() is TRef cp && !Committed(wr, cp.value))
+                            return cp.value;
             }
             return -1;
         }
@@ -162,7 +167,8 @@ namespace Pyrrho.Level2
                     for (var b = tb.First(); b != null; b = b.Next())
                         if (rdr.context.db.objects[b.value()] is TableColumn tc
                             && tc.domain.kind == Qlx.REF
-                            && rdr.context.db.objects[tc.domain.elType?.defpos ?? -1L] is Table rt)
+                            && rdr.context.db.objects[tc.domain.elType?.defpos ?? -1L] is Table rt
+                            && Table.FindOrCreateRefDomain(rdr.context, rt) is Domain rf)
                         {
                             // (compatibility) compute the reference value if not provided (actual Null may be ok if column  optional)
                            if (!fields.Contains(tc.defpos)
@@ -176,12 +182,12 @@ namespace Pyrrho.Level2
                                     if (!rdr.context.db.objects.Contains(p) && fields[p] is TypedValue v)
                                         k += v;
                                 }
-                                var rp = px.rows?.Get(k, 0); // maybe optional
-                                if (rp != null)
-                                    fields += (tc.defpos, new TInt(rp ?? -1L));
+                                var rp = px.rows?.Get(new TList(px.keys,k),tb); // maybe optional
+                                if (rp.ToLong() is long q)
+                                    fields += (tc.defpos, new TRef(q, tb));
                             }
                             else if (fields[b.value()] is TInt vi)
-                                fields += (tc.defpos, new TRef(vi.ToLong() ?? -1L, rt));
+                                fields += (tc.defpos, new TRef(vi.ToLong() ?? -1L, rf));
                         }
             }
         }
@@ -220,7 +226,7 @@ namespace Pyrrho.Level2
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
                 if (cs[d.key()] is Domain ndt && d.value() is TypedValue o)
                 {
-                    ndt = (Domain)((Domain)(wr.cx.db.objects[ndt.defpos]??throw new PEException("PE20281"))).Fix(wr.cx);
+                    ndt = (Domain)Domain.FindOrCreateDomain(wr.cx,ndt).Fix(wr.cx);
                     var k = wr.cx.Fix(d.key());
                     wr.PutLong(k); // coldefpos
                     var dt = (Domain)o.dataType.Fix(wr.cx) ?? Domain.Null;
@@ -377,19 +383,21 @@ namespace Pyrrho.Level2
             var vs = now.vals;
             for (var b = tt.colRefs.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx.db.objects[c.key()] is TableColumn co
-                        && co.domain.kind==Qlx.REF
-                        && cx.db.objects[co.domain.elType?.defpos??-1L] is Table rt)
-                    {
-                        //             var rr = rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L]
-                        //                 ?? throw new DBException("23000", "referent not found");
-                        if (rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L] is TableRow rr)
+                    if (cx.db.objects[c.key()] is TableColumn co)
+                        if (co.domain.kind == Qlx.REF
+                        && cx.db.objects[co.domain.elType?.defpos ?? -1L] is Table rt
+                        && rt.tableRows[vs[co.defpos]?.ToLong() ?? -1L] is TableRow rr)
                             vs = Add(tt, vs, co, rt, rr, cx);
-                    }
+                        else if (co.domain.kind == Qlx.SET
+                            && cx.db.objects[co.domain.elType?.elType?.defpos ?? -1L] is Table sr
+                            && vs[co.defpos] is TSet se)
+                            for (var d = se.First(); d != null; d = d.Next())
+                                if (sr.tableRows[d.Value()?.ToLong() ?? -1L] is TableRow dr)
+                                    vs = Add(tt, vs, co, sr, dr, cx);
             if (vs != now.vals)
                 now = new TableRow(now, tt.defpos, vs);
-            if (cx.db is Transaction && tt.colRefs.Count>0L)
-                cx.checkEdges += (now.defpos, now);
+            if (cx.db is Transaction && tt.colRefs.Count > 0L && cx.next != null)
+                cx.next.checkEdges += (now.defpos, now);
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x
@@ -402,14 +410,17 @@ namespace Pyrrho.Level2
                         cx.db += x;
                     }
             // If this is a record for an unlabelled node or edge type, check we have a note of the type
-            if (cx.db.objects[tt.defpos] is Table nt && nt.NameFor(cx)==""
+            if (cx.db.objects[tt.defpos] is Table nt && nt.NameFor(cx) == ""
                 && nt.infos[cx.role.defpos] is ObInfo ni)
             {
-                var md = ni.metadata ?? TMetadata.Empty;
-                if (md != TMetadata.Empty && nt.NameFor(cx)==""
-                    && !cx.db.unlabelledNodeTypes.Contains(md))
-                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (md, nt.defpos));
-                if (nt!=tt)
+                var ps = CTree<string, bool>.Empty;
+                for (var b = nt.names.First(); b != null; b = b.Next())
+                    ps += (b.key(), true);
+                var s = cx.db.unlabelledNodeTypes[ps] ?? CTree<long, bool>.Empty;
+                if (ps != CTree<string, bool>.Empty)
+                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes
+                        + (ps, s + (nt.defpos, true)));
+                if (nt != tt)
                     cx.db += tt;
             }
             tt += now;
@@ -429,9 +440,10 @@ namespace Pyrrho.Level2
         CTree<long,TypedValue> Add(Table tt, CTree<long, TypedValue> vs, TableColumn tc, Table rt, TableRow rr, Context cx)
         {
             if (rr.tabledefpos != rt.defpos) // rr belongs to a subtype of rt
-                for (var b=rt.subtypes.First();b!=null;b=b.Next())
+                for (var b = rt.subtypes.First(); b != null; b = b.Next())
                     if (cx._Ob(b.key()) is Table si && si.tableRows.Contains(rr.defpos))
                         Add(tt, vs, tc, si, rr, cx);
+            rt = (Table)(cx.db.objects[rt.defpos] ?? throw new PEException("PE217401"));
             var cn = rt.sindexes[rr.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
             var cc = cn[tc.defpos] ?? CTree<long, bool>.Empty;
             cc += (defpos, true);

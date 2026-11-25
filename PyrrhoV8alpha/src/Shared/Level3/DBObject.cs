@@ -424,7 +424,6 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
-        internal virtual void SaveFocusedObject(string s, Context cx) { }
         internal virtual CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
         {
             var os = Operands(cx) - ag;
@@ -676,7 +675,7 @@ namespace Pyrrho.Level3
              ob = this;
             if (ob.alias is string s)
                 return s;
-            if (defpos < 0)
+            if (name!="" && (defpos < 0 || defpos>Transaction.TransPos))
                 return name;
              if (ob.infos == BTree<long, ObInfo>.Empty)
                 return "";

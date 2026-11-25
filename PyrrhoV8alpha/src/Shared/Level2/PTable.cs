@@ -137,8 +137,19 @@ namespace Pyrrho.Level2
                 if (oi.metadata.Contains(Qlx.EDGETYPE))
                     ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
             }
-            if (dataType.name!="")
-                dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else
+            if (dataType.name != "")
+                dataType = new Domain(dataType.defpos, dataType.mem - ObInfo.Name); // -= on Domain means something else
+            else 
+            {
+                var ps = CTree<string, bool>.Empty;
+                for (var c = dataType.First(); c != null; c = c.Next())
+                    if (cx.NameFor(c.value()) is string ss && ss!="")
+                    ps += (ss, true);
+                var s = cx.db.unlabelledNodeTypes[ps] ?? CTree<long, bool>.Empty;
+                if (ps!=CTree<string,bool>.Empty)
+                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes
+                        + (ps, s + (dataType.defpos, true)));
+            }
             var tb = /* (name[0] == '(') ? new VirtualTable(this, cx) :*/ new Table(this);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
