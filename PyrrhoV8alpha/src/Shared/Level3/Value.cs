@@ -2149,7 +2149,6 @@ namespace Pyrrho.Level3
                             throw new PEException("PE5001");
                         dm = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.ARRAY, left.domain)); break;
                     }
-                case Qlx.SET: dm = left?.domain ?? Domain.Content; nm = left?.name ?? ""; break; // JavaScript
                 case Qlx.TIMES:
                     {
                         if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.NUMERIC)
@@ -2515,7 +2514,6 @@ namespace Pyrrho.Level3
                         var tl = lf.FindType(cx, dt);
                         dm = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.ARRAY, tl.elType??Domain.Content)); break;
                     }
-                case Qlx.SET: dm = dl ?? Domain.Content; break; // JavaScript
                 case Qlx.TIMES:
                     {
                         if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.NUMERIC)
